@@ -18,9 +18,9 @@ Current version: 1.0
 
 
 ## Installation
-* Download the zip delivery file from https://sodiuswillert.sharepoint.com/:f:/r/sites/sowiglobal/SoWi%20Folder%20structure/30%20-%20Sodius%20SAS/Projects/SECOLLAB/shared/Bitbucket%20Pull-Requests%20Tree?csf=1&web=1&e=1V5XPJ
-* Unzip the delivery to your preferred location
-* Open config.js and fill in the required configuration values
+* Clone this repository
+* Open copy config.default.js to config.js
+* Fill in the required configuration values in config.js
 * Open a terminal (we are assuming here you have `nodejs` and `npm` installed)
 * Run `npm ci`
 * Run `node index.mjs`
