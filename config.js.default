@@ -1,0 +1,14 @@
+module.exports = {
+    bitbucket: {
+        username: 'xxx', // for me was frjaunatre_sodius
+        password: 'xxx', // you can create an app password at https://bitbucket.org/account/settings/app-passwords/
+        workspace: 'xxx', // should be sodius
+        repoName: 'xxx' // for us was products.secollab
+    },
+    jira: {
+        siteName: 'xxx', // should be sodiuswillert
+        username: 'xxx', // for me was frjaunatre@sodiuswillert.com
+        apiKey: 'xxx', // you can create an API key at https://id.atlassian.com/manage-profile/security/api-tokens
+        issuesRegex: /(XXX-\d+)/g // for us was replacing XXX with SECOLLAB
+    }
+};
