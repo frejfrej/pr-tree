@@ -57,12 +57,12 @@ function filterPullRequests() {
     });
 }
 
-function toggleChildren(element) {
-    let children = element.nextElementSibling;
+function toggleChildren(button) {
+    const pullRequest = button.closest('.pull-request');
+    const children = pullRequest.nextElementSibling;
     if (children && children.classList.contains('children')) {
+        pullRequest.classList.toggle('collapsed');
         children.style.display = children.style.display === 'none' ? 'block' : 'none';
-        element.querySelector('.toggle-icon').classList.toggle('fa-chevron-down');
-        element.querySelector('.toggle-icon').classList.toggle('fa-chevron-right');
     }
 }
 

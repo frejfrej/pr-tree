@@ -202,14 +202,25 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         `;
     }
 
+    const sourceBranch = pullRequest.source.branch.name;
+    const hasChildren = pullRequestsByDestination.has(sourceBranch);
+
+    const toggleButton = hasChildren ? `
+        <button class="toggle-button" onclick="toggleChildren(this)">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    ` : '';
+
     let html = `
         <div class="pull-request ${statusClass}" style="margin-left: ${level * 20}px;">
             <div class="pull-request-content">
                 <div class="pull-request-info">
-                    <p>
+                    <div class="pull-request-header">
+                        ${toggleButton}
                         <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
                         <span class="status-indicator ${statusClass}"></span>
-                    </p>
+                    </div>
                     <div class="participants">
                         ${renderParticipant(pullRequest.author, "author")} 
                         <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
@@ -227,8 +238,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </div>
     `;
 
-    const sourceBranch = pullRequest.source.branch.name;
-    if (pullRequestsByDestination.has(sourceBranch)) {
+    if (hasChildren) {
         html += `<div class="children">${renderPullRequests(pullRequestsByDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, level + 1)}</div>`;
     }
     return html;
@@ -426,6 +436,38 @@ app.get('/', async (req, res) => {
 
         .jira-issues li {
             margin-bottom: 5px;
+        }
+        
+        .pull-request-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .toggle-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            margin-right: 10px;
+            font-size: 16px;
+            color: var(--text-color);
+        }
+
+        .toggle-button:hover {
+            color: var(--primary-color);
+        }
+
+        .toggle-button .fa-chevron-right {
+            display: none;
+        }
+
+        .collapsed .toggle-button .fa-chevron-down {
+            display: none;
+        }
+
+        .collapsed .toggle-button .fa-chevron-right {
+            display: inline;
         }
     </style>
 </head>
