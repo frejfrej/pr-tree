@@ -161,7 +161,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     }
 
     let allOtherParticipantsApprovedIcon = hasOtherParticipants && allOtherParticipantsApproved ?
-        `<i class="fas fa-check-circle green" title="All other participants approved"></i>` : '';
+        `<div class="all-approved-icon"><i class="fas fa-check-circle" title="All other participants approved"></i></div>` : '';
 
     let noOtherParticipantsAlert = !hasOtherParticipants ?
         `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
@@ -213,7 +213,8 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     ` : '';
 
     let html = `
-        <div class="pull-request ${statusClass}" style="margin-left: ${level * 10}px;"> <!-- Reduced from 20px to 10px -->
+        <div class="pull-request ${statusClass}" style="margin-left: ${level * 10}px;">
+            ${allOtherParticipantsApprovedIcon}
             <div class="pull-request-content">
                 <div class="pull-request-info">
                     <div class="pull-request-header">
@@ -224,8 +225,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                     <div class="participants">
                         ${renderParticipant(pullRequest.author, "author")} 
                         <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
-                        ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails} 
-                        ${allOtherParticipantsApprovedIcon}
+                        ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails}
                     </div>
                     ${alertsHtml}
                 </div>
@@ -237,7 +237,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
             </div>
         </div>
     `;
-
+    
     if (hasChildren) {
         html += `<div class="children">${renderPullRequests(pullRequestsByDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, level + 1)}</div>`;
     }
@@ -338,6 +338,20 @@ app.get('/', async (req, res) => {
             margin-bottom: 10px;
             padding: 15px;
             transition: box-shadow 0.3s ease;
+            position: relative; /* Add this to allow absolute positioning of children */
+        }
+
+        .all-approved-icon {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            font-size: 24px;
+            color: #36B37E;
+            background-color: white;
+            border-radius: 50%;
+            padding: 2px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
         }
 
         .pull-request:hover {
