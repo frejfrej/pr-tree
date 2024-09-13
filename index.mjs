@@ -213,7 +213,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     ` : '';
 
     let html = `
-        <div class="pull-request ${statusClass}" style="margin-left: ${level * 20}px;">
+        <div class="pull-request ${statusClass}" style="margin-left: ${level * 10}px;"> <!-- Reduced from 20px to 10px -->
             <div class="pull-request-content">
                 <div class="pull-request-info">
                     <div class="pull-request-header">
@@ -423,9 +423,9 @@ app.get('/', async (req, res) => {
         }
 
         .children {
-            margin-left: 20px;
+            margin-left: 10px; /* Reduced from 20px */
             border-left: 2px solid var(--border-color);
-            padding-left: 15px;
+            padding-left: 10px; /* Reduced from 15px */
         }
 
         .jira-issues {
