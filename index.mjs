@@ -1,9 +1,19 @@
 import express from 'express';
 import fetch from 'node-fetch';
+import dotenv from 'dotenv';  // For environment variables
 import config from './config.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+dotenv.config();  // Load environment variables from .env
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;  // Dynamic port for flexibility
+
+// Serve static files from the current directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use(express.static(__dirname));
 
 // URL of the Bitbucket REST API to retrieve pull requests
 const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${config.bitbucket.repoName}/pullrequests?fields=%2Bvalues.participants,-values.description,-values.summary`;
@@ -133,6 +143,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     let notYetDecidedDetails = "";
     let hasOtherParticipants = false;
     let allOtherParticipantsApproved = true;
+
     for (const participant of pullRequest.participants) {
         if (participant.user.account_id !== pullRequest.author.account_id) {
             hasOtherParticipants = true;
@@ -148,32 +159,28 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         }
     }
 
-    let allOtherParticipantsApprovedIcon = "";
-    if (hasOtherParticipants && allOtherParticipantsApproved) {
-        allOtherParticipantsApprovedIcon = `<i class="fas fa-check-circle green" title="All other participants approved"></i>`;
-    }
+    let allOtherParticipantsApprovedIcon = hasOtherParticipants && allOtherParticipantsApproved ?
+        `<i class="fas fa-check-circle green" title="All other participants approved"></i>` : '';
 
-    let noOtherParticipantsAlert = "";
-    if (!hasOtherParticipants) {
-        noOtherParticipantsAlert = `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>`;
-    }
+    let noOtherParticipantsAlert = !hasOtherParticipants ?
+        `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
 
     const jiraIssues = jiraIssuesMap.get(pullRequest.id);
     const jiraIssuesDetailsForPullRequest = jiraIssues.map(issue => jiraIssuesDetails.find(details => details.key === issue)).filter(issueDetails => issueDetails);
     const jiraIssuesStatuses = jiraIssuesDetailsForPullRequest.map(issueDetails => issueDetails.fields.status.name);
+
     let statusClass = "";
     if (jiraIssuesStatuses.includes("In Progress")) {
-        statusClass = "in-progress";
+        statusClass = "status-in-progress";
     } else if (jiraIssuesStatuses.includes("In Review")) {
-        statusClass = "in-review";
-    }
-    const uniqueJiraIssuesStatuses = new Set(jiraIssuesStatuses);
-    let sameStatusIcon = "";
-    if (uniqueJiraIssuesStatuses.size > 1) {
-        sameStatusIcon = `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>`;
+        statusClass = "status-in-review";
     }
 
-    let resolvedIssuesAlert = "";
+    const uniqueJiraIssuesStatuses = new Set(jiraIssuesStatuses);
+    let sameStatusIcon = uniqueJiraIssuesStatuses.size > 1 ?
+        `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
+
+    let resolvedIssuesAlert = '';
     const jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
         if (issueDetails.fields.status.name === "Resolved" || issueDetails.fields.status.name === "Closed") {
             resolvedIssuesAlert += `<li><i class="fas fa-exclamation-triangle red" title="JIRA issue is resolved"></i> JIRA issue ${issueDetails.key} is resolved</li>`;
@@ -183,20 +190,33 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
 
     let alertsHtml = "";
     if (sameStatusIcon || noOtherParticipantsAlert || resolvedIssuesAlert) {
-        alertsHtml += `<li>Warnings:<ol>${sameStatusIcon}${noOtherParticipantsAlert}${resolvedIssuesAlert}</ol></li>`;
+        alertsHtml = `
+            <div class="warnings">
+                <ul>
+                    ${sameStatusIcon}
+                    ${noOtherParticipantsAlert}
+                    ${resolvedIssuesAlert}
+                </ul>
+            </div>
+        `;
     }
 
     html += `
         <div class="pull-request ${statusClass}" style="margin-left: ${level * 20}px;">
             <p>
-                <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>&nbsp;&nbsp;&nbsp;
-                <span>${renderParticipant(pullRequest.author, "author")} on ${pullRequest.created_on.substring(0,10)}
-                ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails} ${allOtherParticipantsApprovedIcon}</span>
+                <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
+                <span class="status-indicator ${statusClass}"></span>
+                <span class="participants">
+                    ${renderParticipant(pullRequest.author, "author")} 
+                    <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
+                    ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails} 
+                    ${allOtherParticipantsApprovedIcon}
+                </span>
             </p>
-            <ul>
+            <ul class="jira-issues">
                 ${jiraIssuesHtml}
-                ${alertsHtml}
             </ul>
+            ${alertsHtml}
         </div>
     `;
 
@@ -241,127 +261,154 @@ app.get('/', async (req, res) => {
 
         let html = `
             <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Bitbucket Pull Requests</title>
-                <style>
-                    .pull-request {
-                        margin-bottom: 5px;
-                        padding-left: 5px;
-                    }
-                    .pull-request .children {
-                        padding-left: 10px;
-                    }
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitbucket Pull Requests Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #0052CC;
+            --secondary-color: #FF5630;
+            --background-color: #F4F5F7;
+            --text-color: #172B4D;
+            --border-color: #DFE1E6;
+        }
 
-                    .image-container {
-                        position: relative;
-                        display: inline-block;
-                    }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 20px;
+        }
 
-                    .image-container img {
-                        display: block;
-                        height: 22px;
-                        width: 22px;
-                    }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
 
-                    .image-container .icon {
-                        position: absolute;
-                        top: -3px;
-                        right: -5px;
-                        font-size: 12px;
-                        font-weight: bolder;
-                    }
+        h1 {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
 
-                    .red {
-                        color: red;
-                    }
+        .filters {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
 
-                    .green {
-                        color: green;
-                    }
+        select {
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+        }
 
-                    .blue {
-                        color: dodgerblue;
-                    }
-                </style>
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
-                <script>
-                    let previousAuthor = "Show all";
-                    let previousReviewer = "Show all";
-                    function filterPullRequests() {
-                        let author = document.getElementById("authorSelect").value;
-                        let reviewer = document.getElementById("reviewerSelect").value;
-                        let pullRequests = document.getElementsByClassName("pull-request");
-                
-                        // ensure only one of the dropdown is selected
-                        // and resets the on which was not changed
-                        if (reviewer !== previousReviewer) {
-                            document.getElementById("authorSelect").value = "Show all";
-                            previousReviewer = reviewer;
-                            author = "Show all";
-                        } else if (author !== previousAuthor) {
-                            document.getElementById("reviewerSelect").value = "Show all";
-                            previousAuthor = author;
-                            reviewer = "Show all";
-                        }
-                        
-                        
-                        for (let i = 0; i < pullRequests.length; i++) {
-                            let title = pullRequests[i].getElementsByTagName("a")[0];
-                            let authorImg = pullRequests[i].getElementsByTagName("img")[0];
-                            let reviewerApproved = false;
-                            let reviewerFound = false;
-                            if (reviewer !== "Show all") {
-                                let participants = pullRequests[i].getElementsByClassName("image-container") || [];
-                                // starting at 1 since first img is the author
-                                for (let j = 1; j < participants.length; j++) {
-                                    if (participants[j].dataset["author"] === reviewer) {
-                                        reviewerFound = true;
-                                        if (participants[j].dataset["reviewStatus"] === "approved") {
-                                            reviewerApproved = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if (author  === "Show all" && reviewer === "Show all" ) {
-                                pullRequests[i].style.display = "";
-                                title.style.color = "black";
-                            } else if (authorImg.alt === author) {
-                                pullRequests[i].style.display = "";
-                                if (authorImg.alt === author && pullRequests[i].classList.contains("in-progress")) {
-                                    title.style.color = "red";
-                                } else {
-                                    title.style.color = "black";
-                                }
-                            } else if (reviewerFound) {
-                                pullRequests[i].style.display = "";
-                                if (!reviewerApproved && !pullRequests[i].classList.contains("in-progress")) {
-                                    title.style.color = "red";
-                                } else {
-                                    title.style.color = "black";
-                                }
-                            } else {
-                                pullRequests[i].style.display = "none";
-                            }
-                        }
-                    }
-                </script>
-            </head>
-            <body>
-            <h1>Bitbucket Pull Requests</h1>
-            Author: <select id="authorSelect" onchange="filterPullRequests()">
-                ${authorOptions}
-            </select>
-            Work for reviewer: <select id="reviewerSelect" onchange="filterPullRequests()">
-                ${reviewerOptions}
-            </select>
-            <div id="pull-requests">${renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination)}</div>
-            </body>
-            </html>
+        .pull-request {
+            background-color: white;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            margin-bottom: 10px;
+            padding: 15px;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .pull-request:hover {
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .pull-request a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .pull-request a:hover {
+            text-decoration: underline;
+        }
+
+        .image-container {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 5px;
+        }
+
+        .image-container img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .icon {
+            font-size: 12px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-in-progress { background-color: #FFD700; }
+        .status-in-review { background-color: #36B37E; }
+        .status-resolved { background-color: #00B8D9; }
+
+        .warnings {
+            background-color: #FFEBE6;
+            border: 1px solid #FF8F73;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        .warnings li {
+            margin-bottom: 5px;
+        }
+
+        .children {
+            margin-left: 20px;
+            border-left: 2px solid var(--border-color);
+            padding-left: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bitbucket Pull Requests Dashboard</h1>
+        <div class="filters">
+            <div>
+                <label for="authorSelect">Author:</label>
+                <select id="authorSelect" onchange="filterPullRequests()">
+                    ${authorOptions}
+                </select>
+            </div>
+            <div>
+                <label for="reviewerSelect">Reviewer:</label>
+                <select id="reviewerSelect" onchange="filterPullRequests()">
+                    ${reviewerOptions}
+                </select>
+            </div>
+        </div>
+        <div id="pull-requests">
+            ${renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination)}
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
         `;
 
         res.send(html);
