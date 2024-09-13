@@ -139,7 +139,6 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
 
 // Function to recursively render a pull-request
 function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, level = 0) {
-    let html = '';
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
@@ -203,22 +202,28 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         `;
     }
 
-    html += `
+    let html = `
         <div class="pull-request ${statusClass}" style="margin-left: ${level * 20}px;">
-            <p>
-                <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
-                <span class="status-indicator ${statusClass}"></span>
-                <span class="participants">
-                    ${renderParticipant(pullRequest.author, "author")} 
-                    <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
-                    ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails} 
-                    ${allOtherParticipantsApprovedIcon}
-                </span>
-            </p>
-            <ul class="jira-issues">
-                ${jiraIssuesHtml}
-            </ul>
-            ${alertsHtml}
+            <div class="pull-request-content">
+                <div class="pull-request-info">
+                    <p>
+                        <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
+                        <span class="status-indicator ${statusClass}"></span>
+                    </p>
+                    <div class="participants">
+                        ${renderParticipant(pullRequest.author, "author")} 
+                        <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
+                        ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails} 
+                        ${allOtherParticipantsApprovedIcon}
+                    </div>
+                    ${alertsHtml}
+                </div>
+                <div class="pull-request-issues">
+                    <ul class="jira-issues">
+                        ${jiraIssuesHtml}
+                    </ul>
+                </div>
+            </div>
         </div>
     `;
 
@@ -262,7 +267,7 @@ app.get('/', async (req, res) => {
         let reviewerOptions = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
         let html = `
-            <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -329,6 +334,21 @@ app.get('/', async (req, res) => {
             box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
         }
 
+        .pull-request-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .pull-request-info {
+            flex: 1;
+            margin-right: 20px;
+        }
+
+        .pull-request-issues {
+            flex: 0 0 250px;
+        }
+
         .pull-request a {
             color: var(--primary-color);
             text-decoration: none;
@@ -367,7 +387,7 @@ app.get('/', async (req, res) => {
         .icon.fa-times-circle { color: #FF5630; }
         .icon.fa-question-circle { color: #0052CC; }
         .icon.fa-user { color: #172B4D; }
-        
+
         .status-indicator {
             display: inline-block;
             width: 10px;
@@ -396,6 +416,16 @@ app.get('/', async (req, res) => {
             margin-left: 20px;
             border-left: 2px solid var(--border-color);
             padding-left: 15px;
+        }
+
+        .jira-issues {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .jira-issues li {
+            margin-bottom: 5px;
         }
     </style>
 </head>
