@@ -89,23 +89,25 @@ async function fetchJiraIssuesDetails(jiraIssues) {
 
 // Function to render participant information
 function renderParticipant(participant, status) {
-    let icon = "";
+    let iconClass = "";
     if (status === "approved") {
-        icon = "circle-check green";
+        iconClass = "fa-check-circle";
     } else if (status === "requestedChanges") {
-        icon = "ban red";
+        iconClass = "fa-times-circle";
     } else if (status === "toReview") {
-        icon = "microscope blue";
+        iconClass = "fa-question-circle";
     } else if (status === "author") {
-        icon = "screwdriver-wrench";
+        iconClass = "fa-user";
     } else {
-        console.log (`${participant.display_name} participant's status is invalid: ${status}`);
+        console.log(`${participant.display_name} participant's status is invalid: ${status}`);
     }
 
-    return `<span class="image-container" data-author="${participant.display_name}" data-reviewStatus="${status}">
-                <img src="${participant.links.avatar.href}" alt="${participant.display_name}">
-                <i class="fas fa-${icon} icon"></i>
-            </span>`;
+    return `
+        <span class="image-container" data-author="${participant.display_name}" data-review-status="${status}">
+            <img src="${participant.links.avatar.href}" alt="${participant.display_name}">
+            <i class="fas ${iconClass} icon"></i>
+        </span>
+    `;
 }
 
 function findRootBranches(pullRequests) {
@@ -341,6 +343,7 @@ app.get('/', async (req, res) => {
             display: inline-flex;
             align-items: center;
             margin-right: 5px;
+            position: relative;
         }
 
         .image-container img {
@@ -352,8 +355,19 @@ app.get('/', async (req, res) => {
 
         .icon {
             font-size: 12px;
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            background-color: white;
+            border-radius: 50%;
+            padding: 2px;
         }
 
+        .icon.fa-check-circle { color: #36B37E; }
+        .icon.fa-times-circle { color: #FF5630; }
+        .icon.fa-question-circle { color: #0052CC; }
+        .icon.fa-user { color: #172B4D; }
+        
         .status-indicator {
             display: inline-block;
             width: 10px;
