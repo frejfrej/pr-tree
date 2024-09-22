@@ -66,6 +66,11 @@ function toggleChildren(button) {
     }
 }
 
+function toggleRootBranch(button) {
+    const rootBranch = button.closest('.root-branch');
+    rootBranch.classList.toggle('collapsed');
+}
+
 function populateFilters(pullRequests) {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
@@ -101,13 +106,11 @@ async function fetchData() {
     }
 }
 
-
 function findRootBranches(pullRequests) {
     const destinationBranches = new Set(pullRequests.map(pullRequest => pullRequest.destination.branch.name));
     const sourceBranches = new Set(pullRequests.map(pullRequest => pullRequest.source.branch.name));
     return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
 }
-
 
 // Function to recursively render the pull-requests
 function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
@@ -117,10 +120,24 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
 
         for(const destinationBranch of destinationBranches) {
             const rootPullRequests = pullRequests.filter(pullRequest => destinationBranch === pullRequest.destination.branch.name);
-            html += `<h2>${destinationBranch}</h2>`;
+            html += `
+                <div class="root-branch">
+                    <div class="root-branch-header" onclick="toggleRootBranch(this)">
+                        <button class="toggle-button">
+                            <i class="fas fa-chevron-down"></i>
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                        <h2>${destinationBranch}</h2>
+                    </div>
+                    <div class="root-branch-content">
+            `;
             rootPullRequests.forEach(rootPullRequest => {
                 html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, 1);
             });
+            html += `
+                    </div>
+                </div>
+            `;
         }
     } else {
         pullRequests.forEach(pullRequest => {

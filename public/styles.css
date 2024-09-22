@@ -51,7 +51,7 @@ select {
     margin-bottom: 10px;
     padding: 15px;
     transition: box-shadow 0.3s ease;
-    position: relative; /* Add this to allow absolute positioning of children */
+    position: relative;
 }
 
 .all-approved-icon {
@@ -150,9 +150,9 @@ select {
 }
 
 .children {
-    margin-left: 10px; /* Reduced from 20px */
+    margin-left: 10px;
     border-left: 2px solid var(--border-color);
-    padding-left: 10px; /* Reduced from 15px */
+    padding-left: 10px;
 }
 
 .jira-issues {
@@ -194,5 +194,42 @@ select {
 }
 
 .collapsed .toggle-button .fa-chevron-right {
+    display: inline;
+}
+
+/* New styles for root branch toggle */
+.root-branch {
+    margin-bottom: 20px;
+}
+
+.root-branch-header {
+    display: flex;
+    align-items: center;
+    background-color: var(--background-color);
+    padding: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.root-branch-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.root-branch-content {
+    margin-top: 10px;
+}
+
+.root-branch.collapsed .root-branch-content {
+    display: none;
+}
+
+.root-branch.collapsed .toggle-button .fa-chevron-down {
+    display: none;
+}
+
+.root-branch.collapsed .toggle-button .fa-chevron-right {
     display: inline;
 }
