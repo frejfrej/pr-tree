@@ -121,6 +121,7 @@ app.get('/api/pull-requests', async (req, res) => {
             jiraIssuesDetails: jiraIssuesDetails,
             pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
             jiraSiteName: config.jira.siteName,
+
         });
     } catch (error) {
         console.error(`Error executing the request: ${error.message}`);

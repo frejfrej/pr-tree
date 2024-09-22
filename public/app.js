@@ -71,6 +71,14 @@ function toggleRootBranch(button) {
     rootBranch.classList.toggle('collapsed');
 }
 
+function toggleRepository(button) {
+    const repository = button.closest('.repository');
+    repository.classList.toggle('collapsed');
+    const icon = button.querySelector('i');
+    icon.classList.toggle('fa-chevron-down');
+    icon.classList.toggle('fa-chevron-right');
+}
+
 function populateFilters(pullRequests) {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
@@ -89,7 +97,7 @@ function populateFilters(pullRequests) {
 async function renderEverything() {
     const data = await fetchData();
     const container = document.getElementById('pull-requests');
-    container.innerHTML = renderPullRequests(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, new Map(Object.entries(data.pullRequestsByDestination)), data.jiraSiteName);
+    container.innerHTML = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, new Map(Object.entries(data.pullRequestsByDestination)), data.jiraSiteName);
     populateFilters(data.pullRequests);
 }
 
@@ -110,6 +118,36 @@ function findRootBranches(pullRequests) {
     const destinationBranches = new Set(pullRequests.map(pullRequest => pullRequest.destination.branch.name));
     const sourceBranches = new Set(pullRequests.map(pullRequest => pullRequest.source.branch.name));
     return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
+}
+
+function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName) {
+    // Group pull requests by repository
+    const pullRequestsByRepo = pullRequests.reduce((acc, pr) => {
+        const repoName = pr.source.repository.name;
+        if (!acc[repoName]) {
+            acc[repoName] = [];
+        }
+        acc[repoName].push(pr);
+        return acc;
+    }, {});
+
+    let html = '';
+    for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
+        html += `
+            <div class="repository">
+                <div class="repository-header" onclick="toggleRepository(this)">
+                    <button class="toggle-button">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <h1>${repoName}</h1>
+                </div>
+                <div class="repository-content">
+                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)}
+                </div>
+            </div>
+        `;
+    }
+    return html;
 }
 
 // Function to recursively render the pull-requests

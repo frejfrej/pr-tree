@@ -233,3 +233,45 @@ select {
 .root-branch.collapsed .toggle-button .fa-chevron-right {
     display: inline;
 }
+
+.repository {
+    margin-bottom: 30px;
+}
+
+.repository-header {
+    display: flex;
+    align-items: center;
+    background-color: var(--primary-color);
+    padding: 10px;
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+}
+
+.repository-header h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: bold;
+    color: white;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.repository-content {
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    padding: 20px;
+}
+
+.repository.collapsed .repository-content {
+    display: none;
+}
+
+.repository.collapsed .toggle-button .fa-chevron-down {
+    display: none;
+}
+
+.repository.collapsed .toggle-button .fa-chevron-right {
+    display: inline;
+}
