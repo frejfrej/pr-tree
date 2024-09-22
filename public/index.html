@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="bitbucket-pr-tree-icon.svg">
+  <title>Bitbucket Pull Requests Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+  <h1>Bitbucket Pull Requests Review Dashboard</h1>
+  <div class="filters">
+    <div>
+      <label for="authorSelect">Author:</label>
+      <select id="authorSelect" onchange="filterPullRequests()">
+        <option id="authorSelectOptions" value="Show all">Show all authors</option>
+        <!-- ${authorOptions}
+        dynamically rendered -->
+      </select>
+    </div>
+    <div>
+      <label for="reviewerSelect">Reviewer:</label>
+      <select id="reviewerSelect" onchange="filterPullRequests()">
+        <option id="reviewerSelectOptions" value="Show all">Show all reviewers</option>
+        <!-- ${reviewerOptions}
+        dynamically rendered
+        -->
+
+      </select>
+    </div>
+  </div>
+  <div id="pull-requests">
+    Loading...
+    <!-- dynamically rendered -->
+  </div>
+</div>
+<script src="moved.js"></script>
+</body>
+</html>
