@@ -1,32 +1,26 @@
 import express from 'express';
 import fetch from 'node-fetch';
-import dotenv from 'dotenv';  // For environment variables
+import dotenv from 'dotenv';
 import config from './config.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-dotenv.config();  // Load environment variables from .env
+dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;  // Dynamic port for flexibility
+const port = process.env.PORT || 3000;
 
-// Serve static files from the current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static files
 app.use(express.static('public'));
 
-// Serve the main HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-// URL of the Bitbucket REST API to retrieve pull requests
-const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${config.bitbucket.repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
-// Encode the credentials in base64
+
 const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
 
-// Function to retrieve all pages of pull requests
 async function fetchPullRequests(url, pullRequests) {
     const response = await fetch(url, {
         method: 'GET',
@@ -48,30 +42,27 @@ async function fetchPullRequests(url, pullRequests) {
     }
 }
 
-// Function to extract JIRA issues from a pull request title
-function extractJiraIssues(title) {
-    return title.match(config.jira.issuesRegex) || [];
+function extractJiraIssues(title, jiraRegex) {
+    return title.match(jiraRegex) || [];
 }
 
-// Function to create a map between pull requests and their corresponding JIRA issues
-function createJiraIssuesMap(pullRequests) {
+function createJiraIssuesMap(pullRequests, jiraRegex) {
     const jiraIssuesMap = new Map();
     pullRequests.forEach(pullRequest => {
-        const jiraIssues = extractJiraIssues(pullRequest.title);
+        const jiraIssues = extractJiraIssues(pullRequest.title, jiraRegex);
         jiraIssuesMap.set(pullRequest.id, jiraIssues);
     });
     return jiraIssuesMap;
 }
 
-// Function to fetch details of all JIRA issues in batches of 50
-async function fetchJiraIssuesDetails(jiraIssues) {
+async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
     const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search`;
     const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
 
     const jiraIssuesDetails = [];
     for (let i = 0; i < jiraIssues.length; i += 50) {
         const jiraIssuesBatch = jiraIssues.slice(i, i + 50);
-        const jql = `issueKey in (${jiraIssuesBatch.join(',')})`;
+        const jql = `issueKey in (${jiraIssuesBatch.join(',')}) AND project in (${jiraProjects.join(',')})`;
         const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}`;
 
         const response = await fetch(url, {
@@ -86,14 +77,14 @@ async function fetchJiraIssuesDetails(jiraIssues) {
             const data = await response.json();
             jiraIssuesDetails.push(...data.issues);
         } else {
-            throw new Error(`Request failed with status code ${response.status}`);
+            const data = await response.json();
+            throw new Error(`Request failed with\n status code: ${response.status},\n status text: ${response.statusText},\n body: ${JSON.stringify(data)}`);
         }
     }
 
     return jiraIssuesDetails;
 }
 
-// Function to fill the pull requests map
 function fillPullRequestsMap(pullRequests, pullRequestsByDestination) {
     pullRequests.forEach(pullRequest => {
         const destinationBranch = pullRequest.destination.branch.name;
@@ -104,31 +95,47 @@ function fillPullRequestsMap(pullRequests, pullRequestsByDestination) {
     });
 }
 
-app.get('/api/pull-requests', async (req, res) => {
-    try {
-        // Declare the pullRequests array inside the route handler function
-        let pullRequests = [];
-        let pullRequestsByDestination = new Map();
-        await fetchPullRequests(baseUrl, pullRequests);
-        fillPullRequestsMap(pullRequests, pullRequestsByDestination);
-        const jiraIssuesMap = createJiraIssuesMap(pullRequests);
-        const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
-        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues);
+app.get('/api/projects', (req, res) => {
+    const projects = Object.keys(config.projects);
+    res.json(projects);
+});
 
-        res.send({
-            pullRequests: pullRequests,
+app.get('/api/pull-requests/:project', async (req, res) => {
+    try {
+        const projectName = req.params.project;
+        const projectConfig = config.projects[projectName];
+
+        if (!projectConfig) {
+            return res.status(404).send('Project not found');
+        }
+
+        let allPullRequests = [];
+        let pullRequestsByDestination = new Map();
+
+        for (const repoName of projectConfig.repositories) {
+            const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
+            let pullRequests = [];
+            await fetchPullRequests(baseUrl, pullRequests);
+            allPullRequests.push(...pullRequests);
+        }
+
+        fillPullRequestsMap(allPullRequests, pullRequestsByDestination);
+        const jiraIssuesMap = createJiraIssuesMap(allPullRequests, projectConfig.jiraRegex);
+        const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
+        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
+
+        res.json({
+            pullRequests: allPullRequests,
             jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
             jiraIssuesDetails: jiraIssuesDetails,
             pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
             jiraSiteName: config.jira.siteName,
-
         });
     } catch (error) {
         console.error(`Error executing the request: ${error.message}`);
         res.status(500).send('Internal Server Error');
     }
-
-})
+});
 
 app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);

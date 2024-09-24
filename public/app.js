@@ -1,5 +1,29 @@
 let previousAuthor = "Show all";
 let previousReviewer = "Show all";
+let currentProject = null;
+
+async function loadProjects() {
+    try {
+        const response = await fetch('/api/projects');
+        const projects = await response.json();
+        const projectSelect = document.getElementById('projectSelect');
+        projectSelect.innerHTML = '<option value="">Select a project</option>' +
+            projects.map(project => `<option value="${project}">${project}</option>`).join('');
+        projectSelect.addEventListener('change', handleProjectChange);
+    } catch (error) {
+        console.error('Error loading projects:', error);
+    }
+}
+
+async function handleProjectChange(event) {
+    const projectName = event.target.value;
+    if (projectName) {
+        currentProject = projectName;
+        await renderEverything();
+    } else {
+        document.getElementById('pull-requests').innerHTML = '';
+    }
+}
 
 function filterPullRequests() {
     let author = document.getElementById("authorSelect").value;
@@ -95,6 +119,9 @@ function populateFilters(pullRequests) {
 }
 
 async function renderEverything() {
+    if (!currentProject) {
+        return;
+    }
     const data = await fetchData();
     const container = document.getElementById('pull-requests');
     container.innerHTML = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, new Map(Object.entries(data.pullRequestsByDestination)), data.jiraSiteName);
@@ -103,7 +130,7 @@ async function renderEverything() {
 
 async function fetchData() {
     try {
-        const response = await fetch('/api/pull-requests');
+        const response = await fetch(`/api/pull-requests/${encodeURIComponent(currentProject)}`);
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
@@ -265,7 +292,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     ` : '';
 
     let html = `
-        <div class="pull-request ${statusClass}" style="margin-left: ${level * 10}px;">
+        <div class="pull-request ${statusClass}">
             ${allOtherParticipantsApprovedIcon}
             <div class="pull-request-content">
                 <div class="pull-request-info">
@@ -320,5 +347,5 @@ function renderParticipant(participant, status) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    renderEverything();
+    loadProjects();
 });
