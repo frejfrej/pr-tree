@@ -3,8 +3,9 @@
 Current version: 1.0
 
 ## Features
-* Lists all pull requests
-* Lists all related issues
+* Lists all projects from the configuration file in a dropdown selector
+* Upon selecting a project, lists all corresponding pull requests
+* Displays a link to related issues
 * Displays the status of the pull requests alongside the status of related issues
 * Provides initial warnings
     * if the pull request was approved by everyone
@@ -27,6 +28,8 @@ Current version: 1.0
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.1
+  * Introduces Projects
 * Version 1.0
   * Lists all pull requests
   * Lists all related issues
