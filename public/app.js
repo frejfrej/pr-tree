@@ -10,6 +10,17 @@ async function loadProjects() {
         projectSelect.innerHTML = '<option value="">Select a project</option>' +
             projects.map(project => `<option value="${project}">${project}</option>`).join('');
         projectSelect.addEventListener('change', handleProjectChange);
+
+        // Check for project query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const projectParam = urlParams.get('project');
+        if (projectParam) {
+            const projectOption = projectSelect.querySelector(`option[value="${projectParam}"]`);
+            if (projectOption) {
+                projectSelect.value = projectParam;
+                await handleProjectChange({ target: { value: projectParam } });
+            }
+        }
     } catch (error) {
         console.error('Error loading projects:', error);
     }
@@ -22,65 +33,19 @@ async function handleProjectChange(event) {
         showLoading();
         await renderEverything();
         hideLoading();
+
+        // Update URL with the selected project
+        const url = new URL(window.location);
+        url.searchParams.set('project', projectName);
+        window.history.pushState({}, '', url);
     } else {
         document.getElementById('pull-requests').innerHTML = 'Please select a project';
+
+        // Remove project from URL if none selected
+        const url = new URL(window.location);
+        url.searchParams.delete('project');
+        window.history.pushState({}, '', url);
     }
-}
-
-function filterPullRequests() {
-    let author = document.getElementById("authorSelect").value;
-    let reviewer = document.getElementById("reviewerSelect").value;
-    let pullRequests = document.getElementsByClassName("pull-request");
-
-    if (reviewer !== previousReviewer) {
-        document.getElementById("authorSelect").value = "Show all";
-        previousReviewer = reviewer;
-        author = "Show all";
-    } else if (author !== previousAuthor) {
-        document.getElementById("reviewerSelect").value = "Show all";
-        previousAuthor = author;
-        reviewer = "Show all";
-    }
-
-    Array.from(pullRequests).forEach(pr => {
-        let title = pr.querySelector("a");
-        let authorImg = pr.querySelector("img");
-        let reviewerApproved = false;
-        let reviewerFound = false;
-
-        if (reviewer !== "Show all") {
-            let participants = pr.querySelectorAll(".image-container");
-            for (let i = 1; i < participants.length; i++) {
-                if (participants[i].dataset.author === reviewer) {
-                    reviewerFound = true;
-                    if (participants[i].dataset.reviewStatus === "approved") {
-                        reviewerApproved = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        let display = "none";
-        let titleColor = "black";
-
-        if (author === "Show all" && reviewer === "Show all") {
-            display = "";
-        } else if (authorImg.alt === author) {
-            display = "";
-            if (pr.classList.contains("status-in-progress")) {
-                titleColor = "var(--secondary-color)";
-            }
-        } else if (reviewerFound) {
-            display = "";
-            if (!reviewerApproved && !pr.classList.contains("status-in-progress")) {
-                titleColor = "var(--secondary-color)";
-            }
-        }
-
-        pr.style.display = display;
-        title.style.color = titleColor;
-    });
 }
 
 function showLoading() {
@@ -171,7 +136,6 @@ function toggleRepository(button) {
     icon.classList.toggle('fa-chevron-right');
 }
 
-
 function populateFilters(pullRequests) {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
@@ -254,6 +218,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
 
         for(const destinationBranch of destinationBranches) {
             const rootPullRequests = pullRequests.filter(pullRequest => destinationBranch === pullRequest.destination.branch.name);
+            // Sort root pull requests by title
+            rootPullRequests.sort((a, b) => a.title.localeCompare(b.title));
             html += `
                 <div class="root-branch">
                     <div class="root-branch-header" onclick="toggleRootBranch(this)">
@@ -274,6 +240,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             `;
         }
     } else {
+        // Sort child pull requests by title
+        pullRequests.sort((a, b) => a.title.localeCompare(b.title));
         pullRequests.forEach(pullRequest => {
             html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level+1);
         });
