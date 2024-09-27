@@ -137,7 +137,7 @@ function fillPullRequestsMap(pullRequests, pullRequestsByDestination) {
 }
 
 app.get('/api/projects', (req, res) => {
-    const projects = Object.keys(config.projects);
+    const projects = Object.keys(config.projects).sort();
     log(`Retrieved ${projects.length} projects`, accessLogStream);
     res.json(projects);
 });
