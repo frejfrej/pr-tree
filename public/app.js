@@ -61,7 +61,7 @@ function hideLoading() {
 function filterPullRequests() {
     let author = document.getElementById("authorSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
-    let pullRequests = document.getElementsByClassName("pull-request");
+    let rootBranches = document.getElementsByClassName("root-branch");
 
     if (reviewer !== previousReviewer) {
         document.getElementById("authorSelect").value = "Show all";
@@ -73,44 +73,55 @@ function filterPullRequests() {
         reviewer = "Show all";
     }
 
-    Array.from(pullRequests).forEach(pr => {
-        let title = pr.querySelector("a");
-        let authorImg = pr.querySelector("img");
-        let reviewerApproved = false;
-        let reviewerFound = false;
+    Array.from(rootBranches).forEach(rootBranch => {
+        let pullRequests = rootBranch.querySelectorAll(".pull-request");
+        let visiblePullRequests = 0;
 
-        if (reviewer !== "Show all") {
-            let participants = pr.querySelectorAll(".image-container");
-            for (let i = 1; i < participants.length; i++) {
-                if (participants[i].dataset.author === reviewer) {
-                    reviewerFound = true;
-                    if (participants[i].dataset.reviewStatus === "approved") {
-                        reviewerApproved = true;
-                        break;
+        pullRequests.forEach(pr => {
+            let title = pr.querySelector("a");
+            let authorImg = pr.querySelector("img");
+            let reviewerApproved = false;
+            let reviewerFound = false;
+
+            if (reviewer !== "Show all") {
+                let participants = pr.querySelectorAll(".image-container");
+                for (let i = 1; i < participants.length; i++) {
+                    if (participants[i].dataset.author === reviewer) {
+                        reviewerFound = true;
+                        if (participants[i].dataset.reviewStatus === "approved") {
+                            reviewerApproved = true;
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        let display = "none";
-        let titleColor = "black";
+            let display = "none";
+            let titleColor = "black";
 
-        if (author === "Show all" && reviewer === "Show all") {
-            display = "";
-        } else if (authorImg.alt === author) {
-            display = "";
-            if (pr.classList.contains("status-in-progress")) {
-                titleColor = "var(--secondary-color)";
+            if (author === "Show all" && reviewer === "Show all") {
+                display = "";
+                visiblePullRequests++;
+            } else if (authorImg.alt === author) {
+                display = "";
+                visiblePullRequests++;
+                if (pr.classList.contains("status-in-progress")) {
+                    titleColor = "var(--secondary-color)";
+                }
+            } else if (reviewerFound) {
+                display = "";
+                visiblePullRequests++;
+                if (!reviewerApproved && !pr.classList.contains("status-in-progress")) {
+                    titleColor = "var(--secondary-color)";
+                }
             }
-        } else if (reviewerFound) {
-            display = "";
-            if (!reviewerApproved && !pr.classList.contains("status-in-progress")) {
-                titleColor = "var(--secondary-color)";
-            }
-        }
 
-        pr.style.display = display;
-        title.style.color = titleColor;
+            pr.style.display = display;
+            title.style.color = titleColor;
+        });
+
+        // Hide root branch if no visible pull requests
+        rootBranch.style.display = visiblePullRequests > 0 ? "" : "none";
     });
 }
 
