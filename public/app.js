@@ -171,17 +171,18 @@ function toggleRepository(button) {
     icon.classList.toggle('fa-chevron-right');
 }
 
+
 function populateFilters(pullRequests) {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
 
-    // Extract unique authors
-    const authors = [...new Set(pullRequests.map(pr => pr.author.display_name))];
+    // Extract unique authors and sort them alphabetically
+    const authors = [...new Set(pullRequests.map(pr => pr.author.display_name))].sort();
     // Generate the dropdown options
     authorSelect.innerHTML = `<option value="Show all">Show all</option>${authors.map(author => `<option value="${author}">${author}</option>`).join('')}`;
 
-    // Extract unique reviewers
-    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.display_name)))];
+    // Extract unique reviewers and sort them alphabetically
+    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.display_name)))].sort();
     // Generate the dropdown options
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 }
