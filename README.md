@@ -1,6 +1,6 @@
 # Bitbucket Pull-Requests tree
 
-Current version: 1.2
+Current version: 1.3
 
 ## Features
 * Lists all projects from the configuration file in a dropdown selector
@@ -16,7 +16,7 @@ Current version: 1.2
 * Provides a reviewer filter
   * filters pull requests of selected reviewer
   * highlights in red those where an effort is expected
-
+* Smart reload: Automatically updates the page when new data is available without full page refresh
 
 ## Installation
 * Clone this repository
@@ -29,6 +29,9 @@ Current version: 1.2
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.3
+  * Added Smart reload feature
+    * Automatically checks for updates every minute and refreshes data if changes are detected
 * Version 1.2
   * Split project configuration into a separate file (projects.js)
 * Version 1.1
