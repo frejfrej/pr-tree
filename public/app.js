@@ -76,10 +76,13 @@ function filterPullRequests() {
         document.getElementById("authorSelect").value = "Show all";
         previousReviewer = reviewer;
         author = "Show all";
-    } else if (author !== previousAuthor) {
+        previousAuthor = author;
+    }
+    if (author !== previousAuthor) {
         document.getElementById("reviewerSelect").value = "Show all";
         previousAuthor = author;
         reviewer = "Show all";
+        previousReviewer = reviewer;
     }
 
     Array.from(rootBranches).forEach(rootBranch => {
