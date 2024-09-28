@@ -48,11 +48,11 @@ select {
 }
 
 .pull-request {
-    border: 1px solid var(--border-color);
+    border: 2px solid var(--border-color);
     border-radius: 4px;
     margin-bottom: 10px;
     padding: 15px;
-    transition: box-shadow 0.3s ease;
+    transition: all 0.3s ease;
     position: relative;
 }
 
@@ -61,6 +61,11 @@ select {
 }
 
 .pull-request-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.pull-request-main {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -73,6 +78,19 @@ select {
 
 .pull-request-issues {
     flex: 0 0 250px;
+}
+
+.pull-request-details {
+    margin-top: 10px;
+}
+
+.pull-request.filtered {
+    opacity: 0.5;
+    background-color: #f0f0f0;
+}
+
+.pull-request.filtered .pull-request-details {
+    display: none;
 }
 
 .pull-request a {

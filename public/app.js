@@ -108,27 +108,27 @@ function filterPullRequests() {
                 }
             }
 
-            let display = "none";
+            let isVisible = false;
             let titleColor = "black";
 
             if (author === "Show all" && reviewer === "Show all") {
-                display = "";
+                isVisible = true;
                 visiblePullRequests++;
             } else if (authorImg.alt === author) {
-                display = "";
+                isVisible = true;
                 visiblePullRequests++;
                 if (pr.classList.contains("status-in-progress")) {
                     titleColor = "var(--secondary-color)";
                 }
             } else if (reviewerFound) {
-                display = "";
+                isVisible = true;
                 visiblePullRequests++;
                 if (!reviewerApproved && !pr.classList.contains("status-in-progress")) {
                     titleColor = "var(--secondary-color)";
                 }
             }
 
-            pr.style.display = display;
+            pr.classList.toggle("filtered", !isVisible);
             title.style.color = titleColor;
         });
 
@@ -422,23 +422,27 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         <div class="pull-request ${statusClass}">
             ${allOtherParticipantsApprovedIcon}
             <div class="pull-request-content">
-                <div class="pull-request-info">
-                    <div class="pull-request-header">
-                        ${toggleButton}
-                        <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
-                        <span class="status-indicator ${statusClass}"></span>
+                <div class="pull-request-main">
+                    <div class="pull-request-info">
+                        <div class="pull-request-header">
+                            ${toggleButton}
+                            <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
+                            <span class="status-indicator ${statusClass}"></span>
+                        </div>
                     </div>
+                    <div class="pull-request-issues">
+                        <ul class="jira-issues">
+                            ${jiraIssuesHtml}
+                        </ul>
+                    </div>
+                </div>
+                <div class="pull-request-details">
                     <div class="participants">
                         ${renderParticipant(pullRequest.author, "author")} 
                         <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
                         ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails}
                     </div>
                     ${alertsHtml}
-                </div>
-                <div class="pull-request-issues">
-                    <ul class="jira-issues">
-                        ${jiraIssuesHtml}
-                    </ul>
                 </div>
             </div>
         </div>
