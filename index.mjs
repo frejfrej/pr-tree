@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import config from './config.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import fs from 'fs';
 
 dotenv.config();
@@ -89,7 +90,6 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
     const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search`;
     const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
 
-
     let pageSize = 50;
     const jiraIssuesDetails = [];
     for (let i = 0; i < jiraIssues.length; i += pageSize) {
@@ -136,6 +136,17 @@ function fillPullRequestsMap(pullRequests, pullRequestsByDestination) {
     });
 }
 
+// Function to calculate hash of the response data
+function calculateHash(data) {
+    const hash = crypto.createHash('md5');
+    hash.update(JSON.stringify({
+        pullRequests: data.pullRequests,
+        jiraIssuesMap: data.jiraIssuesMap,
+        jiraIssuesDetails: data.jiraIssuesDetails
+    }));
+    return hash.digest('hex');
+}
+
 app.get('/api/projects', (req, res) => {
     const projects = Object.keys(config.projects).sort();
     log(`Retrieved ${projects.length} projects`, accessLogStream);
@@ -179,12 +190,14 @@ app.get('/api/pull-requests/:project', async (req, res) => {
             jiraIssuesDetails: jiraIssuesDetails,
             pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
             jiraSiteName: config.jira.siteName,
+            dataHash: calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails })
         };
 
         res.json(response);
 
         const duration = Date.now() - startTime;
         log(`Completed processing for project ${projectName} - Duration: ${duration}ms`, performanceLogStream);
+        log(`Response hash: ${response.dataHash}`, performanceLogStream);
     } catch (error) {
         log(`Error processing pull requests: ${error.message}`, errorLogStream);
         res.status(500).send('Internal Server Error');

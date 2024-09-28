@@ -1,6 +1,9 @@
 let previousAuthor = "Show all";
 let previousReviewer = "Show all";
 let currentProject = null;
+let currentDataHash = null;
+let reloadInterval = 100;
+
 
 async function loadProjects() {
     try {
@@ -34,6 +37,9 @@ async function handleProjectChange(event) {
         await renderEverything();
         hideLoading();
 
+        // Start periodic checking
+        startPeriodicChecking();
+
         // Update URL with the selected project
         const url = new URL(window.location);
         url.searchParams.set('project', projectName);
@@ -45,6 +51,9 @@ async function handleProjectChange(event) {
         const url = new URL(window.location);
         url.searchParams.delete('project');
         window.history.pushState({}, '', url);
+
+        // Stop periodic checking
+        stopPeriodicChecking();
     }
 }
 
@@ -190,6 +199,71 @@ function findRootBranches(pullRequests) {
     const sourceBranches = new Set(pullRequests.map(pullRequest => pullRequest.source.branch.name));
     return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
 }
+
+async function renderEverything() {
+    if (!currentProject) {
+        return;
+    }
+    const data = await fetchData();
+    const container = document.getElementById('pull-requests');
+    container.innerHTML = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, new Map(Object.entries(data.pullRequestsByDestination)), data.jiraSiteName);
+    populateFilters(data.pullRequests);
+    currentDataHash = data.dataHash;
+}
+
+async function fetchData() {
+    try {
+        const response = await fetch(`/api/pull-requests/${encodeURIComponent(currentProject)}`);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error fetching pull requests:', error);
+        return null;
+    }
+}
+
+async function checkForUpdates() {
+    if (!currentProject) {
+        return;
+    }
+    try {
+        const data = await fetchData();
+        if (data && data.dataHash !== currentDataHash) {
+            console.log('Data has changed. Updating...');
+            await renderEverything();
+        }
+    } catch (error) {
+        console.error('Error checking for updates:', error);
+    }
+}
+
+function startPeriodicChecking() {
+    if (reloadInterval) {
+        clearInterval(reloadInterval);
+    }
+    reloadInterval = setInterval(checkForUpdates, 60000); // Check every minute
+}
+
+function stopPeriodicChecking() {
+    if (reloadInterval) {
+        clearInterval(reloadInterval);
+        reloadInterval = null;
+    }
+}
+
+// Add event listener for visibility change
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        stopPeriodicChecking();
+    } else {
+        if (currentProject) {
+            startPeriodicChecking();
+        }
+    }
+});
 
 function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName) {
     // Group pull requests by repository
