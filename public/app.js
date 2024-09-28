@@ -379,6 +379,8 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
             statusClass = "status-in-progress";
         } else if (jiraIssuesStatuses.includes("In Review")) {
             statusClass = "status-in-review";
+        } else if (jiraIssuesStatuses.every(status => status === "Resolved" || status === "Closed")) {
+            statusClass = "status-resolved";
         }
 
         const uniqueJiraIssuesStatuses = new Set(jiraIssuesStatuses);

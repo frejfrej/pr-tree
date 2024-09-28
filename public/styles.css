@@ -4,6 +4,9 @@
     --background-color: #F4F5F7;
     --text-color: #172B4D;
     --border-color: #DFE1E6;
+    --success-color: #36B37E;
+    --warning-color: #FFAB00;
+    --error-color: #FF5630;
 }
 
 body {
@@ -45,26 +48,12 @@ select {
 }
 
 .pull-request {
-    background-color: white;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     margin-bottom: 10px;
     padding: 15px;
     transition: box-shadow 0.3s ease;
     position: relative;
-}
-
-.all-approved-icon {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
-    font-size: 24px;
-    color: #36B37E;
-    background-color: white;
-    border-radius: 50%;
-    padding: 2px;
-    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
 }
 
 .pull-request:hover {
@@ -120,10 +109,10 @@ select {
     padding: 2px;
 }
 
-.icon.fa-check-circle { color: #36B37E; }
-.icon.fa-times-circle { color: #FF5630; }
-.icon.fa-question-circle { color: #0052CC; }
-.icon.fa-user { color: #172B4D; }
+.icon.fa-check-circle { color: var(--success-color); }
+.icon.fa-times-circle { color: var(--error-color); }
+.icon.fa-question-circle { color: var(--primary-color); }
+.icon.fa-user { color: var(--text-color); }
 
 .status-indicator {
     display: inline-block;
@@ -133,13 +122,13 @@ select {
     margin-right: 5px;
 }
 
-.status-in-progress { background-color: #FFD700; }
-.status-in-review { background-color: #36B37E; }
-.status-resolved { background-color: #00B8D9; }
+.status-in-progress { border-color: var(--warning-color); }
+.status-in-review { border-color: var(--success-color); }
+.status-resolved { border-color: var(--primary-color); }
 
 .warnings {
     background-color: #FFEBE6;
-    border: 1px solid #FF8F73;
+    border: 1px solid var(--error-color);
     border-radius: 4px;
     padding: 10px;
     margin-top: 10px;
@@ -197,7 +186,6 @@ select {
     display: inline;
 }
 
-/* New styles for root branch toggle */
 .root-branch {
     margin-bottom: 20px;
 }
@@ -274,4 +262,14 @@ select {
 
 .repository.collapsed .toggle-button .fa-chevron-right {
     display: inline;
+}
+
+.all-approved-icon {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    font-size: 24px;
+    color: #36B37E;
+    padding: 2px;
 }
