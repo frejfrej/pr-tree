@@ -172,6 +172,28 @@ select {
     margin-bottom: 10px;
 }
 
+.pull-request.collapsed .child-counter {
+    background-color: var(--secondary-color);
+}
+
+.child-counter {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: default;
+    padding: 0 5px;
+}
+
 .toggle-button {
     background: none;
     border: none;
@@ -274,14 +296,4 @@ select {
 
 .repository.collapsed .toggle-button .fa-chevron-right {
     display: inline;
-}
-
-.all-approved-icon {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
-    font-size: 24px;
-    color: #36B37E;
-    padding: 2px;
 }

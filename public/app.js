@@ -233,11 +233,9 @@ function findRootBranches(pullRequests) {
 function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
     let html = '';
     if (level === 0) {
-        const destinationBranches = findRootBranches(pullRequests);
-
-        for(const destinationBranch of destinationBranches) {
-            const rootPullRequests = pullRequests.filter(pullRequest => destinationBranch === pullRequest.destination.branch.name);
-            // Sort root pull requests by title
+        const rootBranches = findRootBranches(pullRequests);
+        for(const rootBranch of rootBranches) {
+            const rootPullRequests = pullRequests.filter(pullRequest => rootBranch === pullRequest.destination.branch.name);
             rootPullRequests.sort((a, b) => a.title.localeCompare(b.title));
             html += `
                 <div class="root-branch">
@@ -246,7 +244,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                             <i class="fas fa-chevron-down"></i>
                             <i class="fas fa-chevron-right"></i>
                         </button>
-                        <h2>${destinationBranch}</h2>
+                        <h2>${rootBranch}</h2>
                     </div>
                     <div class="root-branch-content">
             `;
@@ -259,13 +257,26 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             `;
         }
     } else {
-        // Sort child pull requests by title
         pullRequests.sort((a, b) => a.title.localeCompare(b.title));
         pullRequests.forEach(pullRequest => {
             html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level+1);
         });
     }
     return html;
+}
+
+// New helper function to calculate the total number of descendants
+function calculateDescendants(pullRequest, pullRequestsByDestination) {
+    let count = 0;
+    const sourceBranch = pullRequest.source.branch.name;
+    if (pullRequestsByDestination.has(sourceBranch)) {
+        const children = pullRequestsByDestination.get(sourceBranch);
+        count += children.length;
+        for (const child of children) {
+            count += calculateDescendants(child, pullRequestsByDestination);
+        }
+    }
+    return count;
 }
 
 // Function to recursively render a pull-request
@@ -291,13 +302,10 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         }
     }
 
-    let allOtherParticipantsApprovedIcon = hasOtherParticipants && allOtherParticipantsApproved ?
-        `<div class="all-approved-icon"><i class="fas fa-check-circle" title="All other participants approved"></i></div>` : '';
-
     let noOtherParticipantsAlert = !hasOtherParticipants ?
         `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
 
-    const jiraIssues = jiraIssuesMap[""+ pullRequest.id];
+    const jiraIssues = jiraIssuesMap["" + pullRequest.id];
 
     let statusClass = "";
     let alertsHtml = "";
@@ -341,6 +349,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
 
     const sourceBranch = pullRequest.source.branch.name;
     const hasChildren = pullRequestsByDestination.has(sourceBranch);
+    const descendantCount = calculateDescendants(pullRequest, pullRequestsByDestination);
 
     const toggleButton = hasChildren ? `
         <button class="toggle-button" onclick="toggleChildren(this)">
@@ -349,9 +358,16 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </button>
     ` : '';
 
+    const isRootPullRequest = level === 1;
+    const childCounterHtml = (isRootPullRequest || hasChildren) ? `
+        <div class="child-counter" title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
+            ${descendantCount}
+        </div>
+    ` : '';
+
     let html = `
         <div class="pull-request ${statusClass}" data-id="${pullRequest.id}">
-            ${allOtherParticipantsApprovedIcon}
+            ${childCounterHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">
                     <div class="pull-request-info">
