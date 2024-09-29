@@ -1,9 +1,10 @@
+import { initializeFilter, filterPullRequests } from './app-filter.js';
+
 let previousAuthor = "Show all";
 let previousReviewer = "Show all";
 let currentProject = null;
-let currentDataHash = null;
+let currentApiResult = null;
 let reloadInterval = 100;
-
 
 async function loadProjects() {
     try {
@@ -67,10 +68,9 @@ function hideLoading() {
     document.getElementById('pull-requests').style.display = 'block';
 }
 
-function filterPullRequests() {
+function handleFilterChange() {
     let author = document.getElementById("authorSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
-    let rootBranches = document.getElementsByClassName("root-branch");
 
     if (reviewer !== previousReviewer) {
         document.getElementById("authorSelect").value = "Show all";
@@ -85,56 +85,7 @@ function filterPullRequests() {
         previousReviewer = reviewer;
     }
 
-    Array.from(rootBranches).forEach(rootBranch => {
-        let pullRequests = rootBranch.querySelectorAll(".pull-request");
-        let visiblePullRequests = 0;
-
-        pullRequests.forEach(pr => {
-            let title = pr.querySelector("a");
-            let authorImg = pr.querySelector("img");
-            let reviewerApproved = false;
-            let reviewerFound = false;
-
-            if (reviewer !== "Show all") {
-                let participants = pr.querySelectorAll(".image-container");
-                for (let i = 1; i < participants.length; i++) {
-                    if (participants[i].dataset.author === reviewer) {
-                        reviewerFound = true;
-                        if (participants[i].dataset.reviewStatus === "approved") {
-                            reviewerApproved = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            let isVisible = false;
-            let titleColor = "black";
-
-            if (author === "Show all" && reviewer === "Show all") {
-                isVisible = true;
-                visiblePullRequests++;
-            } else if (authorImg.alt === author) {
-                isVisible = true;
-                visiblePullRequests++;
-                if (pr.classList.contains("status-in-progress")) {
-                    titleColor = "var(--secondary-color)";
-                }
-            } else if (reviewerFound) {
-                isVisible = true;
-                visiblePullRequests++;
-                if (!reviewerApproved && !pr.classList.contains("status-in-progress")) {
-                    titleColor = "var(--secondary-color)";
-                }
-            }
-
-            pr.classList.toggle("filtered", !isVisible);
-            title.style.color = titleColor;
-        });
-
-        // Hide root branch if no visible pull requests
-        rootBranch.style.display = visiblePullRequests > 0 ? "" : "none";
-    });
+    filterPullRequests(author, reviewer);
 }
 
 function toggleChildren(button) {
@@ -172,16 +123,21 @@ function populateFilters(pullRequests) {
     const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.display_name)))].sort();
     // Generate the dropdown options
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
+
+    // Add event listeners
+    authorSelect.addEventListener('change', handleFilterChange);
+    reviewerSelect.addEventListener('change', handleFilterChange);
 }
 
 async function renderEverything() {
     if (!currentProject) {
         return;
     }
-    const data = await fetchData();
+    currentApiResult = await fetchData();
+    initializeFilter(currentApiResult);
     const container = document.getElementById('pull-requests');
-    container.innerHTML = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, new Map(Object.entries(data.pullRequestsByDestination)), data.jiraSiteName);
-    populateFilters(data.pullRequests);
+    container.innerHTML = renderRepositories(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap, currentApiResult.jiraIssuesDetails, new Map(Object.entries(currentApiResult.pullRequestsByDestination)), currentApiResult.jiraSiteName);
+    populateFilters(currentApiResult.pullRequests);
 }
 
 async function fetchData() {
@@ -193,37 +149,6 @@ async function fetchData() {
         return await response.json();
     } catch (error) {
         console.error('Error fetching pull requests:', error);
-        return [];
-    }
-}
-
-function findRootBranches(pullRequests) {
-    const destinationBranches = new Set(pullRequests.map(pullRequest => pullRequest.destination.branch.name));
-    const sourceBranches = new Set(pullRequests.map(pullRequest => pullRequest.source.branch.name));
-    return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
-}
-
-async function renderEverything() {
-    if (!currentProject) {
-        return;
-    }
-    const data = await fetchData();
-    const container = document.getElementById('pull-requests');
-    container.innerHTML = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, new Map(Object.entries(data.pullRequestsByDestination)), data.jiraSiteName);
-    populateFilters(data.pullRequests);
-    currentDataHash = data.dataHash;
-}
-
-async function fetchData() {
-    try {
-        const response = await fetch(`/api/pull-requests/${encodeURIComponent(currentProject)}`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Error fetching pull requests:', error);
         return null;
     }
 }
@@ -233,8 +158,8 @@ async function checkForUpdates() {
         return;
     }
     try {
-        const data = await fetchData();
-        if (data && data.dataHash !== currentDataHash) {
+        const newData = await fetchData();
+        if (newData && newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
             await renderEverything();
         }
@@ -296,6 +221,12 @@ function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
         `;
     }
     return html;
+}
+
+function findRootBranches(pullRequests) {
+    const destinationBranches = new Set(pullRequests.map(pullRequest => pullRequest.destination.branch.name));
+    const sourceBranches = new Set(pullRequests.map(pullRequest => pullRequest.source.branch.name));
+    return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
 }
 
 // Function to recursively render the pull-requests
@@ -419,7 +350,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     ` : '';
 
     let html = `
-        <div class="pull-request ${statusClass}">
+        <div class="pull-request ${statusClass}" data-id="${pullRequest.id}">
             ${allOtherParticipantsApprovedIcon}
             <div class="pull-request-content">
                 <div class="pull-request-main">
@@ -480,3 +411,8 @@ function renderParticipant(participant, status) {
 document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
 });
+
+// Export functions that need to be accessible globally
+window.toggleChildren = toggleChildren;
+window.toggleRootBranch = toggleRootBranch;
+window.toggleRepository = toggleRepository;
