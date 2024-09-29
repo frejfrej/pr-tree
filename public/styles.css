@@ -172,10 +172,6 @@ select {
     margin-bottom: 10px;
 }
 
-.pull-request.collapsed .child-counter {
-    background-color: var(--secondary-color);
-}
-
 .child-counter {
     position: absolute;
     top: 10px;
@@ -187,11 +183,19 @@ select {
     min-width: 20px;
     height: 20px;
     border-radius: 10px;
-    display: flex;
+    display: none;
     justify-content: center;
     align-items: center;
     cursor: default;
     padding: 0 5px;
+}
+
+.child-counter.visible {
+    display: flex;
+}
+
+.pull-request.collapsed .child-counter {
+    display: flex;
 }
 
 .toggle-button {

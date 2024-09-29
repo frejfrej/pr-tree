@@ -94,8 +94,15 @@ function toggleChildren(button) {
     if (children && children.classList.contains('children')) {
         pullRequest.classList.toggle('collapsed');
         children.style.display = children.style.display === 'none' ? 'block' : 'none';
+
+        // Toggle visibility of child counter
+        const childCounter = pullRequest.querySelector('.child-counter');
+        if (childCounter) {
+            childCounter.classList.toggle('visible');
+        }
     }
 }
+
 
 function toggleRootBranch(button) {
     const rootBranch = button.closest('.root-branch');
@@ -350,6 +357,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     const sourceBranch = pullRequest.source.branch.name;
     const hasChildren = pullRequestsByDestination.has(sourceBranch);
     const descendantCount = calculateDescendants(pullRequest, pullRequestsByDestination);
+    const isRootPullRequest = level === 1;
 
     const toggleButton = hasChildren ? `
         <button class="toggle-button" onclick="toggleChildren(this)">
@@ -358,9 +366,8 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </button>
     ` : '';
 
-    const isRootPullRequest = level === 1;
     const childCounterHtml = (isRootPullRequest || hasChildren) ? `
-        <div class="child-counter" title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
+        <div class="child-counter ${isRootPullRequest ? 'visible' : ''}" title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
             ${descendantCount}
         </div>
     ` : '';

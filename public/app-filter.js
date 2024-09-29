@@ -81,7 +81,7 @@ function isPullRequestVisible(pullRequestData, author, reviewer) {
 
 function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
     let title = prElement.querySelector("a");
-    let titleColor = "var(--text-color)";
+    let titleColor = "";
 
     if (author !== "Show all" && pullRequestData.author.display_name === author) {
         if (prElement.classList.contains("status-in-progress")) {
@@ -94,5 +94,7 @@ function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
         }
     }
 
-    title.style.color = titleColor;
+    if (titleColor) {
+        title.style.color = titleColor;
+    }
 }
