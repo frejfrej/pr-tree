@@ -358,7 +358,6 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                         <div class="pull-request-header">
                             ${toggleButton}
                             <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
-                            <span class="status-indicator ${statusClass}"></span>
                         </div>
                     </div>
                     <div class="pull-request-issues">
