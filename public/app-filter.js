@@ -81,7 +81,7 @@ function isPullRequestVisible(pullRequestData, author, reviewer) {
 
 function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
     let title = prElement.querySelector("a");
-    let titleColor = "black";
+    let titleColor = "var(--text-color)";
 
     if (author !== "Show all" && pullRequestData.author.display_name === author) {
         if (prElement.classList.contains("status-in-progress")) {
@@ -89,7 +89,7 @@ function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
         }
     } else if (reviewer !== "Show all") {
         let reviewerParticipant = pullRequestData.participants.find(p => p.user.uuid != pullRequestData.author.uuid && p.user.display_name === reviewer);
-        if (reviewerParticipant && !reviewerParticipant.approved && !prElement.classList.contains("status-in-progress")) {
+        if (reviewerParticipant && !reviewerParticipant.approved && prElement.classList.contains("status-in-review")) {
             titleColor = "var(--secondary-color)";
         }
     }
