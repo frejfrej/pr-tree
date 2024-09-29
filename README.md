@@ -8,8 +8,8 @@ Current version: 1.3
 * Displays a link to related issues
 * Displays the status of the pull requests alongside the status of related issues
 * Provides initial warnings
-  * if the pull request was approved by everyone
-  * if the pull request is open but related issues are closed or in review
+  * If the pull request was approved by everyone
+  * If the pull request is open but related issues are closed or in review
 * Provides an author filter
   * filters pull requests of selected author
   * highlights in red those where an effort is expected
@@ -17,6 +17,7 @@ Current version: 1.3
   * filters pull requests of selected reviewer
   * highlights in red those where an effort is expected
 * Smart reload: Automatically updates the page when new data is available without full page refresh
+* Improved display of pull requests
 
 ## Installation
 * Clone this repository
