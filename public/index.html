@@ -21,13 +21,13 @@
     </div>
     <div>
       <label for="authorSelect">Author:</label>
-      <select id="authorSelect" onchange="filterPullRequests()">
+      <select id="authorSelect" onchange="filterBranches()">
         <option value="Show all">Show all</option>
       </select>
     </div>
     <div>
       <label for="reviewerSelect">Reviewer:</label>
-      <select id="reviewerSelect" onchange="filterPullRequests()">
+      <select id="reviewerSelect" onchange="filterBranches()">
         <option value="Show all">Show all</option>
       </select>
     </div>
@@ -41,6 +41,7 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app-filter.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
