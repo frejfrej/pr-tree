@@ -1,6 +1,6 @@
 # Bitbucket Pull-Requests tree
 
-Current version: 1.3
+Current version: 1.4
 
 ## Features
 * Lists all projects from the configuration file in a dropdown selector
@@ -30,6 +30,11 @@ Current version: 1.3
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.4
+  * Enhanced filtering behavior:
+    * Pull requests with no children are hidden if they don't match the filter
+    * Pull requests with only hidden children are hidden if they don't match the filter
+    * Root pull requests follow the same filtering rules as other pull requests
 * Version 1.3
   * Added Smart reload feature
     * Automatically checks for updates every minute and refreshes data if changes are detected

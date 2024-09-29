@@ -1,4 +1,4 @@
-import { initializeFilter, filterPullRequests } from './app-filter.js';
+import { initializeFilter, filterBranches } from './app-filter.js';
 
 let previousAuthor = "Show all";
 let previousReviewer = "Show all";
@@ -85,7 +85,7 @@ function handleFilterChange() {
         previousReviewer = reviewer;
     }
 
-    filterPullRequests(author, reviewer);
+    filterBranches(author, reviewer);
 }
 
 function toggleChildren(button) {
@@ -120,7 +120,7 @@ function populateFilters(pullRequests) {
     authorSelect.innerHTML = `<option value="Show all">Show all</option>${authors.map(author => `<option value="${author}">${author}</option>`).join('')}`;
 
     // Extract unique reviewers and sort them alphabetically
-    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.display_name)))].sort();
+    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].sort();
     // Generate the dropdown options
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
