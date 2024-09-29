@@ -7,6 +7,7 @@
     --success-color: #36B37E;
     --warning-color: #FFAB00;
     --error-color: #FF5630;
+    --in-review-color: #0065FF; /* New color for in-review status */
 }
 
 body {
@@ -132,16 +133,9 @@ select {
 .icon.fa-question-circle { color: var(--primary-color); }
 .icon.fa-user { color: var(--text-color); }
 
-.status-indicator {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-right: 5px;
-}
-
 .status-in-progress { border-color: var(--warning-color); }
-.status-in-review { border-color: var(--success-color); }
+.status-in-review { border-color: var(--in-review-color); }
+.status-in-review-all-approved { border-color: var(--success-color); }
 .status-resolved { border-color: var(--primary-color); }
 
 .warnings {
