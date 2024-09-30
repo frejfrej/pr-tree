@@ -340,7 +340,7 @@ select {
 }
 
 .conflicts-error {
-    background-color: var(--error-color);
+    background-color: var(--warning-color);
     color: white;
     font-size: 12px;
     font-weight: bold;

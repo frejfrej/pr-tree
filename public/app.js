@@ -292,14 +292,14 @@ async function updateConflictsCounter(pullRequestElement) {
     const conflictsCounter = pullRequestElement.querySelector('.conflicts-counter');
     if (!conflictsCounter) return;
 
-    const { repoName, prId } = conflictsCounter.dataset;
-    const result = await fetchConflicts(repoName, prId);
+    const { repoName, spec } = conflictsCounter.dataset;
+    const result = await fetchConflicts(repoName, spec);
 
     if (result) {
-        if (result.conflictsCount > 0) {
+        if (result.conflicts) {
             conflictsCounter.innerHTML = `
-            <div class="conflicts-count" title="${result.conflictsCount} conflict${result.conflictsCount !== 1 ? 's' : ''}">
-                ${result.conflictsCount}
+            <div class="conflicts-count" title="Conflicts found">
+                SYNC
             </div>
         `;
         } else {
@@ -307,7 +307,7 @@ async function updateConflictsCounter(pullRequestElement) {
             conflictsCounter.innerHTML = ``;
         }
     } else {
-        conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">!</div>';
+        conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
     }
 }
 
@@ -316,15 +316,15 @@ function updateAllConflictsCounters() {
     pullRequests.forEach(updateConflictsCounter);
 }
 
-async function fetchConflicts(repoName, prId) {
+async function fetchConflicts(repoName, spec) {
     try {
-        const response = await fetch(`/api/pull-request-conflicts/${repoName}/${prId}`);
+        const response = await fetch(`/api/pull-request-conflicts/${repoName}/${spec}`);
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
         return await response.json();
     } catch (error) {
-        console.error('Error fetching conflicts:', error);
+        console.error('Error fetching conflicts for', spec, 'with :', error);
         return null;
     }
 }
@@ -413,14 +413,19 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         <div class="child-counter ${isRootPullRequest ? 'visible' : ''}" title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
             ${descendantCount}
         </div>
-        <div class="conflicts-counter" data-id="conflicts_${pullRequest.id}" data-repo-name="${pullRequest.source.repository.name}" data-pr-id="${pullRequest.id}">
+    ` : '';
+
+    // we don't really care if a commit hash is missing here => the server will complain later
+    const spec = pullRequest.destination.commit?.hash + '..' + pullRequest.source.commit?.hash;
+    const conflictsCounter = `
+        <div class="conflicts-counter" data-id="conflicts_${pullRequest.id}" data-repo-name="${pullRequest.source.repository.name}" data-spec="${spec}">
             <div class="conflicts-spinner"></div>
         </div>
-    ` : '';
+    `;
 
     let html = `
         <div class="pull-request ${statusClass}" data-id="${pullRequest.id}">
-            ${childCounterHtml}
+            ${childCounterHtml}${conflictsCounter}
             <div class="pull-request-content">
                 <div class="pull-request-main">
                     <div class="pull-request-info">

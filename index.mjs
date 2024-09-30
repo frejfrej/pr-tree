@@ -206,10 +206,11 @@ app.get('/api/pull-requests/:project', async (req, res) => {
     }
 });
 
+
 // Add this new endpoint
-app.get('/api/pull-request-conflicts/:repoName/:prId', async (req, res) => {
-    const { workspace, repoName, prId } = req.params;
-    const url = `https://bitbucket.org/!api/internal/repositories/${config.bitbucket.workspace}/${repoName}/pullrequests/${prId}/conflicts`;
+app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
+    const { repoName, spec } = req.params;
+    const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diff/${spec}`;
     const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
 
     try {
@@ -218,21 +219,33 @@ app.get('/api/pull-request-conflicts/:repoName/:prId', async (req, res) => {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Accept': 'application/json',
-                'Cookie': 'cloud.session.token=eyJraWQiOiJzZXNzaW9uLXNlcnZpY2UvcHJvZC0xNTkyODU4Mzk0IiwiYWxnIjoiUlMyNTYifQ.eyJhc3NvY2lhdGlvbnMiOltdLCJzdWIiOiI1NTcwNTg6YmRiMjE1MDktZjNiZS00YmMwLWJkNWMtYjYxZGRkYjIxNzA0IiwiZW1haWxEb21haW4iOiJzb2RpdXN3aWxsZXJ0LmNvbSIsImltcGVyc29uYXRpb24iOltdLCJjcmVhdGVkIjoxNjg4Mzc3MTY1LCJyZWZyZXNoVGltZW91dCI6MTcyNzY3MjIxOCwidmVyaWZpZWQiOnRydWUsImlzcyI6InNlc3Npb24tc2VydmljZSIsInNlc3Npb25JZCI6IjE0OWM2NDZmLWJmMGEtNGJmZS1iNTVkLTkyMWNkNGIxMjMxZSIsInN0ZXBVcHMiOltdLCJhdWQiOiJhdGxhc3NpYW4iLCJuYmYiOjE3Mjc2NzE2MTgsImV4cCI6MTczMDI2MzYxOCwiaWF0IjoxNzI3NjcxNjE4LCJlbWFpbCI6ImZyamF1bmF0cmVAc29kaXVzd2lsbGVydC5jb20iLCJqdGkiOiIxNDljNjQ2Zi1iZjBhLTRiZmUtYjU1ZC05MjFjZDRiMTIzMWUifQ.SxLncqbUhEHn38K-HFA09klF50FoynF741w2KMm_QSmAsMItykbxo--Jfu8Y7Ci_ESrfXxSMj52b1qIscswyF3iUnLMG-WsGDFOYdvyZ9DkZWIifZBJt3rd1R-tRC8LFgaeHgFhQYlqa6_e2waE0PepppYX21txWSm7NnLms5C_foWDmqkmWTIdS-Riohc-aYxaZ-aK6yzPNmuydcN3ipIgRqsBQ7pc2qoWV6S5NaAeYtgTSHRMlK8ZMSQy72PcHvgMdz5kWmk06vJO9daRaEPI3-c9WuQ32E1GyPoIcpzgB3nkcFBWjXU-AjAGxu6e8S3zsTz0L0KKR778A1-aUow; Expires=Wed, 30 Oct 2024 04:46:58 GMT; Max-Age=2592000; Path=/; Secure; HttpOnly; Domain=bitbucket.org',
             }
         });
 
         if (response.ok) {
-            const data = await response.json();
-            res.json({ conflictsCount: data.length });
+            const data = await response.text();
+            const conflictsCount = countOccurrences(data, '+<<<<<<< destination:');
+            res.json({ conflicts: conflictsCount > 0 });
         } else {
             throw new Error(`Request failed with status code ${response.status}`);
         }
     } catch (error) {
-        log(`Error fetching conflicts for PR ${prId}: ${error.message}`, errorLogStream);
+        log(`Error fetching conflicts for commits ${spec}: ${error.message}`, errorLogStream);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+
+function countOccurrences(str, searchString) {
+    let count = 0;
+    let index = 0;
+    while ((index = str.indexOf(searchString, index)) !== -1) {
+        if (index === 0 || str[index - 1] === '\n') {
+            count++;
+        }
+        index += searchString.length;
+    }
+    return count;
+}
 
 app.listen(port, () => {
     log(`Server is running at http://localhost:${port}`, accessLogStream);
