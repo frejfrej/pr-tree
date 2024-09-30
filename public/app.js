@@ -145,6 +145,7 @@ async function renderEverything() {
     const container = document.getElementById('pull-requests');
     container.innerHTML = renderRepositories(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap, currentApiResult.jiraIssuesDetails, new Map(Object.entries(currentApiResult.pullRequestsByDestination)), currentApiResult.jiraSiteName);
     populateFilters(currentApiResult.pullRequests);
+    updateAllConflictsCounters();
 }
 
 async function fetchData() {
@@ -169,6 +170,7 @@ async function checkForUpdates() {
         if (newData && newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
             await renderEverything();
+            updateAllConflictsCounters();
         }
     } catch (error) {
         console.error('Error checking for updates:', error);
@@ -286,6 +288,47 @@ function calculateDescendants(pullRequest, pullRequestsByDestination) {
     return count;
 }
 
+async function updateConflictsCounter(pullRequestElement) {
+    const conflictsCounter = pullRequestElement.querySelector('.conflicts-counter');
+    if (!conflictsCounter) return;
+
+    const { repoName, prId } = conflictsCounter.dataset;
+    const result = await fetchConflicts(repoName, prId);
+
+    if (result) {
+        if (result.conflictsCount > 0) {
+            conflictsCounter.innerHTML = `
+            <div class="conflicts-count" title="${result.conflictsCount} conflict${result.conflictsCount !== 1 ? 's' : ''}">
+                ${result.conflictsCount}
+            </div>
+        `;
+        } else {
+            // display nothing if there are no conflicts
+            conflictsCounter.innerHTML = ``;
+        }
+    } else {
+        conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">!</div>';
+    }
+}
+
+function updateAllConflictsCounters() {
+    const pullRequests = document.querySelectorAll('.pull-request');
+    pullRequests.forEach(updateConflictsCounter);
+}
+
+async function fetchConflicts(repoName, prId) {
+    try {
+        const response = await fetch(`/api/pull-request-conflicts/${repoName}/${prId}`);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching conflicts:', error);
+        return null;
+    }
+}
+
 // Function to recursively render a pull-request
 function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
     let approvedDetails = "";
@@ -369,6 +412,9 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     const childCounterHtml = (isRootPullRequest || hasChildren) ? `
         <div class="child-counter ${isRootPullRequest ? 'visible' : ''}" title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
             ${descendantCount}
+        </div>
+        <div class="conflicts-counter" data-id="conflicts_${pullRequest.id}" data-repo-name="${pullRequest.source.repository.name}" data-pr-id="${pullRequest.id}">
+            <div class="conflicts-spinner"></div>
         </div>
     ` : '';
 

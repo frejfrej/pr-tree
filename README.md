@@ -1,6 +1,6 @@
 # Bitbucket Pull-Requests tree
 
-Current version: 1.4
+Current version: 1.5
 
 ## Features
 * Lists all projects from the configuration file in a dropdown selector
@@ -18,6 +18,7 @@ Current version: 1.4
   * highlights in red those where an effort is expected
 * Smart reload: Automatically updates the page when new data is available without full page refresh
 * Improved display of pull requests
+* Display the number of conflicts in a badge for each pull-requests
 
 ## Installation
 * Clone this repository
@@ -30,6 +31,8 @@ Current version: 1.4
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.5
+  * Conflicts counter are now displayed with an initial implementation displaying the number of conflicts in a badge
 * Version 1.4
   * Enhanced filtering behavior:
     * Pull requests with no children are hidden if they don't match the filter
