@@ -15,6 +15,10 @@ const port = process.env.PORT || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Read package.json to get the version
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+const version = packageJson.version;
+
 // Serve all files in the public folder
 app.use(express.static('public'));
 
@@ -23,6 +27,11 @@ app.use(express.static(__dirname, {
     index: false, // Prevent serving index.html from root
     extensions: ['md'] // Allow serving .md files without extension
 }));
+
+// Add a new route to serve the version number
+app.get('/api/version', (req, res) => {
+    res.json({ version });
+});
 
 // Create write streams for different log types
 const accessLogStream = fs.createWriteStream(path.join(__dirname, 'access.log'), { flags: 'a' });

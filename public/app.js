@@ -521,10 +521,33 @@ async function fetchAndRenderReadme() {
     }
 }
 
+async function fetchAndDisplayVersion() {
+    try {
+        const response = await fetch('/api/version');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        const versionElement = document.getElementById('versionNumber');
+        const versionBadge = document.getElementById('versionBadge');
+        if (versionElement && versionBadge) {
+            versionElement.textContent = `v${data.version}`;
+            versionBadge.style.animation = 'versionPulse 0.5s ease';
+            setTimeout(() => {
+                versionBadge.style.animation = '';
+            }, 500);
+        }
+    } catch (error) {
+        console.error('Error fetching version:', error);
+    }
+}
+
+
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
-    initializeHelpModal();
     loadProjects();
+    initializeHelpModal();
+    fetchAndDisplayVersion();
 });
 
 // Export functions that need to be accessible globally
