@@ -215,6 +215,7 @@ function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
+        const pullRequestCount = repoPullRequests.length;
         html += `
             <div class="repository">
                 <div class="repository-header" onclick="toggleRepository(this)">
@@ -222,6 +223,9 @@ function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                         <i class="fas fa-chevron-down"></i>
                     </button>
                     <h1>${repoName}</h1>
+                    <div class="repo-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
+                        ${pullRequestCount}
+                    </div>
                 </div>
                 <div class="repository-content">
                     ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)}

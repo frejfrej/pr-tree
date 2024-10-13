@@ -288,6 +288,7 @@ select {
     padding: 10px;
     border-radius: 4px 4px 0 0;
     cursor: pointer;
+    position: relative;
 }
 
 .repository-header h1 {
@@ -297,6 +298,22 @@ select {
     color: white;
     border-bottom: none;
     padding-bottom: 0;
+    flex-grow: 1;
+}
+
+.repo-pr-counter {
+    background-color: white;
+    color: var(--primary-color);
+    font-size: 14px;
+    font-weight: bold;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0 8px;
+    margin-left: 15px;  /* Add some space between the repository name and the counter */
 }
 
 .repository-content {
