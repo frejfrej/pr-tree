@@ -246,6 +246,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
         for(const rootBranch of rootBranches) {
             const rootPullRequests = pullRequests.filter(pullRequest => rootBranch === pullRequest.destination.branch.name);
             rootPullRequests.sort((a, b) => a.title.localeCompare(b.title));
+            const pullRequestCount = rootPullRequests.length;
             html += `
                 <div class="root-branch">
                     <div class="root-branch-header" onclick="toggleRootBranch(this)">
@@ -254,6 +255,9 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <h2>${rootBranch}</h2>
+                        <div class="branch-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
+                            ${pullRequestCount}
+                        </div>
                     </div>
                     <div class="root-branch-content">
             `;

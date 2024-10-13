@@ -235,6 +235,7 @@ select {
     padding: 10px;
     border-radius: 4px;
     cursor: pointer;
+    position: relative;  /* Add this line */
 }
 
 .root-branch-header h2 {
@@ -242,6 +243,22 @@ select {
     font-size: 18px;
     font-weight: bold;
     color: var(--primary-color);
+    flex-grow: 1;  /* Add this line to push the counter to the right */
+}
+
+.branch-pr-counter {
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0 5px;
+    margin-left: 10px;  /* Add some space between the branch name and the counter */
 }
 
 .root-branch-content {
