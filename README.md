@@ -8,14 +8,15 @@ Current version: 1.5
 * Displays a link to related issues
 * Displays the status of the pull requests alongside the status of related issues
 * Provides initial warnings
-  * If the pull request was approved by everyone
-  * If the pull request is open but related issues are closed or in review
+    * If the pull request was approved by everyone
+    * If the pull request is open but related issues are closed or in review
 * Provides an author filter
-  * filters pull requests of selected author
-  * highlights in red those where an effort is expected
+    * filters pull requests of selected author
+    * highlights in red those where an effort is expected
 * Provides a reviewer filter
-  * filters pull requests of selected reviewer
-  * highlights in red those where an effort is expected
+    * filters pull requests of selected reviewer
+    * highlights in red those where an effort is expected
+* Allows simultaneous filtering by both author and reviewer
 * Smart reload: Automatically updates the page when new data is available without full page refresh
 * Improved display of pull requests
 * Display the number of conflicts in a badge for each pull-requests
