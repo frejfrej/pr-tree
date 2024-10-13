@@ -529,9 +529,11 @@ async function fetchAndDisplayVersion() {
         }
         const data = await response.json();
         const versionElement = document.getElementById('versionNumber');
+        const dateElement = document.getElementById('versionDate');
         const versionBadge = document.getElementById('versionBadge');
-        if (versionElement && versionBadge) {
+        if (versionElement && dateElement && versionBadge) {
             versionElement.textContent = `v${data.version}`;
+            dateElement.textContent = `(${data.releaseDate})`;
             versionBadge.style.animation = 'versionPulse 0.5s ease';
             setTimeout(() => {
                 versionBadge.style.animation = '';

@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename);
 // Read package.json to get the version
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 const version = packageJson.version;
+const releaseDate = packageJson.releaseDate || new Date().toISOString().split('T')[0]; // Use current date if not specified
 
 // Serve all files in the public folder
 app.use(express.static('public'));
@@ -28,9 +29,9 @@ app.use(express.static(__dirname, {
     extensions: ['md'] // Allow serving .md files without extension
 }));
 
-// Add a new route to serve the version number
+// Serve the version details
 app.get('/api/version', (req, res) => {
-    res.json({ version });
+    res.json({ version, releaseDate });
 });
 
 // Create write streams for different log types
