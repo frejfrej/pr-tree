@@ -1,6 +1,6 @@
 # Bitbucket Pull-Requests tree
 
-Current version: 1.5
+Current version: 1.6
 
 ## Features
 * Lists all projects from the configuration file in a dropdown selector
@@ -11,15 +11,17 @@ Current version: 1.5
     * If the pull request was approved by everyone
     * If the pull request is open but related issues are closed or in review
 * Provides an author filter
-    * filters pull requests of selected author
-    * highlights in red those where an effort is expected
+    * Filters pull requests of selected author
+    * Highlights in red those where an effort is expected
 * Provides a reviewer filter
-    * filters pull requests of selected reviewer
-    * highlights in red those where an effort is expected
+    * Filters pull requests of selected reviewer
+    * Highlights in red those where an effort is expected
 * Allows simultaneous filtering by both author and reviewer
-* Smart reload: Automatically updates the page when new data is available without full page refresh
-* Improved display of pull requests
-* Display the number of conflicts in a badge for each pull-requests
+* Smart reload: Automatically updates the page when new data is available without full page refresh 
+    * Repaint is only done if there are changes in the data returned by the server
+    * Performed every minute
+* Display SYNC in a badge onto each pull-requests that requires syncinc with its parent branch
+* Online help displays the 
 
 ## Installation
 * Clone this repository
@@ -32,6 +34,10 @@ Current version: 1.5
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.6
+    * Add online help based which displays the README.md file
+    * Allow filtering by both author and reviewer
+    * Add a pull-request counter on branch and repository headers
 * Version 1.5
     * Conflicts counter are now displayed with an initial implementation displaying the number of conflicts in a badge
 * Version 1.4

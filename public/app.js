@@ -479,7 +479,51 @@ function renderParticipant(participant, status) {
     `;
 }
 
+function initializeHelpModal() {
+    const modal = document.getElementById("helpModal");
+    const btn = document.getElementById("helpButton");
+    const span = document.getElementsByClassName("close")[0];
+    const helpContent = document.getElementById("helpContent");
+
+    btn.onclick = function() {
+        modal.style.display = "block";
+        if (!helpContent.innerHTML) {
+            fetchAndRenderReadme();
+        }
+    }
+
+    span.onclick = function() {
+        modal.style.display = "none";
+    }
+
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+}
+
+async function fetchAndRenderReadme() {
+    const helpContent = document.getElementById("helpContent");
+    helpContent.innerHTML = 'Loading...';
+
+    try {
+        const response = await fetch('README.md');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const markdown = await response.text();
+        const html = marked.parse(markdown);
+        helpContent.innerHTML = html;
+    } catch (error) {
+        console.error('Error fetching README:', error);
+        helpContent.innerHTML = 'Error loading help content. Please try again later.';
+    }
+}
+
+// Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
+    initializeHelpModal();
     loadProjects();
 });
 

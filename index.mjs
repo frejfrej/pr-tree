@@ -15,7 +15,14 @@ const port = process.env.PORT || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Serve all files in the public folder
 app.use(express.static('public'));
+
+// Serve README.md from the root directory
+app.use(express.static(__dirname, {
+    index: false, // Prevent serving index.html from root
+    extensions: ['md'] // Allow serving .md files without extension
+}));
 
 // Create write streams for different log types
 const accessLogStream = fs.createWriteStream(path.join(__dirname, 'access.log'), { flags: 'a' });
@@ -38,10 +45,8 @@ app.use((req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public'));
 });
-
-//const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
 
 async function fetchPullRequests(url, pullRequests) {
     const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
