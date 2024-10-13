@@ -18,8 +18,9 @@
 * Smart reload: Automatically updates the page when new data is available without full page refresh 
     * Repaint is only done if there are changes in the data returned by the server
     * Performed every minute
-* Display SYNC in a badge onto each pull-requests that requires syncinc with its parent branch
-* Online help displays the 
+* Display SYNC in a badge onto each pull-requests that requires syncing with its parent branch
+* Online help displays the README.md file
+* Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
 
 ## Installation
 * Clone this repository
@@ -36,6 +37,7 @@
     * Add online help based which displays the README.md file
     * Allow filtering by both author and reviewer
     * Add a pull-request counter on branch and repository headers
+    * Add popover previews on the title of the pull-requests and Jira issues
 * Version 1.5
     * Conflicts counter are now displayed with an initial implementation displaying the number of conflicts in a badge
 * Version 1.4
