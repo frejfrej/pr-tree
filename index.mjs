@@ -44,10 +44,6 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public'));
-});
-
 async function fetchPullRequests(url, pullRequests) {
     const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
     const startTime = Date.now();
