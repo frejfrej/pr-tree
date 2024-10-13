@@ -291,7 +291,13 @@ async function updateConflictsCounter(pullRequestElement) {
     if (!conflictsCounter) return;
 
     const { repoName, spec } = conflictsCounter.dataset;
-    const result = await fetchConflicts(repoName, spec);
+    // no need to go fetch the sync status if the spec is invalid
+    let validSpec = null;
+    if (!spec.includes('undefined')) {
+        validSpec = spec;
+    }
+
+    const result = validSpec ? await fetchConflicts(repoName, validSpec) : null;
 
     if (result) {
         if (result.conflicts) {
@@ -305,7 +311,11 @@ async function updateConflictsCounter(pullRequestElement) {
             conflictsCounter.innerHTML = ``;
         }
     } else {
-        conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
+        if (spec !== validSpec) {
+            conflictsCounter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
+        } else {
+            conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
+        }
     }
 }
 
