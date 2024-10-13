@@ -375,11 +375,17 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
             `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
         let resolvedIssuesAlert = '';
+
         jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
             if (issueDetails.fields.status.name === "Resolved" || issueDetails.fields.status.name === "Closed") {
                 resolvedIssuesAlert += `<li><i class="fas fa-exclamation-triangle red" title="JIRA issue is resolved"></i> JIRA issue ${issueDetails.key} is resolved</li>`;
             }
-            return `<li><a href="https://${jiraSiteName}.atlassian.net/browse/${issueDetails.key}" target="_blank" title="${issueDetails.fields.summary}">${issueDetails.key} (${issueDetails.fields.status.name})</a></li>`;
+            return `<li><a href="https://${jiraSiteName}.atlassian.net/browse/${issueDetails.key}" target="_blank" 
+                       data-issue-key="${issueDetails.key}" 
+                       data-issue-summary="${issueDetails.fields.summary}"
+                       class="jira-issue-link">
+                       ${issueDetails.key} (${issueDetails.fields.status.name})
+                    </a></li>`;
         }).join('');
 
         if (sameStatusIcon || noOtherParticipantsAlert || resolvedIssuesAlert) {
@@ -549,11 +555,46 @@ async function fetchAndDisplayVersion() {
     }
 }
 
+function initializeJiraIssuePopovers() {
+    let popoverTimeout;
+    const popover = document.createElement('div');
+    popover.className = 'jira-issue-popover';
+    document.body.appendChild(popover);
+
+    document.addEventListener('mouseover', function(event) {
+        if (event.target.classList.contains('jira-issue-link')) {
+            const link = event.target;
+            popoverTimeout = setTimeout(() => {
+                const rect = link.getBoundingClientRect();
+                const key = link.dataset.issueKey;
+                const summary = link.dataset.issueSummary;
+
+                popover.innerHTML = `
+                    <div class="jira-issue-popover-key">${key}</div>
+                    <div class="jira-issue-popover-summary">${summary}</div>
+                `;
+
+                popover.style.left = `${rect.left}px`;
+                popover.style.top = `${rect.bottom + window.scrollY}px`;
+                popover.style.display = 'block';
+            }, 500);
+        }
+    });
+
+    document.addEventListener('mouseout', function(event) {
+        if (event.target.classList.contains('jira-issue-link')) {
+            clearTimeout(popoverTimeout);
+            popover.style.display = 'none';
+        }
+    });
+}
+
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
     initializeHelpModal();
     fetchAndDisplayVersion();
+    initializeJiraIssuePopovers();
 
     // Add event listener for the footer help button
     const footerHelpButton = document.querySelector('.footer-link#helpButton');

@@ -623,3 +623,25 @@ select {
         justify-content: space-between;
     }
 }
+
+.jira-issue-popover {
+    position: absolute;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 1000;
+    max-width: 300px;
+    font-size: 14px;
+    display: none;
+}
+
+.jira-issue-popover-key {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.jira-issue-popover-summary {
+    color: #555;
+}
