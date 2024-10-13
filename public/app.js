@@ -2,6 +2,7 @@ import { initializeFilter, filterBranches } from './app-filter.js';
 
 let currentAuthor = "Show all";
 let currentReviewer = "Show all";
+let currentSprint = "Show all";
 let currentProject = null;
 let currentApiResult = null;
 let reloadInterval = 100;
@@ -71,11 +72,13 @@ function hideLoading() {
 function handleFilterChange() {
     let author = document.getElementById("authorSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
+    let sprint = document.getElementById("sprintSelect").value;
 
     currentAuthor = author;
     currentReviewer = reviewer;
+    currentSprint = sprint;
 
-    filterBranches(currentAuthor, currentReviewer);
+    filterBranches(currentAuthor, currentReviewer, currentSprint);
 }
 
 function toggleChildren(button) {
@@ -135,6 +138,7 @@ async function renderEverything() {
     const container = document.getElementById('pull-requests');
     container.innerHTML = renderRepositories(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap, currentApiResult.jiraIssuesDetails, new Map(Object.entries(currentApiResult.pullRequestsByDestination)), currentApiResult.jiraSiteName);
     populateFilters(currentApiResult.pullRequests);
+    populateSprintFilter(currentApiResult.sprints);
     updateAllConflictsCounters();
 }
 
@@ -272,7 +276,6 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
     return html;
 }
 
-// New helper function to calculate the total number of descendants
 function calculateDescendants(pullRequest, pullRequestsByDestination) {
     let count = 0;
     const sourceBranch = pullRequest.source.branch.name;
@@ -284,6 +287,13 @@ function calculateDescendants(pullRequest, pullRequestsByDestination) {
         }
     }
     return count;
+}
+
+function populateSprintFilter(sprints) {
+    const sprintSelect = document.getElementById('sprintSelect');
+    sprintSelect.innerHTML = '<option value="Show all">Show all</option>' +
+        sprints.map(sprint => `<option value="${sprint.id}">${sprint.name}</option>`).join('');
+    sprintSelect.addEventListener('change', handleFilterChange);
 }
 
 async function updateConflictsCounter(pullRequestElement) {

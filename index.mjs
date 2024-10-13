@@ -157,14 +157,61 @@ function calculateHash(data) {
     hash.update(JSON.stringify({
         pullRequests: data.pullRequests,
         jiraIssuesMap: data.jiraIssuesMap,
-        jiraIssuesDetails: data.jiraIssuesDetails
+        jiraIssuesDetails: data.jiraIssuesDetails,
+        sprints: data.sprints
     }));
     return hash.digest('hex');
 }
 
+async function fetchJiraSprints(jiraProjects) {
+    const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
+    const sprints = new Set();
+
+    for (const project of jiraProjects) {
+        const boardsUrl = `https://${config.jira.siteName}.atlassian.net/rest/agile/1.0/board?projectKeyOrId=${project}&type=scrum`;
+
+        try {
+            const boardsResponse = await fetch(boardsUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${jiraAuth}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (boardsResponse.ok) {
+                const boardsData = await boardsResponse.json();
+                log(`Fetched ${boardsData.total} boards for project ${project}`, performanceLogStream);
+                for (const board of boardsData.values) {
+                    const sprintsUrl = `https://${config.jira.siteName}.atlassian.net/rest/agile/1.0/board/${board.id}/sprint?state=active`;
+                    const sprintsResponse = await fetch(sprintsUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Basic ${jiraAuth}`,
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (sprintsResponse.ok) {
+                        const sprintsData = await sprintsResponse.json();
+                        log(`Fetched ${sprintsData.total} active sprints for board ${board.name}`, performanceLogStream);
+                        for (const sprint of sprintsData.values) {
+                            sprints.add(JSON.stringify({id: sprint.id, name: sprint.name}));
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            log(`Error fetching sprints for project ${project}: ${error.message}`, errorLogStream);
+        }
+    }
+
+    return Array.from(sprints).map(JSON.parse);
+}
+
 app.get('/api/projects', (req, res) => {
     const projects = Object.keys(config.projects).sort();
-    log(`Retrieved ${projects.length} projects`, accessLogStream);
+    log(`Retrieved ${projects.length} projects`, performanceLogStream);
     res.json(projects);
 });
 
@@ -199,13 +246,18 @@ app.get('/api/pull-requests/:project', async (req, res) => {
 
         const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
 
+        // Fetch sprints
+        const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
+        log(`Retrieved ${sprints.length} sprints for project: ${projectName}`, accessLogStream);
+
         const response = {
             pullRequests: allPullRequests,
             jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
             jiraIssuesDetails: jiraIssuesDetails,
             pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
             jiraSiteName: config.jira.siteName,
-            dataHash: calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails })
+            sprints: sprints,
+            dataHash: calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints }),
         };
 
         res.json(response);
@@ -218,7 +270,6 @@ app.get('/api/pull-requests/:project', async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
-
 
 // Add this new endpoint
 app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
