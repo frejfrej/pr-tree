@@ -1,7 +1,7 @@
 import { initializeFilter, filterBranches } from './app-filter.js';
 
-let previousAuthor = "Show all";
-let previousReviewer = "Show all";
+let currentAuthor = "Show all";
+let currentReviewer = "Show all";
 let currentProject = null;
 let currentApiResult = null;
 let reloadInterval = 100;
@@ -72,20 +72,10 @@ function handleFilterChange() {
     let author = document.getElementById("authorSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
 
-    if (reviewer !== previousReviewer) {
-        document.getElementById("authorSelect").value = "Show all";
-        previousReviewer = reviewer;
-        author = "Show all";
-        previousAuthor = author;
-    }
-    if (author !== previousAuthor) {
-        document.getElementById("reviewerSelect").value = "Show all";
-        previousAuthor = author;
-        reviewer = "Show all";
-        previousReviewer = reviewer;
-    }
+    currentAuthor = author;
+    currentReviewer = reviewer;
 
-    filterBranches(author, reviewer);
+    filterBranches(currentAuthor, currentReviewer);
 }
 
 function toggleChildren(button) {

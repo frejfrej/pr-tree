@@ -62,23 +62,14 @@ function filterPullRequests(pullRequests, author, reviewer) {
     return visiblePullRequests;
 }
 
-
 function isPullRequestVisible(pullRequestData, author, reviewer) {
-    if (author === "Show all" && reviewer === "Show all") {
-        return true;
-    }
+    const authorMatch = author === "Show all" || pullRequestData.author.display_name === author;
+    const reviewerMatch = reviewer === "Show all" || pullRequestData.participants.some(p => p.user.uuid !== pullRequestData.author.uuid && p.user.display_name === reviewer);
 
-    if (pullRequestData.author.display_name === author) {
-        return true;
-    }
-
-    if (reviewer !== "Show all") {
-        return pullRequestData.participants.some(p => p.user.uuid != pullRequestData.author.uuid && p.user.display_name === reviewer);
-    }
-
-    return false;
+    return authorMatch && reviewerMatch;
 }
 
+// Update the updatePullRequestStyle function in app-filter.js
 function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
     let title = prElement.querySelector("a");
     let titleColor = "";
@@ -87,8 +78,10 @@ function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
         if (prElement.classList.contains("status-in-progress")) {
             titleColor = "var(--secondary-color)";
         }
-    } else if (reviewer !== "Show all") {
-        let reviewerParticipant = pullRequestData.participants.find(p => p.user.uuid != pullRequestData.author.uuid && p.user.display_name === reviewer);
+    }
+
+    if (reviewer !== "Show all") {
+        let reviewerParticipant = pullRequestData.participants.find(p => p.user.uuid !== pullRequestData.author.uuid && p.user.display_name === reviewer);
         if (reviewerParticipant && !reviewerParticipant.approved && prElement.classList.contains("status-in-review")) {
             titleColor = "var(--secondary-color)";
         }
@@ -96,5 +89,7 @@ function updatePullRequestStyle(prElement, pullRequestData, author, reviewer) {
 
     if (titleColor) {
         title.style.color = titleColor;
+    } else {
+        title.style.color = ""; // Reset color if no condition is met
     }
 }
