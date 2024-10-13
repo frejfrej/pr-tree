@@ -427,6 +427,9 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </div>
     `;
 
+    const renderedTitle = pullRequest.rendered.title.html;
+    const renderedDescription = pullRequest.rendered.description.html || 'No description provided.';
+
     let html = `
         <div class="pull-request ${statusClass}" data-id="${pullRequest.id}">
             ${childCounterHtml}${conflictsCounter}
@@ -435,7 +438,12 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                     <div class="pull-request-info">
                         <div class="pull-request-header">
                             ${toggleButton}
-                            <a href="${pullRequest.links.html.href}" target="_blank">${pullRequest.title}</a>
+                            <a href="${pullRequest.links.html.href}" target="_blank" 
+                               class="pull-request-link"
+                               data-rendered-title="${encodeURIComponent(renderedTitle)}"
+                               data-rendered-description="${encodeURIComponent(renderedDescription)}">
+                               ${pullRequest.title}
+                            </a>
                         </div>
                     </div>
                     <div class="pull-request-issues">
@@ -455,7 +463,6 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
             </div>
         </div>
     `;
-
     if (hasChildren) {
         html += `<div class="children">${renderPullRequests(pullRequestsByDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level + 1)}</div>`;
     }
@@ -555,37 +562,76 @@ async function fetchAndDisplayVersion() {
     }
 }
 
-function initializeJiraIssuePopovers() {
+function initializePopovers() {
     let popoverTimeout;
+    let currentLink = null;
     const popover = document.createElement('div');
-    popover.className = 'jira-issue-popover';
+    popover.className = 'popover';
     document.body.appendChild(popover);
 
+    function showPopover(link) {
+        const rect = link.getBoundingClientRect();
+
+        if (link.classList.contains('jira-issue-link')) {
+            const key = link.dataset.issueKey;
+            const summary = link.dataset.issueSummary;
+            popover.className = 'jira-issue-popover';
+            popover.innerHTML = `
+                <div class="jira-issue-popover-key">${key}</div>
+                <div class="jira-issue-popover-summary">${summary}</div>
+            `;
+        } else {
+            const title = decodeURIComponent(link.dataset.renderedTitle);
+            const description = decodeURIComponent(link.dataset.renderedDescription);
+            popover.className = 'pull-request-popover';
+            popover.innerHTML = `
+                <div class="pull-request-popover-title">${title}</div>
+                <div class="pull-request-popover-description">${description}</div>
+            `;
+        }
+
+        popover.style.left = `${rect.left}px`;
+        popover.style.top = `${rect.bottom + window.scrollY}px`;
+        popover.style.display = 'block';
+    }
+
+    function hidePopover() {
+        popover.style.display = 'none';
+        currentLink = null;
+    }
+
     document.addEventListener('mouseover', function(event) {
-        if (event.target.classList.contains('jira-issue-link')) {
-            const link = event.target;
-            popoverTimeout = setTimeout(() => {
-                const rect = link.getBoundingClientRect();
-                const key = link.dataset.issueKey;
-                const summary = link.dataset.issueSummary;
+        const link = event.target.closest('.jira-issue-link, .pull-request-link');
 
-                popover.innerHTML = `
-                    <div class="jira-issue-popover-key">${key}</div>
-                    <div class="jira-issue-popover-summary">${summary}</div>
-                `;
-
-                popover.style.left = `${rect.left}px`;
-                popover.style.top = `${rect.bottom + window.scrollY}px`;
-                popover.style.display = 'block';
-            }, 500);
+        if (link) {
+            clearTimeout(popoverTimeout);
+            currentLink = link;
+            popoverTimeout = setTimeout(() => showPopover(link), 500);
+        } else if (event.target === popover || popover.contains(event.target)) {
+            clearTimeout(popoverTimeout);
+        } else if (currentLink) {
+            clearTimeout(popoverTimeout);
+            popoverTimeout = setTimeout(hidePopover, 300);
         }
     });
 
     document.addEventListener('mouseout', function(event) {
-        if (event.target.classList.contains('jira-issue-link')) {
+        const link = event.target.closest('.jira-issue-link, .pull-request-link');
+
+        if (link) {
             clearTimeout(popoverTimeout);
-            popover.style.display = 'none';
+            popoverTimeout = setTimeout(hidePopover, 300);
         }
+    });
+
+    // Add this event listener to keep the popover visible when hovering over it
+    popover.addEventListener('mouseover', function() {
+        clearTimeout(popoverTimeout);
+    });
+
+    popover.addEventListener('mouseout', function() {
+        clearTimeout(popoverTimeout);
+        popoverTimeout = setTimeout(hidePopover, 300);
     });
 }
 
@@ -594,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
     initializeHelpModal();
     fetchAndDisplayVersion();
-    initializeJiraIssuePopovers();
+    initializePopovers();
 
     // Add event listener for the footer help button
     const footerHelpButton = document.querySelector('.footer-link#helpButton');
