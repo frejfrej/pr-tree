@@ -13,17 +13,6 @@
 <div class="container">
   <h1>Bitbucket Pull Requests Review Dashboard</h1>
 
-  <div class="version-badge" id="versionBadge">
-    <span class="version-label">Version</span>
-    <span class="version-number" id="versionNumber"></span>
-    <span class="version-date" id="versionDate"></span>
-  </div>
-
-  <button id="helpButton" class="help-button" aria-label="Help">
-    <i class="fas fa-question-circle"></i>
-    <span>Help</span>
-  </button>
-
   <div class="filters">
     <div>
       <label for="projectSelect">Project:</label>
@@ -60,6 +49,25 @@
     </div>
   </div>
 </div>
+
+<footer id="appFooter" class="app-footer">
+  <div class="footer-content">
+    <div class="version-info">
+      <i class="fas fa-code-branch"></i>
+      <span class="version-label">Version</span>
+      <span id="versionNumber" class="version-number"></span>
+      <span id="versionDate" class="version-date"></span>
+    </div>
+    <div class="footer-links">
+      <a href="#" id="helpButton" class="footer-link">
+        <i class="fas fa-question-circle"></i> Help
+      </a>
+      <a href="https://bitbucket.org/sodius/pr-tree" target="_blank" class="footer-link">
+        <i class="fab fa-github"></i> GitHub
+      </a>
+    </div>
+  </div>
+</footer>
 
 <script src="app-filter.js"></script>
 <script type="module" src="app.js"></script>

@@ -530,13 +530,13 @@ async function fetchAndDisplayVersion() {
         const data = await response.json();
         const versionElement = document.getElementById('versionNumber');
         const dateElement = document.getElementById('versionDate');
-        const versionBadge = document.getElementById('versionBadge');
-        if (versionElement && dateElement && versionBadge) {
+        const versionInfo = document.querySelector('.version-info');
+        if (versionElement && dateElement && versionInfo) {
             versionElement.textContent = `v${data.version}`;
             dateElement.textContent = `(${data.releaseDate})`;
-            versionBadge.style.animation = 'versionPulse 0.5s ease';
+            versionInfo.style.animation = 'versionPulse 0.5s ease';
             setTimeout(() => {
-                versionBadge.style.animation = '';
+                versionInfo.style.animation = '';
             }, 500);
         }
     } catch (error) {
@@ -544,12 +544,26 @@ async function fetchAndDisplayVersion() {
     }
 }
 
-
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
     initializeHelpModal();
     fetchAndDisplayVersion();
+
+    // Add event listener for the footer help button
+    const footerHelpButton = document.querySelector('.footer-link#helpButton');
+    if (footerHelpButton) {
+        footerHelpButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            const helpModal = document.getElementById('helpModal');
+            if (helpModal) {
+                helpModal.style.display = 'block';
+                if (!document.getElementById('helpContent').innerHTML) {
+                    fetchAndRenderReadme();
+                }
+            }
+        });
+    }
 });
 
 // Export functions that need to be accessible globally

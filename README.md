@@ -1,7 +1,5 @@
 # Bitbucket Pull-Requests tree
 
-Current version: 1.6
-
 ## Features
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests
