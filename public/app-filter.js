@@ -69,10 +69,9 @@ function isPullRequestVisible(pullRequestData, author, reviewer, sprint) {
 
     // Check if the pull request is associated with the selected sprint
     const sprintMatch = sprint === "Show all" || (currentApiResult.jiraIssuesMap[pullRequestData.id] &&
-        currentApiResult.jiraIssuesMap[pullRequestData.id].some(issueKey => {
-            const issue = currentApiResult.jiraIssuesDetails.find(i => i.key === issueKey);
-            return issue && issue.fields.sprint && issue.fields.sprint.id.toString() === sprint;
-        }));
+        currentApiResult.jiraIssuesMap[pullRequestData.id].some(issueKey =>
+            currentApiResult.sprintIssues[sprint] && currentApiResult.sprintIssues[sprint].includes(issueKey)
+        ));
 
     return authorMatch && reviewerMatch && sprintMatch;
 }

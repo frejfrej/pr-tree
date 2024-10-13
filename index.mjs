@@ -158,7 +158,8 @@ function calculateHash(data) {
         pullRequests: data.pullRequests,
         jiraIssuesMap: data.jiraIssuesMap,
         jiraIssuesDetails: data.jiraIssuesDetails,
-        sprints: data.sprints
+        sprints: data.sprints,
+        sprintIssues: data.sprintIssues
     }));
     return hash.digest('hex');
 }
@@ -209,6 +210,38 @@ async function fetchJiraSprints(jiraProjects) {
     return Array.from(sprints).map(JSON.parse);
 }
 
+async function fetchSprintIssues(sprints, jiraProjects) {
+    const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
+    const sprintIssues = {};
+
+    for (const sprint of sprints) {
+        const jql = `sprint = ${sprint.id} AND project in (${jiraProjects.join(',')})`;
+        const url = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search?jql=${encodeURIComponent(jql)}&fields=key`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${jiraAuth}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                sprintIssues[sprint.id] = data.issues.map(issue => issue.key);
+            } else {
+                throw new Error(`Request failed with status code ${response.status}`);
+            }
+        } catch (error) {
+            log(`Error fetching issues for sprint ${sprint.id}: ${error.message}`, errorLogStream);
+            sprintIssues[sprint.id] = [];
+        }
+    }
+
+    return sprintIssues;
+}
+
 app.get('/api/projects', (req, res) => {
     const projects = Object.keys(config.projects).sort();
     log(`Retrieved ${projects.length} projects`, performanceLogStream);
@@ -250,6 +283,10 @@ app.get('/api/pull-requests/:project', async (req, res) => {
         const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
         log(`Retrieved ${sprints.length} sprints for project: ${projectName}`, accessLogStream);
 
+        // Fetch sprint issues
+        const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
+        log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
+
         const response = {
             pullRequests: allPullRequests,
             jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
@@ -257,7 +294,8 @@ app.get('/api/pull-requests/:project', async (req, res) => {
             pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
             jiraSiteName: config.jira.siteName,
             sprints: sprints,
-            dataHash: calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints }),
+            sprintIssues: sprintIssues,
+            dataHash: calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues })
         };
 
         res.json(response);

@@ -38,6 +38,10 @@
     * Allow filtering by both author and reviewer
     * Add a pull-request counter on branch and repository headers
     * Add popover previews on the title of the pull-requests and Jira issues
+    * Add sprint filter feature
+        * Fetches all sprints from all boards of associated Jira projects
+        * Retrieves issues associated with each sprint
+        * Allows filtering pull requests by associated sprint, based on related Jira issues
 * Version 1.5
     * Conflicts counter are now displayed with an initial implementation displaying the number of conflicts in a badge
 * Version 1.4
