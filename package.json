@@ -2,13 +2,13 @@
   "name": "version",
   "version": "1.6.0",
   "releaseDate": "2024-10-13",
-  "description": "",
+  "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "François-Régis Jaunatre, with help from various AI systems (mostly Claude.ai though)",
+  "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre",
   "dependencies": {
     "dotenv": "^16.4.5",

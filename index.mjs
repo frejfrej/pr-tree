@@ -19,6 +19,8 @@ const __dirname = path.dirname(__filename);
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 const version = packageJson.version;
 const releaseDate = packageJson.releaseDate || new Date().toISOString().split('T')[0]; // Use current date if not specified
+const author = packageJson.author;
+const license = packageJson.license;
 
 // Serve all files in the public folder
 app.use(express.static('public'));
@@ -31,7 +33,7 @@ app.use(express.static(__dirname, {
 
 // Serve the version details
 app.get('/api/version', (req, res) => {
-    res.json({ version, releaseDate });
+    res.json({ version, releaseDate, author, license });
 });
 
 // Create write streams for different log types

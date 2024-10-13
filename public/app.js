@@ -530,10 +530,16 @@ async function fetchAndDisplayVersion() {
         const data = await response.json();
         const versionElement = document.getElementById('versionNumber');
         const dateElement = document.getElementById('versionDate');
+        const authorElement = document.getElementById('authorInfo');
+        const licenseElement = document.getElementById('licenseInfo');
         const versionInfo = document.querySelector('.version-info');
-        if (versionElement && dateElement && versionInfo) {
+
+        if (versionElement && dateElement && authorElement && licenseElement && versionInfo) {
             versionElement.textContent = `v${data.version}`;
             dateElement.textContent = `(${data.releaseDate})`;
+            authorElement.textContent = `Author: ${data.author}`;
+            licenseElement.textContent = `License: ${data.license}`;
+
             versionInfo.style.animation = 'versionPulse 0.5s ease';
             setTimeout(() => {
                 versionInfo.style.animation = '';
