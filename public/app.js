@@ -532,17 +532,16 @@ async function fetchAndDisplayVersion() {
         const dateElement = document.getElementById('versionDate');
         const authorElement = document.getElementById('authorInfo');
         const licenseElement = document.getElementById('licenseInfo');
-        const versionInfo = document.querySelector('.version-info');
 
-        if (versionElement && dateElement && authorElement && licenseElement && versionInfo) {
+        if (versionElement && dateElement && authorElement && licenseElement) {
             versionElement.textContent = `v${data.version}`;
-            dateElement.textContent = `(${data.releaseDate})`;
-            authorElement.textContent = `Author: ${data.author}`;
-            licenseElement.textContent = `License: ${data.license}`;
+            dateElement.textContent = `Released: ${data.releaseDate}`;
+            authorElement.textContent = `Created by ${data.author}`;
+            licenseElement.textContent = `${data.license}`;
 
-            versionInfo.style.animation = 'versionPulse 0.5s ease';
+            versionElement.style.animation = 'versionPulse 0.5s ease';
             setTimeout(() => {
-                versionInfo.style.animation = '';
+                versionElement.style.animation = '';
             }, 500);
         }
     } catch (error) {

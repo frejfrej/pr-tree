@@ -499,84 +499,97 @@ select {
 }
 
 .app-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
     background-color: var(--primary-color);
     color: white;
-    padding: 10px 20px;
+    padding: 30px 0 10px;
     font-size: 14px;
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-    z-index: 1000;
 }
 
 .footer-content {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    justify-content: space-around;
     flex-wrap: wrap;
     max-width: 1200px;
     margin: 0 auto;
+    padding: 0 20px;
 }
 
-.version-info {
+.footer-section {
+    flex: 1;
+    min-width: 200px;
+    margin-bottom: 20px;
+}
+
+.footer-section h3 {
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #ffffff;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 5px;
+}
+
+.footer-links {
+    list-style-type: none;
+    padding: 0;
+}
+
+.footer-link {
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
     display: flex;
     align-items: center;
+    margin-bottom: 5px;
+    transition: color 0.3s ease;
 }
 
-.version-info, .author-license-info, .footer-links {
-    margin: 5px 0;
+.footer-link:hover {
+    color: #ffffff;
 }
 
-.author-license-info {
-    text-align: center;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.author-info, .license-info {
-    display: block;
-}
-
-.version-info i {
-    margin-right: 8px;
-    font-size: 16px;
-}
-
-.version-label {
-    font-weight: bold;
+.footer-link i {
     margin-right: 5px;
+    width: 20px;
+    text-align: center;
+}
+
+.version-info, .author-info, .license-info {
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 5px;
 }
 
 .version-number {
+    font-weight: bold;
     margin-right: 5px;
 }
 
 .version-date {
     font-style: italic;
-    color: rgba(255, 255, 255, 0.8);
 }
 
-.footer-links {
-    display: flex;
-    gap: 20px;
+.footer-bottom {
+    text-align: center;
+    padding-top: 20px;
+    margin-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.footer-link {
-    color: white;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    transition: opacity 0.3s ease;
+@keyframes versionPulse {
+    0% { color: rgba(255, 255, 255, 0.8); }
+    50% { color: #ffffff; }
+    100% { color: rgba(255, 255, 255, 0.8); }
 }
 
-.footer-link:hover {
-    opacity: 0.8;
-}
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .footer-content {
+        flex-direction: column;
+    }
 
-.footer-link i {
-    margin-right: 5px;
+    .footer-section {
+        width: 100%;
+        margin-bottom: 30px;
+    }
 }
 
 /* Update container padding to account for footer */

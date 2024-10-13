@@ -52,24 +52,32 @@
 
 <footer id="appFooter" class="app-footer">
   <div class="footer-content">
-    <div class="version-info">
-      <i class="fas fa-code-branch"></i>
-      <span class="version-label">Version</span>
-      <span id="versionNumber" class="version-number"></span>
-      <span id="versionDate" class="version-date"></span>
+    <div class="footer-section">
+      <h3>About</h3>
+      <p id="authorInfo" class="author-info"></p>
+      <p id="licenseInfo" class="license-info"></p>
     </div>
-    <div class="footer-links">
-      <a href="#" id="helpButton" class="footer-link">
-        <i class="fas fa-question-circle"></i> Help
-      </a>
-      <div class="author-license-info">
-        <span id="authorInfo" class="author-info"></span>
-        <span id="licenseInfo" class="license-info"></span>
+    <div class="footer-section">
+      <h3>Version</h3>
+      <div class="version-info">
+        <span id="versionNumber" class="version-number"></span>
+        <span id="versionDate" class="version-date"></span>
       </div>
-      <a href="https://github.com/frejfrej/pr-tree" target="_blank" class="footer-link">
-        <i class="fab fa-github"></i> GitHub
-      </a>
     </div>
+    <div class="footer-section">
+      <h3>Links</h3>
+      <ul class="footer-links">
+        <li><a href="#" id="helpButton" class="footer-link">
+          <i class="fas fa-question-circle"></i> Help
+        </a></li>
+        <li><a href="https://github.com/your-repo-link" target="_blank" class="footer-link">
+          <i class="fab fa-github"></i> GitHub
+        </a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>&copy; 2024 Bitbucket Pull-Requests Tree. All rights reserved.</p>
   </div>
 </footer>
 
