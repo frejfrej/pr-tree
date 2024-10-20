@@ -33,6 +33,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.6.1
+    * Better sprint filtering
 * Version 1.6
     * Add online help based which displays the README.md file
     * Allow filtering by both author and reviewer

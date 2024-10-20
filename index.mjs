@@ -216,27 +216,42 @@ async function fetchSprintIssues(sprints, jiraProjects) {
 
     for (const sprint of sprints) {
         const jql = `sprint = ${sprint.id} AND project in (${jiraProjects.join(',')})`;
-        const url = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search?jql=${encodeURIComponent(jql)}&fields=key`;
+        let startAt = 0;
+        const maxResults = 100;
+        let total = 0;
+        sprintIssues[sprint.id] = [];
 
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Basic ${jiraAuth}`,
-                    'Accept': 'application/json'
+        do {
+            const url = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search?jql=${encodeURIComponent(jql)}&fields=key&startAt=${startAt}&maxResults=${maxResults}`;
+
+            try {
+                const startTime = Date.now();
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Basic ${jiraAuth}`,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    sprintIssues[sprint.id].push(...data.issues.map(issue => issue.key));
+                    total = data.total;
+                    startAt += data.issues.length;
+
+                    const duration = Date.now() - startTime;
+                    log(`Fetched ${data.issues.length} issues for sprint ${sprint.id} (${startAt}/${total}) - Duration: ${duration}ms`, performanceLogStream);
+                } else {
+                    throw new Error(`Request failed with status code ${response.status}`);
                 }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                sprintIssues[sprint.id] = data.issues.map(issue => issue.key);
-            } else {
-                throw new Error(`Request failed with status code ${response.status}`);
+            } catch (error) {
+                log(`Error fetching issues for sprint ${sprint.id}: ${error.message}`, errorLogStream);
+                break; // Exit the loop if there's an error, but continue with other sprints
             }
-        } catch (error) {
-            log(`Error fetching issues for sprint ${sprint.id}: ${error.message}`, errorLogStream);
-            sprintIssues[sprint.id] = [];
-        }
+        } while (startAt < total);
+
+        log(`Retrieved a total of ${sprintIssues[sprint.id].length} issues for sprint ${sprint.id}`, accessLogStream);
     }
 
     return sprintIssues;

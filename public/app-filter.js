@@ -49,6 +49,7 @@ function filterPullRequests(pullRequests, author, reviewer, sprint) {
         let isVisible = isPullRequestVisible(pullRequestData, author, reviewer, sprint);
 
         // ... we'll make it smaller if it's no match for our filter...
+        let filtered = pr.classList.contains("filtered");
         pr.classList.toggle("filtered", !isVisible);
         // ... and even hide it if nothing is visible starting from here
         pr.style.display = (!isVisible && visibleChildren === 0) ? "none" : "";
@@ -68,10 +69,12 @@ function isPullRequestVisible(pullRequestData, author, reviewer, sprint) {
     const reviewerMatch = reviewer === "Show all" || pullRequestData.participants.some(p => p.user.uuid !== pullRequestData.author.uuid && p.user.display_name === reviewer);
 
     // Check if the pull request is associated with the selected sprint
-    const sprintMatch = sprint === "Show all" || (currentApiResult.jiraIssuesMap[pullRequestData.id] &&
+    const sprintMatch = sprint === "Show all" || (
+        currentApiResult.jiraIssuesMap[pullRequestData.id] &&
         currentApiResult.jiraIssuesMap[pullRequestData.id].some(issueKey =>
             currentApiResult.sprintIssues[sprint] && currentApiResult.sprintIssues[sprint].includes(issueKey)
-        ));
+        )
+    );
 
     return authorMatch && reviewerMatch && sprintMatch;
 }

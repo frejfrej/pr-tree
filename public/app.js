@@ -291,8 +291,12 @@ function calculateDescendants(pullRequest, pullRequestsByDestination) {
 
 function populateSprintFilter(sprints) {
     const sprintSelect = document.getElementById('sprintSelect');
+
+    // Sort sprints by name
+    const sortedSprints = sprints.sort((a, b) => a.name.localeCompare(b.name));
+
     sprintSelect.innerHTML = '<option value="Show all">Show all</option>' +
-        sprints.map(sprint => `<option value="${sprint.id}">${sprint.name}</option>`).join('');
+        sortedSprints.map(sprint => `<option value="${sprint.id}">${sprint.name}</option>`).join('');
     sprintSelect.addEventListener('change', handleFilterChange);
 }
 
