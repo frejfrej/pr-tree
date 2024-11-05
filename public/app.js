@@ -274,6 +274,18 @@ function findRootBranches(pullRequests) {
     return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
 }
 
+// Function to calculate total pull requests in a branch including all descendants
+function calculateTotalPullRequests(pullRequests, pullRequestsByDestination) {
+    let total = pullRequests.length;
+    for (const pullRequest of pullRequests) {
+        const sourceBranch = pullRequest.source.branch.name;
+        if (pullRequestsByDestination.has(sourceBranch)) {
+            total += calculateTotalPullRequests(pullRequestsByDestination.get(sourceBranch), pullRequestsByDestination);
+        }
+    }
+    return total;
+}
+
 // Function to recursively render the pull-requests
 function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
     let html = '';
@@ -282,7 +294,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
         for(const rootBranch of rootBranches) {
             const rootPullRequests = pullRequests.filter(pullRequest => rootBranch === pullRequest.destination.branch.name);
             rootPullRequests.sort((a, b) => a.title.localeCompare(b.title));
-            const pullRequestCount = rootPullRequests.length;
+            const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
+
             html += `
                 <div class="root-branch">
                     <div class="root-branch-header" onclick="toggleRootBranch(this)">
@@ -291,8 +304,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <h2>${rootBranch}</h2>
-                        <div class="branch-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
-                            ${pullRequestCount}
+                        <div class="branch-pr-counter" title="${totalPullRequestCount} total pull request${totalPullRequestCount !== 1 ? 's' : ''} (including all descendants)">
+                            ${totalPullRequestCount}
                         </div>
                     </div>
                     <div class="root-branch-content">
