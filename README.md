@@ -15,7 +15,11 @@
     * Filters pull requests of selected reviewer
     * Highlights in red those where an effort is expected
 * Allows simultaneous filtering by both author and reviewer
-* Smart reload: Automatically updates the page when new data is available without full page refresh 
+* Maintains filter selections in URL
+    * All filter selections (project, sprint, author, reviewer) are saved in the URL
+    * Filters are automatically restored when sharing or reloading the page
+    * Enables direct linking to specific filtered views
+* Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
     * Performed every minute
 * Display SYNC in a badge onto each pull-requests that requires syncing with its parent branch
@@ -33,6 +37,11 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.6.2
+    * Enhanced URL persistence for all filters
+        * All filter selections (project, sprint, author, reviewer) are now saved in the URL
+        * Filters are automatically restored when sharing or reloading the page
+        * Direct linking to specific filtered views is now supported
 * Version 1.6.1
     * Better sprint filtering
 * Version 1.6

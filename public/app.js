@@ -7,6 +7,43 @@ let currentProject = null;
 let currentApiResult = null;
 let reloadInterval = 100;
 
+// Function to update URL with current filter states
+function updateUrlWithFilters() {
+    const url = new URL(window.location);
+
+    // Only set parameters if they're different from default
+    if (currentProject) url.searchParams.set('project', currentProject);
+    if (currentAuthor !== "Show all") url.searchParams.set('author', currentAuthor);
+    if (currentReviewer !== "Show all") url.searchParams.set('reviewer', currentReviewer);
+    if (currentSprint !== "Show all") url.searchParams.set('sprint', currentSprint);
+
+    // Remove parameters if they're set to default
+    if (currentAuthor === "Show all") url.searchParams.delete('author');
+    if (currentReviewer === "Show all") url.searchParams.delete('reviewer');
+    if (currentSprint === "Show all") url.searchParams.delete('sprint');
+    if (!currentProject) url.searchParams.delete('project');
+
+    // Update URL without reloading the page
+    window.history.pushState({}, '', url);
+}
+
+// Function to restore filters from URL
+function restoreFiltersFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    currentAuthor = urlParams.get('author') || "Show all";
+    currentReviewer = urlParams.get('reviewer') || "Show all";
+    currentSprint = urlParams.get('sprint') || "Show all";
+
+    // Update select elements with restored values
+    const authorSelect = document.getElementById('authorSelect');
+    const reviewerSelect = document.getElementById('reviewerSelect');
+    const sprintSelect = document.getElementById('sprintSelect');
+
+    if (authorSelect) authorSelect.value = currentAuthor;
+    if (reviewerSelect) reviewerSelect.value = currentReviewer;
+    if (sprintSelect) sprintSelect.value = currentSprint;
+}
+
 async function loadProjects() {
     try {
         const response = await fetch('/api/projects');
@@ -38,21 +75,14 @@ async function handleProjectChange(event) {
         showLoading();
         await renderEverything();
         hideLoading();
+        updateUrlWithFilters();
 
         // Start periodic checking
         startPeriodicChecking();
-
-        // Update URL with the selected project
-        const url = new URL(window.location);
-        url.searchParams.set('project', projectName);
-        window.history.pushState({}, '', url);
     } else {
         document.getElementById('pull-requests').innerHTML = 'Please select a project';
-
-        // Remove project from URL if none selected
-        const url = new URL(window.location);
-        url.searchParams.delete('project');
-        window.history.pushState({}, '', url);
+        currentProject = null;
+        updateUrlWithFilters();
 
         // Stop periodic checking
         stopPeriodicChecking();
@@ -79,6 +109,7 @@ function handleFilterChange() {
     currentSprint = sprint;
 
     filterBranches(currentAuthor, currentReviewer, currentSprint);
+    updateUrlWithFilters();
 }
 
 function toggleChildren(button) {
@@ -127,6 +158,13 @@ function populateFilters(pullRequests) {
     // Add event listeners
     authorSelect.addEventListener('change', handleFilterChange);
     reviewerSelect.addEventListener('change', handleFilterChange);
+
+    // Restore filter values from URL after populating options
+    restoreFiltersFromUrl();
+    // Apply filters if they were restored from URL
+    if (currentAuthor !== "Show all" || currentReviewer !== "Show all" || currentSprint !== "Show all") {
+        filterBranches(currentAuthor, currentReviewer, currentSprint);
+    }
 }
 
 async function renderEverything() {
@@ -298,7 +336,13 @@ function populateSprintFilter(sprints) {
     sprintSelect.innerHTML = '<option value="Show all">Show all</option>' +
         sortedSprints.map(sprint => `<option value="${sprint.id}">${sprint.name}</option>`).join('');
     sprintSelect.addEventListener('change', handleFilterChange);
+
+    // Restore sprint value from URL after populating options
+    if (currentSprint !== "Show all") {
+        sprintSelect.value = currentSprint;
+    }
 }
+
 
 async function updateConflictsCounter(pullRequestElement) {
     const conflictsCounter = pullRequestElement.querySelector('.conflicts-counter');
