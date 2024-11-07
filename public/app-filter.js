@@ -1,4 +1,4 @@
-// app-filter.js
+import { updateAllCounters } from './counter-utils.js';
 
 let currentApiResult = null;
 
@@ -12,6 +12,9 @@ export function filterBranches(author, reviewer, sprint) {
     Array.from(rootBranches).forEach(rootBranch => {
         filterBranch(rootBranch, author, reviewer, sprint);
     });
+
+    // Update all counters after filtering
+    updateAllCounters(author, reviewer, sprint);
 }
 
 function filterBranch(branch, author, reviewer, sprint) {

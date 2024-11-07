@@ -1,7 +1,7 @@
 {
   "name": "version",
-  "version": "1.6.2",
-  "releaseDate": "2024-11-06",
+  "version": "1.6.3",
+  "releaseDate": "2024-11-07",
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
   "scripts": {

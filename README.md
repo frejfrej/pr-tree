@@ -37,6 +37,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.6.3
+    * Added support for filtered counters vs overall counters
 * Version 1.6.2
     * Enhanced URL persistence for all filters
         * All filter selections (project, sprint, author, reviewer) are now saved in the URL
