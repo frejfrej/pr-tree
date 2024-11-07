@@ -286,6 +286,13 @@ function calculateTotalPullRequests(pullRequests, pullRequestsByDestination) {
     return total;
 }
 
+// Helper function to get branch URL from Bitbucket
+function getBranchUrl(repoName, branchName, pullRequest) {
+    // Use the repository links from any pull request to get the base URL
+    const baseUrl = pullRequest.source.repository.links.html.href;
+    return `${baseUrl}/branch/${encodeURIComponent(branchName)}`;
+}
+
 // Function to recursively render the pull-requests
 function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
     let html = '';
@@ -296,6 +303,9 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             rootPullRequests.sort((a, b) => a.title.localeCompare(b.title));
             const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
 
+            // Get the branch URL using the first pull request's repository information
+            const branchUrl = getBranchUrl(rootPullRequests[0].source.repository.name, rootBranch, rootPullRequests[0]);
+
             html += `
                 <div class="root-branch">
                     <div class="root-branch-header" onclick="toggleRootBranch(this)">
@@ -303,7 +313,13 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                             <i class="fas fa-chevron-down"></i>
                             <i class="fas fa-chevron-right"></i>
                         </button>
-                        <h2>${rootBranch}</h2>
+                        <h2>
+                            <a href="${branchUrl}" target="_blank" onclick="event.stopPropagation();" 
+                               style="color: inherit; text-decoration: none;">
+                                ${rootBranch}
+                                <i class="fas fa-external-link-alt" style="font-size: 0.8em; margin-left: 5px;"></i>
+                            </a>
+                        </h2>
                         <div class="branch-pr-counter" title="${totalPullRequestCount} total pull request${totalPullRequestCount !== 1 ? 's' : ''} (including all descendants)">
                             ${totalPullRequestCount}
                         </div>

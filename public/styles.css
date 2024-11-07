@@ -678,3 +678,21 @@ select {
     padding-top: 10px;
     border-top: 1px solid #eee;
 }
+
+.root-branch-header h2 a:hover {
+    text-decoration: none;
+}
+
+.root-branch-header h2 a:hover .fa-external-link-alt {
+    opacity: 1;
+}
+
+.root-branch-header h2 .fa-external-link-alt {
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.root-branch-header h2 a {
+    display: inline-flex;
+    align-items: center;
+}
