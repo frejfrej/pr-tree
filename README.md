@@ -37,6 +37,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.7.0
+    * Add SYNC filter
 * Version 1.6.3
     * Added support for filtered counters vs overall counters
 * Version 1.6.2

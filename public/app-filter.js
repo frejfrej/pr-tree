@@ -6,23 +6,23 @@ export function initializeFilter(apiResult) {
     currentApiResult = apiResult;
 }
 
-export function filterBranches(author, reviewer, sprint) {
+export function filterBranches(author, reviewer, sprint, sync) {
     // Start filtering from the root branches
     let rootBranches = document.getElementsByClassName("root-branch");
     Array.from(rootBranches).forEach(rootBranch => {
-        filterBranch(rootBranch, author, reviewer, sprint);
+        filterBranch(rootBranch, author, reviewer, sprint, sync);
     });
 
     // Update all counters after filtering
-    updateAllCounters(author, reviewer, sprint);
+    updateAllCounters(author, reviewer, sprint, sync);
 }
 
-function filterBranch(branch, author, reviewer, sprint) {
+function filterBranch(branch, author, reviewer, sprint, sync) {
     let pullRequests = branch.querySelectorAll(".pull-request");
     let visiblePullRequests = 0;
 
     // Filter pull requests from bottom to top
-    visiblePullRequests += filterPullRequests(pullRequests, author, reviewer, sprint);
+    visiblePullRequests += filterPullRequests(pullRequests, author, reviewer, sprint, sync);
 
     // Hide branch if no visible pull requests
     branch.style.display = visiblePullRequests > 0 ? "" : "none";
@@ -30,7 +30,7 @@ function filterBranch(branch, author, reviewer, sprint) {
     return visiblePullRequests;
 }
 
-function filterPullRequests(pullRequests, author, reviewer, sprint) {
+function filterPullRequests(pullRequests, author, reviewer, sprint, sync) {
     let visiblePullRequests = 0;
     for (let i = 0; i < pullRequests.length; i++) {
         let pr = pullRequests[i];
@@ -44,12 +44,12 @@ function filterPullRequests(pullRequests, author, reviewer, sprint) {
         if (childrenContainer && childrenContainer.classList.contains('children')) {
             // If it has children, check if any of them are visible
             let childrenPullRequests = childrenContainer.querySelectorAll(".pull-request");
-            visibleChildren += filterPullRequests(childrenPullRequests, author, reviewer, sprint);
+            visibleChildren += filterPullRequests(childrenPullRequests, author, reviewer, sprint, sync);
             visiblePullRequests += visibleChildren;
         }
 
         // based on whether this pull request has visible children, or should itself be visible...
-        let isVisible = isPullRequestVisible(pullRequestData, author, reviewer, sprint);
+        let isVisible = isPullRequestVisible(pullRequestData, author, reviewer, sprint, sync);
 
         // ... we'll make it smaller if it's no match for our filter...
         let filtered = pr.classList.contains("filtered");
@@ -67,7 +67,7 @@ function filterPullRequests(pullRequests, author, reviewer, sprint) {
     return visiblePullRequests;
 }
 
-function isPullRequestVisible(pullRequestData, author, reviewer, sprint) {
+function isPullRequestVisible(pullRequestData, author, reviewer, sprint, sync) {
     const authorMatch = author === "Show all" || pullRequestData.author.display_name === author;
     const reviewerMatch = reviewer === "Show all" || pullRequestData.participants.some(p => p.user.uuid !== pullRequestData.author.uuid && p.user.display_name === reviewer);
 
@@ -79,7 +79,18 @@ function isPullRequestVisible(pullRequestData, author, reviewer, sprint) {
         )
     );
 
-    return authorMatch && reviewerMatch && sprintMatch;
+    // Get the sync status element for this pull request
+    const pullRequestElement = document.querySelector(`.pull-request[data-id="${pullRequestData.id}"]`);
+    const syncCounter = pullRequestElement ? pullRequestElement.querySelector('.conflicts-counter') : null;
+    const syncCountElement = syncCounter ? syncCounter.querySelector('.conflicts-count') : null;
+    const hasSyncLabel = syncCountElement !== null;
+
+    // Check sync status match
+    const syncMatch = sync === "Show all" ||
+        (sync === "requested" && hasSyncLabel) ||
+        (sync === "OK" && !hasSyncLabel);
+
+    return authorMatch && reviewerMatch && sprintMatch && syncMatch;
 }
 
 // Update the updatePullRequestStyle function in app-filter.js

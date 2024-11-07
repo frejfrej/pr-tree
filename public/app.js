@@ -3,11 +3,12 @@ import { initializeFilter, filterBranches } from './app-filter.js';
 let currentAuthor = "Show all";
 let currentReviewer = "Show all";
 let currentSprint = "Show all";
+let currentSync = "Show all";
 let currentProject = null;
 let currentApiResult = null;
 let reloadInterval = 100;
 
-// Function to update URL with current filter states
+// Update URL parameters handling
 function updateUrlWithFilters() {
     const url = new URL(window.location);
 
@@ -16,32 +17,38 @@ function updateUrlWithFilters() {
     if (currentAuthor !== "Show all") url.searchParams.set('author', currentAuthor);
     if (currentReviewer !== "Show all") url.searchParams.set('reviewer', currentReviewer);
     if (currentSprint !== "Show all") url.searchParams.set('sprint', currentSprint);
+    if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
 
     // Remove parameters if they're set to default
     if (currentAuthor === "Show all") url.searchParams.delete('author');
     if (currentReviewer === "Show all") url.searchParams.delete('reviewer');
     if (currentSprint === "Show all") url.searchParams.delete('sprint');
+    if (currentSync === "Show all") url.searchParams.delete('sync');
     if (!currentProject) url.searchParams.delete('project');
 
     // Update URL without reloading the page
     window.history.pushState({}, '', url);
 }
 
-// Function to restore filters from URL
+// Update filter restoration from URL
 function restoreFiltersFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
     currentAuthor = urlParams.get('author') || "Show all";
     currentReviewer = urlParams.get('reviewer') || "Show all";
     currentSprint = urlParams.get('sprint') || "Show all";
+    // SYNC filter is explicitly not restored because it's calculated asynchronously
+    currentSync = "Show all";
 
     // Update select elements with restored values
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
     const sprintSelect = document.getElementById('sprintSelect');
+    const syncSelect = document.getElementById('syncSelect');
 
     if (authorSelect) authorSelect.value = currentAuthor;
     if (reviewerSelect) reviewerSelect.value = currentReviewer;
     if (sprintSelect) sprintSelect.value = currentSprint;
+    if (syncSelect) syncSelect.value = currentSync;
 }
 
 async function loadProjects() {
@@ -103,12 +110,14 @@ function handleFilterChange() {
     let author = document.getElementById("authorSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
     let sprint = document.getElementById("sprintSelect").value;
+    let sync = document.getElementById("syncSelect").value;
 
     currentAuthor = author;
     currentReviewer = reviewer;
     currentSprint = sprint;
+    currentSync = sync;
 
-    filterBranches(currentAuthor, currentReviewer, currentSprint);
+    filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync);
     updateUrlWithFilters();
 }
 
@@ -144,6 +153,7 @@ function toggleRepository(button) {
 function populateFilters(pullRequests) {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
+    const syncSelect = document.getElementById('syncSelect');
 
     // Extract unique authors and sort them alphabetically
     const authors = [...new Set(pullRequests.map(pr => pr.author.display_name))].sort();
@@ -155,15 +165,23 @@ function populateFilters(pullRequests) {
     // Generate the dropdown options
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
+    // Generate sync filter options
+    syncSelect.innerHTML = `
+        <option value="Show all">Show all</option>
+        <option value="requested">SYNC requested</option>
+        <option value="OK">SYNC ok</option>
+    `;
+
     // Add event listeners
     authorSelect.addEventListener('change', handleFilterChange);
     reviewerSelect.addEventListener('change', handleFilterChange);
+    syncSelect.addEventListener('change', handleFilterChange);
 
     // Restore filter values from URL after populating options
     restoreFiltersFromUrl();
     // Apply filters if they were restored from URL
-    if (currentAuthor !== "Show all" || currentReviewer !== "Show all" || currentSprint !== "Show all") {
-        filterBranches(currentAuthor, currentReviewer, currentSprint);
+    if (currentAuthor !== "Show all" || currentReviewer !== "Show all" || currentSprint !== "Show all" || currentSync !== "Show all") {
+        filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync);
     }
 }
 
