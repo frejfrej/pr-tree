@@ -35,10 +35,59 @@ h1 {
     margin-bottom: 20px;
 }
 
-.filters {
-    display: flex;
-    justify-content: space-between;
+.filters-container {
     margin-bottom: 20px;
+    background-color: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filters-row {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+
+.filters-row:last-child {
+    margin-bottom: 0;
+}
+
+.filter-item {
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.filter-label {
+    color: var(--text-color);
+    font-weight: 500;
+    font-size: 14px;
+    white-space: nowrap;
+    min-width: 70px;
+}
+
+.filter-item select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: white;
+    color: var(--text-color);
+    transition: border-color 0.2s ease;
+}
+
+.filter-item select:hover {
+    border-color: var(--primary-color);
+}
+
+.filter-item select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(0, 82, 204, 0.1);
 }
 
 select {
@@ -589,6 +638,19 @@ select {
     .footer-section {
         width: 100%;
         margin-bottom: 30px;
+    }
+
+    .filters-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .filter-item {
+        width: 100%;
+    }
+
+    .filter-label {
+        min-width: 70px;
     }
 }
 

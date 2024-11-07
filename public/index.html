@@ -13,36 +13,40 @@
 <div class="container">
   <h1>Bitbucket Pull Requests Review Dashboard</h1>
 
-  <div class="filters">
-    <div>
-      <label for="projectSelect">Project:</label>
-      <select id="projectSelect">
-        <option value="">Select a project</option>
-      </select>
+  <div class="filters-container">
+    <div class="filters-row">
+      <div class="filter-item">
+        <span class="filter-label">Project</span>
+        <select id="projectSelect">
+          <option value="">Select a project</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">Author</span>
+        <select id="authorSelect">
+          <option value="Show all">Show all</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">SYNC</span>
+        <select id="syncSelect">
+          <option value="Show all">Show all</option>
+        </select>
+      </div>
     </div>
-    <div>
-      <label for="sprintSelect">Sprint:</label>
-      <select id="sprintSelect">
-        <option value="Show all">Show all</option>
-      </select>
-    </div>
-    <div>
-      <label for="authorSelect">Author:</label>
-      <select id="authorSelect">
-        <option value="Show all">Show all</option>
-      </select>
-    </div>
-    <div>
-      <label for="reviewerSelect">Reviewer:</label>
-      <select id="reviewerSelect">
-        <option value="Show all">Show all</option>
-      </select>
-    </div>
-    <div>
-      <label for="syncSelect">SYNC:</label>
-      <select id="syncSelect">
-        <option value="Show all">Show all</option>
-      </select>
+    <div class="filters-row">
+      <div class="filter-item">
+        <span class="filter-label">Sprint</span>
+        <select id="sprintSelect">
+          <option value="Show all">Show all</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">Reviewer</span>
+        <select id="reviewerSelect">
+          <option value="Show all">Show all</option>
+        </select>
+      </div>
     </div>
   </div>
 
