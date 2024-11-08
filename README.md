@@ -39,6 +39,8 @@
 ## Changelog:
 * Version 1.7.0
     * Add SYNC filter
+    * Add Ready for reviewer filters
+    * Those 2 filters can't be restored from the URL upon reloading the app
 * Version 1.6.3
     * Added support for filtered counters vs overall counters
 * Version 1.6.2

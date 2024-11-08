@@ -1,10 +1,11 @@
 import { initializeFilter, filterBranches } from './app-filter.js';
 
+let currentProject = null;
+let currentSprint = "Show all";
 let currentAuthor = "Show all";
 let currentReviewer = "Show all";
-let currentSprint = "Show all";
 let currentSync = "Show all";
-let currentProject = null;
+let currentReadyForReviewer = false;
 let currentApiResult = null;
 let reloadInterval = 100;
 
@@ -18,12 +19,14 @@ function updateUrlWithFilters() {
     if (currentReviewer !== "Show all") url.searchParams.set('reviewer', currentReviewer);
     if (currentSprint !== "Show all") url.searchParams.set('sprint', currentSprint);
     if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
+    if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
     // Remove parameters if they're set to default
     if (currentAuthor === "Show all") url.searchParams.delete('author');
     if (currentReviewer === "Show all") url.searchParams.delete('reviewer');
     if (currentSprint === "Show all") url.searchParams.delete('sprint');
     if (currentSync === "Show all") url.searchParams.delete('sync');
+    if (!currentReadyForReviewer) url.searchParams.delete('ready');
     if (!currentProject) url.searchParams.delete('project');
 
     // Update URL without reloading the page
@@ -36,19 +39,34 @@ function restoreFiltersFromUrl() {
     currentAuthor = urlParams.get('author') || "Show all";
     currentReviewer = urlParams.get('reviewer') || "Show all";
     currentSprint = urlParams.get('sprint') || "Show all";
-    // SYNC filter is explicitly not restored because it's calculated asynchronously
-    currentSync = "Show all";
+    currentSync = "Show all"; // Not restored because it's calculated asynchronously
+    currentReadyForReviewer = false; // Not restored because it requires a fully displayed and updated pr tree
 
-    // Update select elements with restored values
+    // Update filter elements with restored values
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
     const sprintSelect = document.getElementById('sprintSelect');
     const syncSelect = document.getElementById('syncSelect');
+    const readyCheck = document.getElementById('readyForReviewerCheck');
 
     if (authorSelect) authorSelect.value = currentAuthor;
     if (reviewerSelect) reviewerSelect.value = currentReviewer;
     if (sprintSelect) sprintSelect.value = currentSprint;
     if (syncSelect) syncSelect.value = currentSync;
+    if (readyCheck) {
+        readyCheck.checked = currentReadyForReviewer;
+        readyCheck.disabled = currentReviewer === "Show all";
+    }
+}
+
+function initializeReadyForReviewerFilter() {
+    const readyCheck = document.getElementById('readyForReviewerCheck');
+    if (readyCheck) {
+        readyCheck.addEventListener('change', handleFilterChange);
+        // Set initial state
+        readyCheck.disabled = true;
+        readyCheck.checked = currentReadyForReviewer;
+    }
 }
 
 async function loadProjects() {
@@ -111,15 +129,25 @@ function handleFilterChange() {
     let reviewer = document.getElementById("reviewerSelect").value;
     let sprint = document.getElementById("sprintSelect").value;
     let sync = document.getElementById("syncSelect").value;
+    let readyCheck = document.getElementById("readyForReviewerCheck");
 
     currentAuthor = author;
     currentReviewer = reviewer;
     currentSprint = sprint;
     currentSync = sync;
+    currentReadyForReviewer = readyCheck.checked;
 
-    filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync);
+    // Enable/disable checkbox based on reviewer selection
+    readyCheck.disabled = reviewer === "Show all";
+    if (reviewer === "Show all") {
+        readyCheck.checked = false;
+        currentReadyForReviewer = false;
+    }
+
+    filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync, currentReadyForReviewer);
     updateUrlWithFilters();
 }
+
 
 function toggleChildren(button) {
     const pullRequest = button.closest('.pull-request');
@@ -154,15 +182,14 @@ function populateFilters(pullRequests) {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
     const syncSelect = document.getElementById('syncSelect');
+    const readyCheck = document.getElementById('readyForReviewerCheck');
 
     // Extract unique authors and sort them alphabetically
     const authors = [...new Set(pullRequests.map(pr => pr.author.display_name))].sort();
-    // Generate the dropdown options
     authorSelect.innerHTML = `<option value="Show all">Show all</option>${authors.map(author => `<option value="${author}">${author}</option>`).join('')}`;
 
     // Extract unique reviewers and sort them alphabetically
     const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].sort();
-    // Generate the dropdown options
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
     // Generate sync filter options
@@ -177,11 +204,18 @@ function populateFilters(pullRequests) {
     reviewerSelect.addEventListener('change', handleFilterChange);
     syncSelect.addEventListener('change', handleFilterChange);
 
-    // Restore filter values from URL after populating options
+    // Update checkbox state
+    if (readyCheck) {
+        readyCheck.disabled = currentReviewer === "Show all";
+        readyCheck.checked = currentReadyForReviewer;
+    }
+
+    // Restore filter values and apply them
     restoreFiltersFromUrl();
-    // Apply filters if they were restored from URL
-    if (currentAuthor !== "Show all" || currentReviewer !== "Show all" || currentSprint !== "Show all" || currentSync !== "Show all") {
-        filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync);
+    if (currentAuthor !== "Show all" || currentReviewer !== "Show all" ||
+        currentSprint !== "Show all" || currentSync !== "Show all" ||
+        currentReadyForReviewer) {
+        filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync, currentReadyForReviewer);
     }
 }
 
@@ -756,6 +790,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeHelpModal();
     fetchAndDisplayVersion();
     initializePopovers();
+    initializeReadyForReviewerFilter();
 
     // Add event listener for the footer help button
     const footerHelpButton = document.querySelector('.footer-link#helpButton');

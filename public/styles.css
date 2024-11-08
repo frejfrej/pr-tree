@@ -90,6 +90,20 @@ h1 {
     box-shadow: 0 0 0 2px rgba(0, 82, 204, 0.1);
 }
 
+.filter-item input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.filter-item input[type="checkbox"]:disabled + label {
+    color: var(--border-color);
+    cursor: not-allowed;
+}
+
+.filter-item label {
+    cursor: pointer;
+    user-select: none;
+}
+
 select {
     padding: 8px;
     border: 1px solid var(--border-color);
