@@ -44,11 +44,19 @@
       <div class="filter-item">
         <div class="filter-label">
           <input type="checkbox" id="readyForReviewerCheck" disabled>
-          <label for="readyForReviewerCheck">Ready for reviewer</label>
+          <label for="readyForReviewerCheck">Ready for reviewer
+            <i class="fas fa-info-circle"
+             style="color: var(--primary-color); cursor: help;"
+             title="This filter will be reset when the page is reloaded"></i>
+          </label>
         </div>
       </div>
       <div class="filter-item">
-        <span class="filter-label">SYNC</span>
+        <span class="filter-label">SYNC
+            <i class="fas fa-info-circle"
+               style="color: var(--primary-color); cursor: help;"
+               title="This filter will be reset when the page is reloaded"></i>
+        </span>
         <select id="syncSelect">
           <option value="Show all">Show all</option>
         </select>
@@ -92,7 +100,7 @@
         <li><a href="#" id="helpButton" class="footer-link">
           <i class="fas fa-question-circle"></i> Help
         </a></li>
-        <li><a href="https://github.com/your-repo-link" target="_blank" class="footer-link">
+        <li><a href="https://github.com/frejfrej/pr-tree" target="_blank" class="footer-link">
           <i class="fab fa-github"></i> GitHub
         </a></li>
       </ul>

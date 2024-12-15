@@ -111,7 +111,7 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const startTime = Date.now();
         const jiraIssuesBatch = jiraIssues.slice(i, i + pageSize);
         const jql = `issueKey in (${jiraIssuesBatch.join(',')}) AND project in (${jiraProjects.join(',')})`;
-        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status`;
+        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority`;
 
         try {
             const response = await fetch(url, {

@@ -37,6 +37,11 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.7.1
+    * Fix Github link
+    * Add priority icon before issue key
+    * Remove status text after issue key (redundant with outline color)
+    * Add tooltip to alert users on filters which are not restored on reload
 * Version 1.7.0
     * Add SYNC filter
     * Add Ready for reviewer filters

@@ -772,3 +772,16 @@ select {
     display: inline-flex;
     align-items: center;
 }
+
+.jira-priority-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.jira-issues li {
+    display: flex;
+    align-items: center;
+}

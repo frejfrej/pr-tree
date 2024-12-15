@@ -526,14 +526,15 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         let resolvedIssuesAlert = '';
 
         jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
-            if (issueDetails.fields.status.name === "Resolved" || issueDetails.fields.status.name === "Closed") {
-                resolvedIssuesAlert += `<li><i class="fas fa-exclamation-triangle red" title="JIRA issue is resolved"></i> JIRA issue ${issueDetails.key} is resolved</li>`;
-            }
-            return `<li><a href="https://${jiraSiteName}.atlassian.net/browse/${issueDetails.key}" target="_blank" 
+            const priority = issueDetails.fields.priority;
+            const priorityHtml = priority ?
+                `<img src="${priority.iconUrl}" alt="${priority.name}" class="jira-priority-icon" title="${priority.name}">` : '';
+
+            return `<li>${priorityHtml}<a href="https://${jiraSiteName}.atlassian.net/browse/${issueDetails.key}" target="_blank"
                        data-issue-key="${issueDetails.key}" 
                        data-issue-summary="${issueDetails.fields.summary}"
                        class="jira-issue-link">
-                       ${issueDetails.key} (${issueDetails.fields.status.name})
+                       ${issueDetails.key}
                     </a></li>`;
         }).join('');
 
