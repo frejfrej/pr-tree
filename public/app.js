@@ -271,23 +271,40 @@ async function checkForUpdates() {
         return;
     }
     try {
+        // Show the refresh icon
+        const refreshIcon = document.getElementById('refreshIcon');
+        if (refreshIcon) {
+            if (refreshIcon.classList.contains('checking')) {
+                return; // we're already checking
+            }
+            refreshIcon.classList.add('checking');
+        }
+
         const newData = await fetchData();
-        if (newData && newData.dataHash !== currentApiResult.dataHash) {
+        if (!newData) return;
+
+        // Always update the refresh time
+        const lastRefreshElement = document.getElementById('lastRefreshTime');
+        if (lastRefreshElement && newData.lastRefreshTime) {
+            lastRefreshElement.textContent = formatRefreshTime(newData.lastRefreshTime);
+        }
+
+        // Update the full content only if data has changed
+        if (newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
             await renderEverything();
             updateAllConflictsCounters();
-        } else if (newData) {
-            // Update the last refresh time
-            const lastRefreshElement = document.getElementById('lastRefreshTime');
-            if (lastRefreshElement && newData.lastRefreshTime) {
-                lastRefreshElement.textContent = formatRefreshTime(newData.lastRefreshTime);
-            }
         }
     } catch (error) {
         console.error('Error checking for updates:', error);
+    } finally {
+        // Hide the refresh icon
+        const refreshIcon = document.getElementById('refreshIcon');
+        if (refreshIcon) {
+            refreshIcon.classList.remove('checking');
+        }
     }
 }
-
 function startPeriodicChecking(now) {
     if (reloadInterval) {
         clearInterval(reloadInterval);
@@ -295,7 +312,7 @@ function startPeriodicChecking(now) {
     if (now) {
         setTimeout(checkForUpdates, 0); // run now
     }
-    reloadInterval = setInterval(checkForUpdates, 60000); // Check every minute
+    reloadInterval = setInterval(checkForUpdates, 120000); // Check every minute
 }
 
 function stopPeriodicChecking() {
