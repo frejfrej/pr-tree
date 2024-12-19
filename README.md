@@ -2,8 +2,8 @@
 
 ## Features
 * Lists all projects from the configuration file in a dropdown selector
-* Upon selecting a project, lists all corresponding pull requests
-* Displays a link to related issues
+* Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
+* Displays a link to related issues with the corresponding status
 * Displays the status of the pull requests alongside the status of related issues
 * Provides initial warnings
     * If the pull request was approved by everyone
@@ -21,10 +21,13 @@
     * Enables direct linking to specific filtered views
 * Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
-    * Performed every minute
+    * Performed every 2 minutes
+    * Performed when the tab is selected in the browser
+    * Refresh date is visible at the top right of the page
+    * Displays an icon when it's checking for updates
 * Display SYNC in a badge onto each pull-requests that requires syncing with its parent branch
-* Online help displays the README.md file
 * Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
+* Online help displays the README.md file
 
 ## Installation
 * Clone this repository
