@@ -534,7 +534,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                        data-issue-key="${issueDetails.key}" 
                        data-issue-summary="${issueDetails.fields.summary}"
                        class="jira-issue-link">
-                       ${issueDetails.key}
+                       ${issueDetails.key} (${issueDetails.fields.status.name})
                     </a></li>`;
         }).join('');
 
