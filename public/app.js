@@ -352,7 +352,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
         const rootBranches = findRootBranches(pullRequests);
         for(const rootBranch of rootBranches) {
             const rootPullRequests = pullRequests.filter(pullRequest => rootBranch === pullRequest.destination.branch.name);
-            rootPullRequests.sort((a, b) => a.title.localeCompare(b.title));
+            // Sort by updated_on date in descending order (most recent first)
+            rootPullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
             const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
 
             // Get the branch URL using the first pull request's repository information
@@ -387,7 +388,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             `;
         }
     } else {
-        pullRequests.sort((a, b) => a.title.localeCompare(b.title));
+        // Sort by updated_on date in descending order (most recent first)
+        pullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
         pullRequests.forEach(pullRequest => {
             html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level+1);
         });
