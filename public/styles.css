@@ -30,9 +30,26 @@ body {
 
 h1 {
     color: var(--primary-color);
+}
+
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
     border-bottom: 2px solid var(--border-color);
     padding-bottom: 10px;
     margin-bottom: 20px;
+}
+
+.container h1 {
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.last-refresh {
+    color: #666;
+    font-size: 0.9em;
+    font-style: italic;
 }
 
 .filters-container {

@@ -219,6 +219,21 @@ function populateFilters(pullRequests) {
     }
 }
 
+// Function to format the refresh time
+function formatRefreshTime(isoString) {
+    const date = new Date(isoString);
+    const options = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    };
+    return `Last refreshed: ${date.toLocaleString(undefined, options)}`;
+}
+
 async function renderEverything() {
     if (!currentProject) {
         return;
@@ -230,6 +245,12 @@ async function renderEverything() {
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     updateAllConflictsCounters();
+
+    // Update the last refresh time
+    const lastRefreshElement = document.getElementById('lastRefreshTime');
+    if (lastRefreshElement && currentApiResult.lastRefreshTime) {
+        lastRefreshElement.textContent = formatRefreshTime(currentApiResult.lastRefreshTime);
+    }
 }
 
 async function fetchData() {
@@ -255,15 +276,24 @@ async function checkForUpdates() {
             console.log('Data has changed. Updating...');
             await renderEverything();
             updateAllConflictsCounters();
+        } else if (newData) {
+            // Update the last refresh time
+            const lastRefreshElement = document.getElementById('lastRefreshTime');
+            if (lastRefreshElement && newData.lastRefreshTime) {
+                lastRefreshElement.textContent = formatRefreshTime(newData.lastRefreshTime);
+            }
         }
     } catch (error) {
         console.error('Error checking for updates:', error);
     }
 }
 
-function startPeriodicChecking() {
+function startPeriodicChecking(now) {
     if (reloadInterval) {
         clearInterval(reloadInterval);
+    }
+    if (now) {
+        setTimeout(checkForUpdates, 0); // run now
     }
     reloadInterval = setInterval(checkForUpdates, 60000); // Check every minute
 }
@@ -281,7 +311,7 @@ document.addEventListener('visibilitychange', function() {
         stopPeriodicChecking();
     } else {
         if (currentProject) {
-            startPeriodicChecking();
+            startPeriodicChecking(true);
         }
     }
 });

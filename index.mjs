@@ -303,6 +303,7 @@ app.get('/api/pull-requests/:project', async (req, res) => {
         log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
 
         const response = {
+            lastRefreshTime: new Date().toISOString(),
             pullRequests: allPullRequests,
             jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
             jiraIssuesDetails: jiraIssuesDetails,
