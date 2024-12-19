@@ -37,6 +37,16 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.8.0
+    * Order pull requests by last modification date (most recent first)
+    * Display the date when data was last refreshed
+    * Refresh the data when the tab is selected
+    * Display a small loader when checking for updates
+    * Don't check for updates if it's already doing so
+    * Don't check for updates unless the tab is active
+    * Refresh every 2 minutes (instead of every minute)
+* Version 1.7.2
+    * Restore status text after issue key (users' feedback)
 * Version 1.7.1
     * Fix Github link
     * Add priority icon before issue key
