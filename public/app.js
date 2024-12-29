@@ -8,8 +8,9 @@ let currentSync = "Show all";
 let currentReadyForReviewer = false;
 let currentApiResult = null;
 let reloadInterval = 100;
+let pendingSyncChecks = 0;
+let syncCheckComplete = false;
 
-// Update URL parameters handling
 function updateUrlWithFilters() {
     const url = new URL(window.location);
 
@@ -192,12 +193,14 @@ function populateFilters(pullRequests) {
     const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].sort();
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
-    // Generate sync filter options
-    syncSelect.innerHTML = `
-        <option value="Show all">Show all</option>
-        <option value="requested">SYNC requested</option>
-        <option value="OK">SYNC ok</option>
-    `;
+    // Initialize sync check status
+    pendingSyncChecks = 0;
+    syncCheckComplete = false;
+    // Initial state of sync select
+    if (syncSelect) {
+        syncSelect.disabled = true;
+        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
+    }
 
     // Add event listeners
     authorSelect.addEventListener('change', handleFilterChange);
@@ -473,7 +476,6 @@ function populateSprintFilter(sprints) {
     }
 }
 
-
 async function updateConflictsCounter(pullRequestElement) {
     const conflictsCounter = pullRequestElement.querySelector('.conflicts-counter');
     if (!conflictsCounter) return;
@@ -485,25 +487,59 @@ async function updateConflictsCounter(pullRequestElement) {
         validSpec = spec;
     }
 
-    const result = validSpec ? await fetchConflicts(repoName, validSpec) : null;
+    // Only increment counter for valid specs
+    if (validSpec) {
+        pendingSyncChecks++;
+        updateSyncFilterState();
+    }
 
-    if (result) {
-        if (result.conflicts) {
-            conflictsCounter.innerHTML = `
-            <div class="conflicts-count" title="Conflicts found">
-                SYNC
-            </div>
+    try {
+        const result = validSpec ? await fetchConflicts(repoName, validSpec) : null;
+
+        if (result) {
+            if (result.conflicts) {
+                conflictsCounter.innerHTML = `
+                    <div class="conflicts-count" title="Conflicts found">
+                        SYNC
+                    </div>
+                `;
+            } else {
+                // display nothing if there are no conflicts
+                conflictsCounter.innerHTML = ``;
+            }
+        } else {
+            if (spec !== validSpec) {
+                conflictsCounter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
+            } else {
+                conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
+            }
+        }
+    } finally {
+        if (validSpec) {
+            pendingSyncChecks--;
+            updateSyncFilterState();
+        }
+    }
+}
+
+function updateSyncFilterState() {
+    const syncSelect = document.getElementById('syncSelect');
+    if (!syncSelect) return;
+
+    if (pendingSyncChecks === 0) {
+        // All sync checks are complete
+        syncCheckComplete = true;
+        syncSelect.disabled = false;
+        syncSelect.innerHTML = `
+            <option value="Show all">Show all</option>
+            <option value="requested">SYNC requested</option>
+            <option value="OK">SYNC ok</option>
         `;
-        } else {
-            // display nothing if there are no conflicts
-            conflictsCounter.innerHTML = ``;
-        }
+        console.log('Enabling sync filter - all checks complete');
     } else {
-        if (spec !== validSpec) {
-            conflictsCounter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
-        } else {
-            conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
-        }
+        // Sync checks are in progress
+        syncSelect.disabled = true;
+        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
     }
 }
 

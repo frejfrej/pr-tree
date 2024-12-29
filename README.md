@@ -40,6 +40,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.8.1
+    * Disable the SYNC filter until all filters are properly loaded
 * Version 1.8.0
     * Order pull requests by last modification date (most recent first)
     * Display the date when data was last refreshed
