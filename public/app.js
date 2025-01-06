@@ -532,7 +532,7 @@ function updateSyncFilterState() {
         syncSelect.disabled = false;
         syncSelect.innerHTML = `
             <option value="Show all">Show all</option>
-            <option value="requested">SYNC requested</option>
+            <option value="requested">SYNC required</option>
             <option value="OK">SYNC ok</option>
         `;
         console.log('Enabling sync filter - all checks complete');
