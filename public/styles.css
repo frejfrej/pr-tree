@@ -835,3 +835,27 @@ select {
     display: flex;
     align-items: center;
 }
+
+.commit-badge {
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.commit-badge-ahead {
+    background-color: var(--success-color);
+}
+
+.commit-badge-behind {
+    background-color: var(--error-color);
+}
+
+.commit-badge i {
+    font-size: 10px;
+}

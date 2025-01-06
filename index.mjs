@@ -14,6 +14,8 @@ const port = process.env.PORT || 3000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
+const bbAuth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
 
 // Read package.json to get the version
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
@@ -21,6 +23,9 @@ const version = packageJson.version;
 const releaseDate = packageJson.releaseDate || new Date().toISOString().split('T')[0]; // Use current date if not specified
 const author = packageJson.author;
 const license = packageJson.license;
+
+// last sent reponse is cached for performance
+let lastResponse = null;
 
 // Serve all files in the public folder
 app.use(express.static('public'));
@@ -56,14 +61,37 @@ app.use((req, res, next) => {
     next();
 });
 
+async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
+    try {
+        const compareUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=50`;
+        const compareResponse = await fetch(compareUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${bbAuth}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (compareResponse.ok) {
+            const compareData = await compareResponse.json();
+            return compareData.values.length;
+        } else {
+            log(`Failed to fetch commits ahead for ${sourceBranch} compared to ${destinationBranch} in ${repoName}`, errorLogStream);
+            return null;
+        }
+    } catch (error) {
+        log(`Error fetching commits ahead: ${error.message}`, errorLogStream);
+        return null;
+    }
+}
+
 async function fetchPullRequests(url, pullRequests) {
-    const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
     const startTime = Date.now();
     try {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': `Basic ${auth}`,
+                'Authorization': `Basic ${bbAuth}`,
                 'Accept': 'application/json'
             }
         });
@@ -103,7 +131,6 @@ function createJiraIssuesMap(pullRequests, jiraRegex) {
 
 async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
     const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search`;
-    const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
 
     let pageSize = 50;
     const jiraIssuesDetails = [];
@@ -211,7 +238,6 @@ async function fetchJiraSprints(jiraProjects) {
 }
 
 async function fetchSprintIssues(sprints, jiraProjects) {
-    const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
     const sprintIssues = {};
 
     for (const sprint of sprints) {
@@ -302,17 +328,50 @@ app.get('/api/pull-requests/:project', async (req, res) => {
         const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
         log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
 
-        const response = {
-            lastRefreshTime: new Date().toISOString(),
-            pullRequests: allPullRequests,
-            jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
-            jiraIssuesDetails: jiraIssuesDetails,
-            pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
-            jiraSiteName: config.jira.siteName,
-            sprints: sprints,
-            sprintIssues: sprintIssues,
-            dataHash: calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues })
-        };
+        // calculate dataHash and determine if the data is new based on the last saved response
+        let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues })
+
+        let response;
+        if (lastResponse?.dataHash !== dataHash) {
+            // if the hash is new, retrieve ahead and behind commit counts
+            // Fetch commit differences for each pull request
+            const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
+                const commitsAhead = await fetchCommitsDiff(
+                    pr.source.repository.name,
+                    pr.source.branch.name,
+                    pr.destination.branch.name
+                );
+                const commitsBehind = await fetchCommitsDiff(
+                    pr.source.repository.name,
+                    pr.destination.branch.name,
+                    pr.source.branch.name
+                );
+                return {
+                    ...pr,
+                    commitsAhead: commitsAhead,
+                    commitsBehind: commitsBehind
+                };
+            }));
+
+            response = {
+                lastRefreshTime: new Date().toISOString(),
+                pullRequests: pullRequestsWithCommits,
+                jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
+                jiraIssuesDetails: jiraIssuesDetails,
+                pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
+                jiraSiteName: config.jira.siteName,
+                sprints: sprints,
+                sprintIssues: sprintIssues,
+                dataHash: dataHash
+            };
+
+            lastResponse = response;
+
+        } else {
+            // response is the same, just update the lastRefreshTime
+            response = lastResponse;
+            response.lastRefreshTime = new Date().toISOString();
+        }
 
         res.json(response);
 

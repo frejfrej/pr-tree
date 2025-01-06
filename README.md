@@ -14,17 +14,24 @@
 * Provides a reviewer filter
     * Filters pull requests of selected reviewer
     * Highlights in red those where an effort is expected
+* Provides a ready for reviewer filter
+    * Filters In Review pull requests which reviewer has not already approved
 * Allows simultaneous filtering by both author and reviewer
 * Maintains filter selections in URL
     * All filter selections (project, sprint, author, reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
+* Displays Ahead (green) and Behind (red) commit counts
 * Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
     * Performed every 2 minutes
     * Performed when the tab is selected in the browser
     * Refresh date is visible at the top right of the page
     * Displays an icon when it's checking for updates
+* Pseudo-cache
+    * Bitbucket PR and Jira issues data are retrieved server-side
+    * A hash is computed based on that data
+    * Ahead and Behind commit counts are only retrieved when the hash is updated to avoid issues with the Bitbucket API
 * Display SYNC in a badge onto each pull-requests that requires syncing with its parent branch
 * Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
 * Online help displays the README.md file
@@ -40,6 +47,9 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.9.0
+    * Compute Ahead (green) and Behind (red) commit counts
+    * Implement a pseudo-cache to only get those new data when something else has changed to avoid HTTP 429 from Bitbucket
 * Version 1.8.1
     * Disable the SYNC filter until all filters are properly loaded
 * Version 1.8.0
