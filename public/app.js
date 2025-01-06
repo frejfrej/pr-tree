@@ -692,12 +692,12 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                         ${renderParticipant(pullRequest.author, "author")} 
                         <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
                         ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails}
-                        ${pullRequest.commitsBehind !== null ?
+                        ${pullRequest.commitsBehind ?
                             `<span class="commit-badge commit-badge-behind" title="Number of commits behind destination branch">
                                 <i class="fas fa-code-branch"></i>-${pullRequest.commitsBehind}
                             </span>`
                             : ''}
-                        ${pullRequest.commitsAhead !== null ?
+                        ${pullRequest.commitsAhead ?
                             `<span class="commit-badge commit-badge-ahead" title="Number of commits ahead of destination branch">
                                 <i class="fas fa-code-branch"></i>+${pullRequest.commitsAhead}
                             </span>`
