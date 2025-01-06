@@ -63,7 +63,7 @@ app.use((req, res, next) => {
 
 async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
     try {
-        const compareUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=50`;
+        const compareUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=100`;
         const compareResponse = await fetch(compareUrl, {
             method: 'GET',
             headers: {
@@ -76,7 +76,7 @@ async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
             const compareData = await compareResponse.json();
             return compareData.values.length;
         } else {
-            log(`Failed to fetch commits ahead for ${sourceBranch} compared to ${destinationBranch} in ${repoName}`, errorLogStream);
+            log(`Failed to fetch commits ahead for ${sourceBranch} compared to ${destinationBranch} in ${repoName} (HTTP ${compareResponse.status} ${compareResponse.statusText}`, errorLogStream);
             return null;
         }
     } catch (error) {

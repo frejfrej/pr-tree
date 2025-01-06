@@ -692,14 +692,14 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                         ${renderParticipant(pullRequest.author, "author")} 
                         <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
                         ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails}
-                        ${pullRequest.commitsBehind ?
+                        ${pullRequest.commitsBehind !== null && pullRequest.commitsBehind !== undefined ?
                             `<span class="commit-badge commit-badge-behind" title="Number of commits behind destination branch">
-                                <i class="fas fa-code-branch"></i>-${pullRequest.commitsBehind}
+                                <i class="fas fa-code-branch"></i>${pullRequest.commitsBehind === 100 ? 'at least ': ''}-${pullRequest.commitsBehind}
                             </span>`
                             : ''}
                         ${pullRequest.commitsAhead ?
                             `<span class="commit-badge commit-badge-ahead" title="Number of commits ahead of destination branch">
-                                <i class="fas fa-code-branch"></i>+${pullRequest.commitsAhead}
+                                <i class="fas fa-code-branch"></i>${pullRequest.commitsAhead === 100 ? 'at least ': ''}+${pullRequest.commitsAhead}
                             </span>`
                             : ''}
                     </div>
