@@ -217,18 +217,24 @@ select {
     text-decoration: underline;
 }
 
+.participants {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .image-container {
     display: inline-flex;
     align-items: center;
-    margin-right: 5px;
     position: relative;
+    height: 24px; /* Match the height of the avatar */
 }
 
 .image-container img {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    margin-right: 5px;
 }
 
 .icon {
@@ -837,7 +843,7 @@ select {
 }
 
 .commit-badge {
-    color: white;
+    color: var(--text-color);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 12px;
@@ -846,16 +852,28 @@ select {
     align-items: center;
     gap: 4px;
     margin-left: 8px;
+    border-width: 1px;
+    border-style: solid;
+    background-color: transparent;
 }
 
+/* Ahead commits badge */
 .commit-badge-ahead {
-    background-color: var(--success-color);
+    border-color: var(--success-color);
+    color: var(--success-color);
 }
 
+/* Behind commits badge */
 .commit-badge-behind {
-    background-color: var(--error-color);
+    border-color: var(--error-color);
+    color: var(--error-color);
 }
 
 .commit-badge i {
     font-size: 10px;
+}
+
+.created-date {
+    display: inline-flex;
+    align-items: center;
 }
