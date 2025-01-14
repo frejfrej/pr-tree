@@ -648,17 +648,22 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </button>
     ` : '';
 
-    const childCounterHtml = (isRootPullRequest || hasChildren) ? `
-        <div class="child-counter ${isRootPullRequest ? 'visible' : ''}" title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
-            ${descendantCount}
-        </div>
-    ` : '';
-
-    // we don't really care if a commit hash is missing here => the server will complain later
+    // Combine both counters in a container
     const spec = pullRequest.destination.commit?.hash + '..' + pullRequest.source.commit?.hash;
-    const conflictsCounter = `
-        <div class="conflicts-counter" data-id="conflicts_${pullRequest.id}" data-repo-name="${pullRequest.source.repository.name}" data-spec="${spec}">
-            <div class="conflicts-spinner"></div>
+    const countersHtml = `
+        <div class="counters-container">
+            ${(isRootPullRequest || hasChildren) ? `
+                <div class="child-counter ${isRootPullRequest ? 'visible' : ''}" 
+                     title="${descendantCount} descendant pull request${descendantCount !== 1 ? 's' : ''}">
+                    ${descendantCount}
+                </div>
+            ` : ''}
+            <div class="conflicts-counter" 
+                 data-id="conflicts_${pullRequest.id}" 
+                 data-repo-name="${pullRequest.source.repository.name}" 
+                 data-spec="${spec}">
+                <div class="conflicts-spinner"></div>
+            </div>
         </div>
     `;
 
@@ -667,7 +672,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
 
     let html = `
         <div class="pull-request ${statusClass}" data-id="${pullRequest.id}">
-            ${childCounterHtml}${conflictsCounter}
+            ${countersHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">
                     <div class="pull-request-info">

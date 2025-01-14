@@ -175,14 +175,14 @@ select {
 }
 
 .pull-request-content {
-    display: flex;
-    flex-direction: column;
+    padding-right: 70px; /* Make space for the conflicts counter */
 }
 
 .pull-request-main {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    width: 100%;
 }
 
 .pull-request-info {
@@ -291,10 +291,17 @@ select {
     margin-bottom: 10px;
 }
 
-.child-counter {
+.counters-container {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.child-counter {
     background-color: var(--primary-color);
     color: white;
     font-size: 12px;
@@ -305,7 +312,6 @@ select {
     display: none;
     justify-content: center;
     align-items: center;
-    cursor: default;
     padding: 0 5px;
 }
 
@@ -456,17 +462,9 @@ select {
 }
 
 .conflicts-counter {
-    position: absolute;
-    top: 35px;
-    right: 10px;
-    min-width: 20px;
-    height: 20px;
-    border-radius: 10px;
     display: flex;
-    justify-content: center;
     align-items: center;
-    cursor: default;
-    padding: 0 5px;
+    justify-content: center;
 }
 
 .conflicts-count {
@@ -474,13 +472,11 @@ select {
     color: white;
     font-size: 12px;
     font-weight: bold;
-    min-width: 20px;
-    height: 20px;
-    border-radius: 10px;
+    padding: 2px 8px;
+    border-radius: 12px;
     display: flex;
-    justify-content: center;
     align-items: center;
-    padding: 0 5px;
+    justify-content: center;
 }
 
 .conflicts-spinner {

@@ -47,6 +47,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.9.1
+    * Minor aesthetics improvements
 * Version 1.9.0
     * Compute Ahead (green) and Behind (red) commit counts
     * Implement a pseudo-cache to only get those new data when something else has changed to avoid HTTP 429 from Bitbucket
