@@ -237,6 +237,52 @@ function formatRefreshTime(isoString) {
     return `Last refreshed: ${date.toLocaleString(undefined, options)}`;
 }
 
+function renderOrphanedIssues(issues) {
+    if (!issues || issues.length === 0) {
+        return '';
+    }
+
+    const issuesHtml = issues.map(issue => `
+        <div class="orphaned-issue">
+            <div class="orphaned-issue-header">
+                ${issue.fields.priority ? `
+                    <img 
+                        src="${issue.fields.priority.iconUrl}" 
+                        alt="${issue.fields.priority.name}"
+                        class="orphaned-issue-priority"
+                        title="${issue.fields.priority.name}"
+                    />
+                ` : ''}
+                <a 
+                    href="https://${issue.jiraSiteName}.atlassian.net/browse/${issue.key}"
+                    target="_blank"
+                    class="orphaned-issue-key"
+                >
+                    ${issue.key}
+                </a>
+            </div>
+            <p class="orphaned-issue-summary">${issue.fields.summary}</p>
+            <div class="orphaned-issue-status">
+                Status: ${issue.fields.status.name}
+            </div>
+        </div>
+    `).join('');
+
+    return `
+        <div class="orphaned-issues">
+            <div class="orphaned-issues-header">
+                <h2 class="orphaned-issues-title">
+                    <i class="fas fa-exclamation-circle"></i>
+                    JIRA Issues In Review without Pull Requests (${issues.length})
+                </h2>
+            </div>
+            <div class="orphaned-issues-content">
+                ${issuesHtml}
+            </div>
+        </div>
+    `;
+}
+
 async function renderEverything() {
     if (!currentProject) {
         return;
@@ -244,7 +290,22 @@ async function renderEverything() {
     currentApiResult = await fetchData();
     initializeFilter(currentApiResult);
     const container = document.getElementById('pull-requests');
-    container.innerHTML = renderRepositories(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap, currentApiResult.jiraIssuesDetails, new Map(Object.entries(currentApiResult.pullRequestsByDestination)), currentApiResult.jiraSiteName);
+
+    // Create main content
+    const mainContent = renderRepositories(
+        currentApiResult.pullRequests,
+        currentApiResult.jiraIssuesMap,
+        currentApiResult.jiraIssuesDetails,
+        new Map(Object.entries(currentApiResult.pullRequestsByDestination)),
+        currentApiResult.jiraSiteName
+    );
+
+    // Add orphaned issues section
+    const orphanedIssuesHtml = renderOrphanedIssues(currentApiResult.orphanedIssues);
+
+    // Combine content
+    container.innerHTML = mainContent + orphanedIssuesHtml;
+
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     updateAllConflictsCounters();

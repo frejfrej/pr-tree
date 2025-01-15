@@ -47,6 +47,13 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.10.0
+    * Added display of JIRA issues that are In Review but don't have associated pull requests
+    * Issues are displayed in a separate section below the pull requests
+    * Each issue shows its priority, key, summary, and status
+    * Issues are sorted by priority and last update time
+    * Direct links to JIRA are provided for each issue
+    * The section is only visible when there are orphaned issues to display
 * Version 1.9.1
     * Minor aesthetics improvements
 * Version 1.9.0

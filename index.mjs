@@ -61,6 +61,47 @@ app.use((req, res, next) => {
     next();
 });
 
+async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
+    const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search`;
+    const existingIssuesSet = new Set(existingIssues);
+    let orphanedIssues = [];
+
+    try {
+        // Create JQL to find all issues in Review status that aren't in our existing issues
+        const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
+        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,updated`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${jiraAuth}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // Filter out issues that already have pull requests
+            orphanedIssues = data.issues.filter(issue => !existingIssuesSet.has(issue.key));
+
+            // Add Jira site name to each issue for URL construction in frontend
+            orphanedIssues = orphanedIssues.map(issue => ({
+                ...issue,
+                jiraSiteName: config.jira.siteName
+            }));
+
+            log(`Found ${orphanedIssues.length} orphaned issues in review status`, accessLogStream);
+        } else {
+            throw new Error(`Request failed with status code ${response.status}`);
+        }
+    } catch (error) {
+        log(`Error fetching orphaned issues: ${error.message}`, errorLogStream);
+        throw error;
+    }
+
+    return orphanedIssues;
+}
+
 async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
     try {
         const compareUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=100`;
@@ -186,7 +227,8 @@ function calculateHash(data) {
         jiraIssuesMap: data.jiraIssuesMap,
         jiraIssuesDetails: data.jiraIssuesDetails,
         sprints: data.sprints,
-        sprintIssues: data.sprintIssues
+        sprintIssues: data.sprintIssues,
+        orphanedIssues: data.orphanedIssues
     }));
     return hash.digest('hex');
 }
@@ -328,8 +370,14 @@ app.get('/api/pull-requests/:project', async (req, res) => {
         const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
         log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
 
+        // retrieve orphaned issues
+        const orphanedIssues = await fetchInReviewIssuesWithoutPR(
+            projectConfig.jiraProjects,
+            allJiraIssues
+        );
+
         // calculate dataHash and determine if the data is new based on the last saved response
-        let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues })
+        let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
 
         let response;
         if (lastResponse?.dataHash !== dataHash) {
@@ -362,6 +410,7 @@ app.get('/api/pull-requests/:project', async (req, res) => {
                 jiraSiteName: config.jira.siteName,
                 sprints: sprints,
                 sprintIssues: sprintIssues,
+                orphanedIssues: orphanedIssues,
                 dataHash: dataHash
             };
 

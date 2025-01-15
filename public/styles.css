@@ -873,3 +873,80 @@ select {
     display: inline-flex;
     align-items: center;
 }
+
+.orphaned-issues {
+    margin-top: 30px;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.orphaned-issues-header {
+    background-color: #FEF2F2;
+    border-bottom: 1px solid #FEE2E2;
+    padding: 12px 16px;
+}
+
+.orphaned-issues-title {
+    color: #B91C1C;
+    font-size: 1.125rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.orphaned-issues-content {
+    padding: 16px;
+}
+
+.orphaned-issue {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+    transition: background-color 0.2s ease;
+}
+
+.orphaned-issue:last-child {
+    margin-bottom: 0;
+}
+
+.orphaned-issue:hover {
+    background-color: var(--background-color);
+}
+
+.orphaned-issue-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.orphaned-issue-priority {
+    width: 16px;
+    height: 16px;
+}
+
+.orphaned-issue-key {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.orphaned-issue-key:hover {
+    text-decoration: underline;
+}
+
+.orphaned-issue-summary {
+    color: var(--text-color);
+    margin: 4px 0;
+}
+
+.orphaned-issue-status {
+    color: #6B7280;
+    font-size: 0.875rem;
+    margin-top: 8px;
+}
