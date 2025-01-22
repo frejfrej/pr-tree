@@ -47,6 +47,13 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.11.0 
+    * Added server-side caching to improve performance and reduce API calls
+        * Implements in-memory caching with configurable TTL 
+        * Caches project data, conflicts data, and sprint information 
+        * Provides cache statistics endpoint for monitoring 
+        * Automatically cleans up expired cache entries
+    * Reduced load on Bitbucket and Jira APIs
 * Version 1.10.0
     * Added display of JIRA issues that are In Review but don't have associated pull requests
     * Issues are displayed in a separate section below the pull requests

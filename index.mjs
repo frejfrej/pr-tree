@@ -7,6 +7,14 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import fs from 'fs';
 
+import {
+    getCachedProjects,
+    getCachedProjectData,
+    getCachedConflicts,
+    getCachedSprints,
+    getCacheStats
+} from './cache.mjs';
+
 dotenv.config();
 
 const app = express();
@@ -325,136 +333,156 @@ async function fetchSprintIssues(sprints, jiraProjects) {
     return sprintIssues;
 }
 
-app.get('/api/projects', (req, res) => {
-    const projects = Object.keys(config.projects).sort();
-    log(`Retrieved ${projects.length} projects`, performanceLogStream);
-    res.json(projects);
+app.get('/api/cache/stats', (req, res) => {
+    const stats = getCacheStats();
+    res.json(stats);
+});
+
+app.get('/api/projects', async (req, res) => {
+    try {
+        const projects = await getCachedProjects(() => {
+            const projects = Object.keys(config.projects).sort();
+            log(`Retrieved ${projects.length} projects`, performanceLogStream);
+            return projects;
+        });
+        res.json(projects);
+    } catch (error) {
+        log(`Error retrieving projects: ${error.message}`, errorLogStream);
+        res.status(500).send('Internal Server Error');
+    }
 });
 
 app.get('/api/pull-requests/:project', async (req, res) => {
     const startTime = Date.now();
+    const projectName = req.params.project;
+
     try {
-        const projectName = req.params.project;
-        const projectConfig = config.projects[projectName];
+        const projectData = await getCachedProjectData(projectName, async () => {
+            // Existing data fetching logic remains the same
+            const projectConfig = config.projects[projectName];
+            if (!projectConfig) {
+                throw new Error('Project not found');
+            }
 
-        if (!projectConfig) {
-            log(`Project not found: ${projectName}`, errorLogStream);
-            return res.status(404).send('Project not found');
-        }
+            log(`Processing pull requests for project: ${projectName}`, accessLogStream);
 
-        log(`Processing pull requests for project: ${projectName}`, accessLogStream);
+            let allPullRequests = [];
+            let pullRequestsByDestination = new Map();
 
-        let allPullRequests = [];
-        let pullRequestsByDestination = new Map();
+            for (const repoName of projectConfig.repositories) {
+                const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
+                let pullRequests = [];
+                await fetchPullRequests(baseUrl, pullRequests);
+                allPullRequests.push(...pullRequests);
+                log(`Retrieved ${pullRequests.length} pull requests for repository: ${repoName}`, accessLogStream);
+            }
 
-        for (const repoName of projectConfig.repositories) {
-            const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
-            let pullRequests = [];
-            await fetchPullRequests(baseUrl, pullRequests);
-            allPullRequests.push(...pullRequests);
-            log(`Retrieved ${pullRequests.length} pull requests for repository: ${repoName}`, accessLogStream);
-        }
+            fillPullRequestsMap(allPullRequests, pullRequestsByDestination);
+            const jiraIssuesMap = createJiraIssuesMap(allPullRequests, projectConfig.jiraRegex);
+            const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
+            log(`Total JIRA issues found: ${allJiraIssues.length}`, accessLogStream);
 
-        fillPullRequestsMap(allPullRequests, pullRequestsByDestination);
-        const jiraIssuesMap = createJiraIssuesMap(allPullRequests, projectConfig.jiraRegex);
-        const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
-        log(`Total JIRA issues found: ${allJiraIssues.length}`, accessLogStream);
+            const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
 
-        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
+            // Fetch sprints
+            const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
+            log(`Retrieved ${sprints.length} sprints for project: ${projectName}`, accessLogStream);
 
-        // Fetch sprints
-        const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
-        log(`Retrieved ${sprints.length} sprints for project: ${projectName}`, accessLogStream);
+            // Fetch sprint issues
+            const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
+            log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
 
-        // Fetch sprint issues
-        const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
-        log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
+            // retrieve orphaned issues
+            const orphanedIssues = await fetchInReviewIssuesWithoutPR(
+                projectConfig.jiraProjects,
+                allJiraIssues
+            );
 
-        // retrieve orphaned issues
-        const orphanedIssues = await fetchInReviewIssuesWithoutPR(
-            projectConfig.jiraProjects,
-            allJiraIssues
-        );
+            // calculate dataHash and determine if the data is new based on the last saved response
+            let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
 
-        // calculate dataHash and determine if the data is new based on the last saved response
-        let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
+            let response;
+            if (lastResponse?.dataHash !== dataHash) {
+                // if the hash is new, retrieve ahead and behind commit counts
+                // Fetch commit differences for each pull request
+                const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
+                    const commitsAhead = await fetchCommitsDiff(
+                        pr.source.repository.name,
+                        pr.source.branch.name,
+                        pr.destination.branch.name
+                    );
+                    const commitsBehind = await fetchCommitsDiff(
+                        pr.source.repository.name,
+                        pr.destination.branch.name,
+                        pr.source.branch.name
+                    );
+                    return {
+                        ...pr,
+                        commitsAhead: commitsAhead,
+                        commitsBehind: commitsBehind
+                    };
+                }));
 
-        let response;
-        if (lastResponse?.dataHash !== dataHash) {
-            // if the hash is new, retrieve ahead and behind commit counts
-            // Fetch commit differences for each pull request
-            const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
-                const commitsAhead = await fetchCommitsDiff(
-                    pr.source.repository.name,
-                    pr.source.branch.name,
-                    pr.destination.branch.name
-                );
-                const commitsBehind = await fetchCommitsDiff(
-                    pr.source.repository.name,
-                    pr.destination.branch.name,
-                    pr.source.branch.name
-                );
-                return {
-                    ...pr,
-                    commitsAhead: commitsAhead,
-                    commitsBehind: commitsBehind
+                response = {
+                    lastRefreshTime: new Date().toISOString(),
+                    pullRequests: pullRequestsWithCommits,
+                    jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
+                    jiraIssuesDetails: jiraIssuesDetails,
+                    pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
+                    jiraSiteName: config.jira.siteName,
+                    sprints: sprints,
+                    sprintIssues: sprintIssues,
+                    orphanedIssues: orphanedIssues,
+                    dataHash: dataHash
                 };
-            }));
 
-            response = {
-                lastRefreshTime: new Date().toISOString(),
-                pullRequests: pullRequestsWithCommits,
-                jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
-                jiraIssuesDetails: jiraIssuesDetails,
-                pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
-                jiraSiteName: config.jira.siteName,
-                sprints: sprints,
-                sprintIssues: sprintIssues,
-                orphanedIssues: orphanedIssues,
-                dataHash: dataHash
-            };
+                lastResponse = response;
 
-            lastResponse = response;
+            } else {
+                // response is the same, just update the lastRefreshTime
+                response = lastResponse;
+                response.lastRefreshTime = new Date().toISOString();
+            }
 
-        } else {
-            // response is the same, just update the lastRefreshTime
-            response = lastResponse;
-            response.lastRefreshTime = new Date().toISOString();
-        }
+            return response;
+        });
 
-        res.json(response);
+        res.json(projectData);
 
         const duration = Date.now() - startTime;
         log(`Completed processing for project ${projectName} - Duration: ${duration}ms`, performanceLogStream);
-        log(`Response hash: ${response.dataHash}`, performanceLogStream);
     } catch (error) {
         log(`Error processing pull requests: ${error.message}`, errorLogStream);
         res.status(500).send('Internal Server Error');
     }
 });
 
-// Add this new endpoint
 app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
     const { repoName, spec } = req.params;
-    const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diff/${spec}`;
-    const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
 
     try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Accept': 'application/json',
-            }
-        });
+        const conflictsData = await getCachedConflicts(repoName, spec, async () => {
+            const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diff/${spec}`;
+            const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
 
-        if (response.ok) {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${auth}`,
+                    'Accept': 'application/json',
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Request failed with status code ${response.status}`);
+            }
+
             const data = await response.text();
             const conflictsCount = countOccurrences(data, '+<<<<<<< destination:');
-            res.json({ conflicts: conflictsCount > 0 });
-        } else {
-            throw new Error(`Request failed with status code ${response.status}`);
-        }
+            return { conflicts: conflictsCount > 0 };
+        });
+
+        res.json(conflictsData);
     } catch (error) {
         log(`Error fetching conflicts for commits ${spec}: ${error.message}`, errorLogStream);
         res.status(500).json({ error: 'Internal Server Error' });
