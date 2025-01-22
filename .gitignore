@@ -54,3 +54,6 @@ Thumbs.db
 
 # temp folder
 sync/
+
+# files to avoid commiting
+Bitbucket-pr-tree*.gif
