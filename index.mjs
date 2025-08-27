@@ -70,7 +70,7 @@ app.use((req, res, next) => {
 });
 
 async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
-    const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search`;
+    const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/3/search/jql`;
     const existingIssuesSet = new Set(existingIssues);
     let orphanedIssues = [];
 
@@ -179,7 +179,7 @@ function createJiraIssuesMap(pullRequests, jiraRegex) {
 }
 
 async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
-    const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search`;
+    const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/3/search/jql`;
 
     let pageSize = 50;
     const jiraIssuesDetails = [];
@@ -298,7 +298,7 @@ async function fetchSprintIssues(sprints, jiraProjects) {
         sprintIssues[sprint.id] = [];
 
         do {
-            const url = `https://${config.jira.siteName}.atlassian.net/rest/api/2/search?jql=${encodeURIComponent(jql)}&fields=key&startAt=${startAt}&maxResults=${maxResults}`;
+            const url = `https://${config.jira.siteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=key&startAt=${startAt}&maxResults=${maxResults}`;
 
             try {
                 const startTime = Date.now();
