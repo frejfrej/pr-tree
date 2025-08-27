@@ -47,6 +47,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.11.1
+    * Switched to the new JQL API after deprecation removal of the former API
 * Version 1.11.0 
     * Added server-side caching to improve performance and reduce API calls
         * Implements in-memory caching with configurable TTL 
