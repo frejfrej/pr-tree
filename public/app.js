@@ -55,8 +55,22 @@ function restoreFiltersFromUrl() {
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
-    if (authorSelect) authorSelect.value = currentAuthor;
-    if (reviewerSelect) reviewerSelect.value = currentReviewer;
+    if (authorSelect) {
+        authorSelect.value = currentAuthor;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (authorSelect.value !== currentAuthor) {
+            currentAuthor = "Show all";
+            authorSelect.value = "Show all";
+        }
+    }
+    if (reviewerSelect) {
+        reviewerSelect.value = currentReviewer;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (reviewerSelect.value !== currentReviewer) {
+            currentReviewer = "Show all";
+            reviewerSelect.value = "Show all";
+        }
+    }
     if (sprintSelect) sprintSelect.value = currentSprint;
     if (fixVersionSelect) fixVersionSelect.value = currentFixVersion;
     if (syncSelect) syncSelect.value = currentSync;
@@ -319,6 +333,9 @@ async function renderEverything() {
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
     updateAllConflictsCounters();
 
+    // Update URL to reflect current filter state (clears any invalid filter values)
+    updateUrlWithFilters();
+
     // Update the last refresh time
     const lastRefreshElement = document.getElementById('lastRefreshTime');
     if (lastRefreshElement && currentApiResult.lastRefreshTime) {
@@ -543,6 +560,11 @@ function populateSprintFilter(sprints) {
     // Restore sprint value from URL after populating options
     if (currentSprint !== "Show all") {
         sprintSelect.value = currentSprint;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (sprintSelect.value !== currentSprint) {
+            currentSprint = "Show all";
+            sprintSelect.value = "Show all";
+        }
     }
 }
 
@@ -571,6 +593,11 @@ function populateFixVersionFilter(jiraIssuesDetails) {
     // Restore fixVersion value from URL after populating options
     if (currentFixVersion !== "Show all") {
         fixVersionSelect.value = currentFixVersion;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (fixVersionSelect.value !== currentFixVersion) {
+            currentFixVersion = "Show all";
+            fixVersionSelect.value = "Show all";
+        }
     }
 }
 
