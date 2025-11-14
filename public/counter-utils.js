@@ -1,31 +1,31 @@
 /**
  * Updates all pull request counters in the UI to show filtered/total counts
- * @param {string} author - Selected author filter
+ * @param {string} assignee - Selected assignee filter
  * @param {string} reviewer - Selected reviewer filter
  * @param {string} sprint - Selected sprint filter
  */
-export function updateAllCounters(author, reviewer, sprint) {
+export function updateAllCounters(assignee, reviewer, sprint) {
     // Update repository counters
     const repositories = document.querySelectorAll('.repository');
-    repositories.forEach(repo => updateRepositoryCounter(repo, author, reviewer, sprint));
+    repositories.forEach(repo => updateRepositoryCounter(repo, assignee, reviewer, sprint));
 
     // Update branch counters
     const branches = document.querySelectorAll('.root-branch');
-    branches.forEach(branch => updateBranchCounter(branch, author, reviewer, sprint));
+    branches.forEach(branch => updateBranchCounter(branch, assignee, reviewer, sprint));
 
     // Update pull request child counters
     const pullRequests = document.querySelectorAll('.pull-request');
-    pullRequests.forEach(pr => updatePullRequestCounter(pr, author, reviewer, sprint));
+    pullRequests.forEach(pr => updatePullRequestCounter(pr, assignee, reviewer, sprint));
 }
 
 /**
  * Updates the counter for a repository
  * @param {Element} repository - Repository DOM element
- * @param {string} author - Selected author filter
+ * @param {string} assignee - Selected assignee filter
  * @param {string} reviewer - Selected reviewer filter
  * @param {string} sprint - Selected sprint filter
  */
-function updateRepositoryCounter(repository, author, reviewer, sprint) {
+function updateRepositoryCounter(repository, assignee, reviewer, sprint) {
     const counter = repository.querySelector('.repo-pr-counter');
     if (!counter) return;
 
@@ -41,11 +41,11 @@ function updateRepositoryCounter(repository, author, reviewer, sprint) {
 /**
  * Updates the counter for a branch
  * @param {Element} branch - Branch DOM element
- * @param {string} author - Selected author filter
+ * @param {string} assignee - Selected assignee filter
  * @param {string} reviewer - Selected reviewer filter
  * @param {string} sprint - Selected sprint filter
  */
-function updateBranchCounter(branch, author, reviewer, sprint) {
+function updateBranchCounter(branch, assignee, reviewer, sprint) {
     const counter = branch.querySelector('.branch-pr-counter');
     if (!counter) return;
 
@@ -61,11 +61,11 @@ function updateBranchCounter(branch, author, reviewer, sprint) {
 /**
  * Updates the counter for a pull request's children
  * @param {Element} pullRequest - Pull request DOM element
- * @param {string} author - Selected author filter
+ * @param {string} assignee - Selected assignee filter
  * @param {string} reviewer - Selected reviewer filter
  * @param {string} sprint - Selected sprint filter
  */
-function updatePullRequestCounter(pullRequest, author, reviewer, sprint) {
+function updatePullRequestCounter(pullRequest, assignee, reviewer, sprint) {
     const counter = pullRequest.querySelector('.child-counter');
     if (!counter || !counter.classList.contains('visible')) return;
 

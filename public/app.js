@@ -3,7 +3,7 @@ import { initializeFilter, filterBranches } from './app-filter.js';
 let currentProject = null;
 let currentSprint = "Show all";
 let currentFixVersion = "Show all";
-let currentAuthor = "Show all";
+let currentAssignee = "Show all";
 let currentReviewer = "Show all";
 let currentSync = "Show all";
 let currentReadyForReviewer = false;
@@ -17,7 +17,7 @@ function updateUrlWithFilters() {
 
     // Only set parameters if they're different from default
     if (currentProject) url.searchParams.set('project', currentProject);
-    if (currentAuthor !== "Show all") url.searchParams.set('author', currentAuthor);
+    if (currentAssignee !== "Show all") url.searchParams.set('assignee', currentAssignee);
     if (currentReviewer !== "Show all") url.searchParams.set('reviewer', currentReviewer);
     if (currentSprint !== "Show all") url.searchParams.set('sprint', currentSprint);
     if (currentFixVersion !== "Show all") url.searchParams.set('fixVersion', currentFixVersion);
@@ -25,7 +25,7 @@ function updateUrlWithFilters() {
     if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
     // Remove parameters if they're set to default
-    if (currentAuthor === "Show all") url.searchParams.delete('author');
+    if (currentAssignee === "Show all") url.searchParams.delete('assignee');
     if (currentReviewer === "Show all") url.searchParams.delete('reviewer');
     if (currentSprint === "Show all") url.searchParams.delete('sprint');
     if (currentFixVersion === "Show all") url.searchParams.delete('fixVersion');
@@ -40,7 +40,7 @@ function updateUrlWithFilters() {
 // Update filter restoration from URL
 function restoreFiltersFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
-    currentAuthor = urlParams.get('author') || "Show all";
+    currentAssignee = urlParams.get('assignee') || "Show all";
     currentReviewer = urlParams.get('reviewer') || "Show all";
     currentSprint = urlParams.get('sprint') || "Show all";
     currentFixVersion = urlParams.get('fixVersion') || "Show all";
@@ -48,14 +48,14 @@ function restoreFiltersFromUrl() {
     currentReadyForReviewer = false; // Not restored because it requires a fully displayed and updated pr tree
 
     // Update filter elements with restored values
-    const authorSelect = document.getElementById('authorSelect');
+    const assigneeSelect = document.getElementById('assigneeSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
     const sprintSelect = document.getElementById('sprintSelect');
     const fixVersionSelect = document.getElementById('fixVersionSelect');
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
-    if (authorSelect) authorSelect.value = currentAuthor;
+    if (assigneeSelect) assigneeSelect.value = currentAssignee;
     if (reviewerSelect) reviewerSelect.value = currentReviewer;
     if (sprintSelect) sprintSelect.value = currentSprint;
     if (fixVersionSelect) fixVersionSelect.value = currentFixVersion;
@@ -132,14 +132,14 @@ function hideLoading() {
 }
 
 function handleFilterChange() {
-    let author = document.getElementById("authorSelect").value;
+    let assignee = document.getElementById("assigneeSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
     let sprint = document.getElementById("sprintSelect").value;
     let fixVersion = document.getElementById("fixVersionSelect").value;
     let sync = document.getElementById("syncSelect").value;
     let readyCheck = document.getElementById("readyForReviewerCheck");
 
-    currentAuthor = author;
+    currentAssignee = assignee;
     currentReviewer = reviewer;
     currentSprint = sprint;
     currentFixVersion = fixVersion;
@@ -153,7 +153,7 @@ function handleFilterChange() {
         currentReadyForReviewer = false;
     }
 
-    filterBranches(currentAuthor, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
+    filterBranches(currentAssignee, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
     updateUrlWithFilters();
 }
 
@@ -188,14 +188,26 @@ function toggleRepository(button) {
 }
 
 function populateFilters(pullRequests) {
-    const authorSelect = document.getElementById('authorSelect');
+    const assigneeSelect = document.getElementById('assigneeSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
-    // Extract unique authors and sort them alphabetically
-    const authors = [...new Set(pullRequests.map(pr => pr.author.display_name))].sort();
-    authorSelect.innerHTML = `<option value="Show all">Show all</option>${authors.map(author => `<option value="${author}">${author}</option>`).join('')}`;
+    // Extract unique assignees from Jira issues and sort them alphabetically
+    const assignees = new Set();
+    pullRequests.forEach(pr => {
+        const jiraIssues = currentApiResult.jiraIssuesMap[pr.id];
+        if (jiraIssues) {
+            jiraIssues.forEach(issueKey => {
+                const issueDetails = currentApiResult.jiraIssuesDetails.find(issue => issue.key === issueKey);
+                if (issueDetails && issueDetails.fields.assignee) {
+                    assignees.add(issueDetails.fields.assignee.displayName);
+                }
+            });
+        }
+    });
+    const sortedAssignees = [...assignees].sort();
+    assigneeSelect.innerHTML = `<option value="Show all">Show all</option>${sortedAssignees.map(assignee => `<option value="${assignee}">${assignee}</option>`).join('')}`;
 
     // Extract unique reviewers and sort them alphabetically
     const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].sort();
@@ -211,7 +223,7 @@ function populateFilters(pullRequests) {
     }
 
     // Add event listeners
-    authorSelect.addEventListener('change', handleFilterChange);
+    assigneeSelect.addEventListener('change', handleFilterChange);
     reviewerSelect.addEventListener('change', handleFilterChange);
     syncSelect.addEventListener('change', handleFilterChange);
 
@@ -223,10 +235,10 @@ function populateFilters(pullRequests) {
 
     // Restore filter values and apply them
     restoreFiltersFromUrl();
-    if (currentAuthor !== "Show all" || currentReviewer !== "Show all" ||
+    if (currentAssignee !== "Show all" || currentReviewer !== "Show all" ||
         currentSprint !== "Show all" || currentFixVersion !== "Show all" ||
         currentSync !== "Show all" || currentReadyForReviewer) {
-        filterBranches(currentAuthor, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
+        filterBranches(currentAssignee, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
     }
 }
 
