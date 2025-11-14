@@ -2,6 +2,7 @@ import { initializeFilter, filterBranches } from './app-filter.js';
 
 let currentProject = null;
 let currentSprint = "Show all";
+let currentFixVersion = "Show all";
 let currentAuthor = "Show all";
 let currentReviewer = "Show all";
 let currentSync = "Show all";
@@ -19,6 +20,7 @@ function updateUrlWithFilters() {
     if (currentAuthor !== "Show all") url.searchParams.set('author', currentAuthor);
     if (currentReviewer !== "Show all") url.searchParams.set('reviewer', currentReviewer);
     if (currentSprint !== "Show all") url.searchParams.set('sprint', currentSprint);
+    if (currentFixVersion !== "Show all") url.searchParams.set('fixVersion', currentFixVersion);
     if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
     if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
@@ -26,6 +28,7 @@ function updateUrlWithFilters() {
     if (currentAuthor === "Show all") url.searchParams.delete('author');
     if (currentReviewer === "Show all") url.searchParams.delete('reviewer');
     if (currentSprint === "Show all") url.searchParams.delete('sprint');
+    if (currentFixVersion === "Show all") url.searchParams.delete('fixVersion');
     if (currentSync === "Show all") url.searchParams.delete('sync');
     if (!currentReadyForReviewer) url.searchParams.delete('ready');
     if (!currentProject) url.searchParams.delete('project');
@@ -40,6 +43,7 @@ function restoreFiltersFromUrl() {
     currentAuthor = urlParams.get('author') || "Show all";
     currentReviewer = urlParams.get('reviewer') || "Show all";
     currentSprint = urlParams.get('sprint') || "Show all";
+    currentFixVersion = urlParams.get('fixVersion') || "Show all";
     currentSync = "Show all"; // Not restored because it's calculated asynchronously
     currentReadyForReviewer = false; // Not restored because it requires a fully displayed and updated pr tree
 
@@ -47,12 +51,14 @@ function restoreFiltersFromUrl() {
     const authorSelect = document.getElementById('authorSelect');
     const reviewerSelect = document.getElementById('reviewerSelect');
     const sprintSelect = document.getElementById('sprintSelect');
+    const fixVersionSelect = document.getElementById('fixVersionSelect');
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
     if (authorSelect) authorSelect.value = currentAuthor;
     if (reviewerSelect) reviewerSelect.value = currentReviewer;
     if (sprintSelect) sprintSelect.value = currentSprint;
+    if (fixVersionSelect) fixVersionSelect.value = currentFixVersion;
     if (syncSelect) syncSelect.value = currentSync;
     if (readyCheck) {
         readyCheck.checked = currentReadyForReviewer;
@@ -129,12 +135,14 @@ function handleFilterChange() {
     let author = document.getElementById("authorSelect").value;
     let reviewer = document.getElementById("reviewerSelect").value;
     let sprint = document.getElementById("sprintSelect").value;
+    let fixVersion = document.getElementById("fixVersionSelect").value;
     let sync = document.getElementById("syncSelect").value;
     let readyCheck = document.getElementById("readyForReviewerCheck");
 
     currentAuthor = author;
     currentReviewer = reviewer;
     currentSprint = sprint;
+    currentFixVersion = fixVersion;
     currentSync = sync;
     currentReadyForReviewer = readyCheck.checked;
 
@@ -145,7 +153,7 @@ function handleFilterChange() {
         currentReadyForReviewer = false;
     }
 
-    filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync, currentReadyForReviewer);
+    filterBranches(currentAuthor, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
     updateUrlWithFilters();
 }
 
@@ -216,9 +224,9 @@ function populateFilters(pullRequests) {
     // Restore filter values and apply them
     restoreFiltersFromUrl();
     if (currentAuthor !== "Show all" || currentReviewer !== "Show all" ||
-        currentSprint !== "Show all" || currentSync !== "Show all" ||
-        currentReadyForReviewer) {
-        filterBranches(currentAuthor, currentReviewer, currentSprint, currentSync, currentReadyForReviewer);
+        currentSprint !== "Show all" || currentFixVersion !== "Show all" ||
+        currentSync !== "Show all" || currentReadyForReviewer) {
+        filterBranches(currentAuthor, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
     }
 }
 
@@ -308,6 +316,7 @@ async function renderEverything() {
 
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
+    populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
     updateAllConflictsCounters();
 
     // Update the last refresh time
@@ -534,6 +543,34 @@ function populateSprintFilter(sprints) {
     // Restore sprint value from URL after populating options
     if (currentSprint !== "Show all") {
         sprintSelect.value = currentSprint;
+    }
+}
+
+function populateFixVersionFilter(jiraIssuesDetails) {
+    const fixVersionSelect = document.getElementById('fixVersionSelect');
+
+    // Extract all unique fix versions from jira issues
+    const fixVersions = new Set();
+    jiraIssuesDetails.forEach(issue => {
+        if (issue.fields.fixVersions && issue.fields.fixVersions.length > 0) {
+            issue.fields.fixVersions.forEach(version => {
+                fixVersions.add(JSON.stringify({ id: version.id, name: version.name }));
+            });
+        }
+    });
+
+    // Convert to array and sort by name
+    const sortedFixVersions = Array.from(fixVersions)
+        .map(JSON.parse)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    fixVersionSelect.innerHTML = '<option value="Show all">Show all</option>' +
+        sortedFixVersions.map(version => `<option value="${version.id}">${version.name}</option>`).join('');
+    fixVersionSelect.addEventListener('change', handleFilterChange);
+
+    // Restore fixVersion value from URL after populating options
+    if (currentFixVersion !== "Show all") {
+        fixVersionSelect.value = currentFixVersion;
     }
 }
 
