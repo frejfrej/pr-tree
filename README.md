@@ -16,9 +16,12 @@
     * Highlights in red those where an effort is expected
 * Provides a ready for reviewer filter
     * Filters In Review pull requests which reviewer has not already approved
+* Provides a fix version filter
+    * Filters pull requests based on the fixVersion field of associated Jira issues
+    * Dynamically populates with all available fixVersions from the project's Jira issues
 * Allows simultaneous filtering by both author and reviewer
 * Maintains filter selections in URL
-    * All filter selections (project, sprint, author, reviewer) are saved in the URL
+    * All filter selections (project, sprint, fixVersion, author, reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
 * Displays Ahead (green) and Behind (red) commit counts
@@ -47,6 +50,12 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.12.0
+    * Added fixVersion filter dropdown
+        * Fetches fixVersions field from Jira API for all issues
+        * Allows filtering pull requests by Jira fixVersion
+        * Filter selection is persisted in URL parameters
+        * Dropdown is dynamically populated with all available fixVersions
 * Version 1.11.1
     * Switched to the new JQL API after deprecation removal of the former API
 * Version 1.11.0 
