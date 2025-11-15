@@ -333,9 +333,6 @@ async function renderEverything() {
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
     updateAllConflictsCounters();
 
-    // Update URL to reflect current filter state (clears any invalid filter values)
-    updateUrlWithFilters();
-
     // Update the last refresh time
     const lastRefreshElement = document.getElementById('lastRefreshTime');
     if (lastRefreshElement && currentApiResult.lastRefreshTime) {
