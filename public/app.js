@@ -198,7 +198,7 @@ function populateFilters(pullRequests) {
     authorSelect.innerHTML = `<option value="Show all">Show all</option>${authors.map(author => `<option value="${author}">${author}</option>`).join('')}`;
 
     // Extract unique reviewers and sort them alphabetically
-    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].sort();
+    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.filter(p => p.user.uuid != pr.author.uuid).map(p => p.user.display_name)))].sort();
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
     // Initialize sync check status
