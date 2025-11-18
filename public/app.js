@@ -675,7 +675,9 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     let allOtherParticipantsApproved = true;
 
     for (const participant of pullRequest.participants) {
-        if (participant.user.account_id !== pullRequest.author.account_id) {
+        // Exclude author and Rovo Dev agent
+        if (participant.user.account_id !== pullRequest.author.account_id &&
+            participant.user.display_name !== 'Rovo Dev') {
             hasOtherParticipants = true;
             if (participant.approved) {
                 approvedDetails += renderParticipant(participant.user, "approved");
