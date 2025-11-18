@@ -121,13 +121,13 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.3: Show PR status (open, approved, conflicts, etc.)
 - F2.4: Display commit ahead/behind counts relative to destination branch
 - F2.5: Show associated Jira issues with status badges
-- F2.6: Indicate when PR requires sync with parent branch
+- F2.6: Indicate when PR has conflicts with parent branch
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time
 - Parent-child PR relationships are visually evident
 - Green badges show commits ahead, red badges show commits behind
-- "SYNC" badge appears on PRs that are behind their parent
+- "SYNC" badge appears on PRs that have conflicts with their parent branch
 - Jira issue links are clickable and show status color-coding
 
 ---
@@ -755,7 +755,7 @@ The following are explicitly **not** part of current requirements:
 - **Sprint**: Time-boxed iteration in agile methodology
 - **fixVersion**: Jira field indicating target release version
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
-- **SYNC**: Indicator that PR branch is behind its parent branch
+- **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch
 
