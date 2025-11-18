@@ -199,7 +199,13 @@ function populateFilters(pullRequests) {
 
     // Extract unique reviewers and sort them alphabetically
     // Exclude Rovo Dev agent from reviewers
-    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].filter(reviewer => reviewer !== 'Rovo Dev').sort();
+    const reviewers = [...new Set(
+        pullRequests.flatMap(pr =>
+            pr.participants
+                .filter(p => p.user.uuid !== pr.author.uuid)
+                .map(p => p.user.display_name)
+        )
+    )].filter(reviewer => reviewer !== 'Rovo Dev').sort();
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
     // Initialize sync check status
