@@ -134,7 +134,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 
 #### F3: Jira Integration
 **Priority:** P0 (Must Have)
-**Description:** Extract and display Jira issue information from PR titles
+**Description:** Extract and display Jira issue information from PR titles and track workflow status
 
 **Requirements:**
 - F3.1: Extract Jira issue keys from PR titles using configurable regex
@@ -143,10 +143,18 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F3.4: Show issue priority icons
 - F3.5: Provide direct links to Jira issues
 - F3.6: Detect orphaned issues (In Review status without PRs)
+- F3.7: Support Jira workflow integration with "In Review" and "In Progress" statuses
+
+**Workflow Context:**
+The application integrates with a Jira workflow where:
+- Issues transition to "In Review" status when ready for code review
+- A commit hook automatically transitions issues from "In Review" back to "In Progress" when a reviewer requests changes
+- This creates a feedback loop: In Review → Changes Requested → In Progress → Fixed → In Review
 
 **Acceptance Criteria:**
 - All Jira issue keys in PR titles are identified and linked
-- Issue status badges match Jira workflow states
+- Issue status badges match Jira workflow states (In Review, In Progress, Resolved, Closed)
+- PRs associated with "In Review" issues are visually distinguished
 - Clicking issue link opens Jira in new tab
 - Orphaned issues appear in separate section with warning styling
 
@@ -161,20 +169,24 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F4.2: Filter by PR reviewer
 - F4.3: Filter by sprint (based on associated Jira issues)
 - F4.4: Filter by sync status (needs sync / up to date)
-- F4.5: Filter by "ready for reviewer" status
+- F4.5: Filter by "ready for reviewer" status - Shows only PRs where:
+  - Associated Jira issue has "In Review" status
+  - AND reviewer has not yet approved (indicated by red highlighting/action required)
+  - This identifies PRs awaiting initial review or re-review after changes
 - F4.6: Filter by Jira fixVersion
 - F4.7: Support simultaneous multiple filters
 - F4.8: Maintain filter state in URL parameters
 - F4.9: Hierarchical filtering (preserve parent-child relationships)
 
 **Acceptance Criteria:**
-- Each filter shows "Show all" option plus all available values
+- Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
 - Applying filters hides non-matching PRs instantly
 - Filtered counters update to show X of Y PRs visible
 - URL updates with all filter selections
-- Sharing URL restores all filters (except SYNC and ready-for-reviewer)
+- Sharing URL restores all filters (except SYNC and ready-for-reviewer, which require async calculation)
 - PRs highlighted in red when action required from filtered user
 - Parent PRs remain visible if any children match filter
+- Ready for reviewer filter correctly identifies PRs in "In Review" status needing reviewer action
 
 ---
 
@@ -754,7 +766,10 @@ The following are explicitly **not** part of current requirements:
 - **Jira Issue**: Work item in Jira (story, bug, task, etc.)
 - **Sprint**: Time-boxed iteration in agile methodology
 - **fixVersion**: Jira field indicating target release version
+- **In Review**: Jira issue status indicating code is ready for review
+- **In Progress**: Jira issue status indicating active development work
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
+- **Ready for Reviewer**: PR with associated issue in "In Review" status that hasn't been approved yet
 - **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch
