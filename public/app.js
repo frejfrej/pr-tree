@@ -118,6 +118,17 @@ async function handleProjectChange(event) {
     const projectName = event.target.value;
     if (projectName) {
         currentProject = projectName;
+
+        // Clear all filters from URL when switching projects
+        const url = new URL(window.location);
+        url.searchParams.delete('author');
+        url.searchParams.delete('reviewer');
+        url.searchParams.delete('sprint');
+        url.searchParams.delete('fixVersion');
+        url.searchParams.delete('sync');
+        url.searchParams.delete('ready');
+        window.history.pushState({}, '', url);
+
         showLoading();
         await renderEverything();
         hideLoading();
