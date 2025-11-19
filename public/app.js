@@ -106,7 +106,8 @@ async function loadProjects() {
             const projectOption = projectSelect.querySelector(`option[value="${projectParam}"]`);
             if (projectOption) {
                 projectSelect.value = projectParam;
-                await handleProjectChange({ target: { value: projectParam } });
+                // Pass true to indicate this is initial page load, not a manual switch
+                await handleProjectChange({ target: { value: projectParam } }, true);
             }
         }
     } catch (error) {
@@ -114,20 +115,22 @@ async function loadProjects() {
     }
 }
 
-async function handleProjectChange(event) {
+async function handleProjectChange(event, isInitialLoad = false) {
     const projectName = event.target.value;
     if (projectName) {
         currentProject = projectName;
 
-        // Clear all filters from URL when switching projects
-        const url = new URL(window.location);
-        url.searchParams.delete('assignee');
-        url.searchParams.delete('reviewer');
-        url.searchParams.delete('sprint');
-        url.searchParams.delete('fixVersion');
-        url.searchParams.delete('sync');
-        url.searchParams.delete('ready');
-        window.history.pushState({}, '', url);
+        // Only clear filters from URL when manually switching projects, not during initial page load
+        if (!isInitialLoad) {
+            const url = new URL(window.location);
+            url.searchParams.delete('assignee');
+            url.searchParams.delete('reviewer');
+            url.searchParams.delete('sprint');
+            url.searchParams.delete('fixVersion');
+            url.searchParams.delete('sync');
+            url.searchParams.delete('ready');
+            window.history.pushState({}, '', url);
+        }
 
         showLoading();
         await renderEverything();
