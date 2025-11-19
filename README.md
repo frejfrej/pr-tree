@@ -8,8 +8,8 @@
 * Provides initial warnings
     * If the pull request was approved by everyone
     * If the pull request is open but related issues are closed or in review
-* Provides an author filter
-    * Filters pull requests of selected author
+* Provides an assignee filter
+    * Filters pull requests based on the assignee of associated Jira issues
     * Highlights in red those where an effort is expected
 * Provides a reviewer filter
     * Filters pull requests of selected reviewer
@@ -19,9 +19,9 @@
 * Provides a fix version filter
     * Filters pull requests based on the fixVersion field of associated Jira issues
     * Dynamically populates with all available fixVersions from the project's Jira issues
-* Allows simultaneous filtering by both author and reviewer
+* Allows simultaneous filtering by both assignee and reviewer
 * Maintains filter selections in URL
-    * All filter selections (project, sprint, fixVersion, author, reviewer) are saved in the URL
+    * All filter selections (project, sprint, fixVersion, assignee, reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
 * Displays Ahead (green) and Behind (red) commit counts
@@ -50,6 +50,14 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.13.0
+    * Renamed "Author" filter to "Assignee" and changed filtering logic
+        * Now filters pull requests based on Jira issue assignee instead of Bitbucket PR author
+        * Dropdown is populated with unique assignees from all Jira issues
+        * A PR is visible if any of its linked Jira issues is assigned to the selected person
+        * Highlights "In Progress" PRs assigned to the filtered assignee
+        * URL parameter changed from ?author= to ?assignee=
+        * Fetches assignee field from Jira API for all issues
 * Version 1.12.0
     * Added fixVersion filter dropdown
         * Fetches fixVersions field from Jira API for all issues
@@ -102,14 +110,14 @@
     * Added support for filtered counters vs overall counters
 * Version 1.6.2
     * Enhanced URL persistence for all filters
-        * All filter selections (project, sprint, author, reviewer) are now saved in the URL
+        * All filter selections (project, sprint, assignee, reviewer) are now saved in the URL
         * Filters are automatically restored when sharing or reloading the page
         * Direct linking to specific filtered views is now supported
 * Version 1.6.1
     * Better sprint filtering
 * Version 1.6
     * Add online help based which displays the README.md file
-    * Allow filtering by both author and reviewer
+    * Allow filtering by both assignee and reviewer
     * Add a pull-request counter on branch and repository headers
     * Add popover previews on the title of the pull-requests and Jira issues
     * Add sprint filter feature
@@ -138,8 +146,8 @@
         * if the pull request was approved by all reviewers
         * if the pull request is open but related issues are closed or in review
         * if the pull request has no reviewers
-    * Provides an author filter
-        * filters pull requests of selected author
+    * Provides an assignee filter
+        * filters pull requests of selected assignee
         * highlights in red those where an effort is expected
     * Provides a reviewer filter
         * filters pull requests of selected reviewer
