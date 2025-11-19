@@ -331,10 +331,111 @@ function renderOrphanedIssues(issues) {
     `;
 }
 
+// Function to capture current toggle states before re-rendering
+function captureToggleStates() {
+    const states = {
+        repositories: [],
+        rootBranches: [],
+        pullRequests: []
+    };
+
+    // Capture repository states
+    document.querySelectorAll('.repository').forEach(repo => {
+        const repoNameElement = repo.querySelector('.repository-header h1');
+        if (repoNameElement) {
+            const repoName = repoNameElement.textContent.trim();
+            states.repositories.push({
+                name: repoName,
+                collapsed: repo.classList.contains('collapsed')
+            });
+        }
+    });
+
+    // Capture root branch states
+    document.querySelectorAll('.root-branch').forEach(branch => {
+        const branchNameElement = branch.querySelector('.root-branch-header h2 a');
+        if (branchNameElement) {
+            // Extract just the branch name, removing the external link icon
+            const branchName = branchNameElement.childNodes[0].textContent.trim();
+            states.rootBranches.push({
+                name: branchName,
+                collapsed: branch.classList.contains('collapsed')
+            });
+        }
+    });
+
+    // Capture pull request states (children visibility)
+    document.querySelectorAll('.pull-request').forEach(pr => {
+        const prId = pr.dataset.id;
+        const children = pr.nextElementSibling;
+        if (children && children.classList.contains('children')) {
+            states.pullRequests.push({
+                id: prId,
+                collapsed: pr.classList.contains('collapsed')
+            });
+        }
+    });
+
+    return states;
+}
+
+// Function to restore toggle states after re-rendering
+function restoreToggleStates(states) {
+    if (!states) return;
+
+    // Restore repository states
+    states.repositories.forEach(state => {
+        const repo = Array.from(document.querySelectorAll('.repository')).find(r => {
+            const nameElement = r.querySelector('.repository-header h1');
+            return nameElement && nameElement.textContent.trim() === state.name;
+        });
+        if (repo && state.collapsed) {
+            repo.classList.add('collapsed');
+        }
+    });
+
+    // Restore root branch states
+    states.rootBranches.forEach(state => {
+        const branch = Array.from(document.querySelectorAll('.root-branch')).find(b => {
+            const nameElement = b.querySelector('.root-branch-header h2 a');
+            if (nameElement) {
+                const branchName = nameElement.childNodes[0].textContent.trim();
+                return branchName === state.name;
+            }
+            return false;
+        });
+        if (branch && state.collapsed) {
+            branch.classList.add('collapsed');
+        }
+    });
+
+    // Restore pull request states
+    states.pullRequests.forEach(state => {
+        const pr = document.querySelector(`.pull-request[data-id="${state.id}"]`);
+        if (pr && state.collapsed) {
+            const children = pr.nextElementSibling;
+            if (children && children.classList.contains('children')) {
+                pr.classList.add('collapsed');
+                children.style.display = 'none';
+
+                // Toggle visibility of child counter
+                const childCounter = pr.querySelector('.child-counter');
+                if (childCounter) {
+                    childCounter.classList.add('visible');
+                }
+            }
+        }
+    });
+}
+
 async function renderEverything() {
     if (!currentProject) {
         return;
     }
+
+    // Capture current toggle states before re-rendering
+    const toggleStates = captureToggleStates();
+
     currentApiResult = await fetchData();
     initializeFilter(currentApiResult);
     const container = document.getElementById('pull-requests');
@@ -353,6 +454,9 @@ async function renderEverything() {
 
     // Combine content
     container.innerHTML = mainContent + orphanedIssuesHtml;
+
+    // Restore toggle states after rendering
+    restoreToggleStates(toggleStates);
 
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
