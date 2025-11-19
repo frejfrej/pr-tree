@@ -55,8 +55,22 @@ function restoreFiltersFromUrl() {
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
-    if (assigneeSelect) assigneeSelect.value = currentAssignee;
-    if (reviewerSelect) reviewerSelect.value = currentReviewer;
+    if (assigneeSelect) {
+        assigneeSelect.value = currentAssignee;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (assigneeSelect.value !== currentAssignee) {
+            currentAssignee = "Show all";
+            assigneeSelect.value = "Show all";
+        }
+    }
+    if (reviewerSelect) {
+        reviewerSelect.value = currentReviewer;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (reviewerSelect.value !== currentReviewer) {
+            currentReviewer = "Show all";
+            reviewerSelect.value = "Show all";
+        }
+    }
     if (sprintSelect) sprintSelect.value = currentSprint;
     if (fixVersionSelect) fixVersionSelect.value = currentFixVersion;
     if (syncSelect) syncSelect.value = currentSync;
@@ -104,6 +118,17 @@ async function handleProjectChange(event) {
     const projectName = event.target.value;
     if (projectName) {
         currentProject = projectName;
+
+        // Clear all filters from URL when switching projects
+        const url = new URL(window.location);
+        url.searchParams.delete('assignee');
+        url.searchParams.delete('reviewer');
+        url.searchParams.delete('sprint');
+        url.searchParams.delete('fixVersion');
+        url.searchParams.delete('sync');
+        url.searchParams.delete('ready');
+        window.history.pushState({}, '', url);
+
         showLoading();
         await renderEverything();
         hideLoading();
@@ -206,7 +231,14 @@ function populateFilters(pullRequests) {
     assigneeSelect.innerHTML = `<option value="Show all">Show all</option>${sortedAssignees.map(assignee => `<option value="${assignee}">${assignee}</option>`).join('')}`;
 
     // Extract unique reviewers and sort them alphabetically
-    const reviewers = [...new Set(pullRequests.flatMap(pr => pr.participants.map(p => p.user.uuid != pr.author.uuid && p.user.display_name)))].sort();
+    // Exclude Rovo Dev agent from reviewers
+    const reviewers = [...new Set(
+        pullRequests.flatMap(pr =>
+            pr.participants
+                .filter(p => p.user.uuid !== pr.author.uuid)
+                .map(p => p.user.display_name)
+        )
+    )].filter(reviewer => reviewer !== 'Rovo Dev').sort();
     reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
 
     // Initialize sync check status
@@ -551,6 +583,11 @@ function populateSprintFilter(sprints) {
     // Restore sprint value from URL after populating options
     if (currentSprint !== "Show all") {
         sprintSelect.value = currentSprint;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (sprintSelect.value !== currentSprint) {
+            currentSprint = "Show all";
+            sprintSelect.value = "Show all";
+        }
     }
 }
 
@@ -579,6 +616,11 @@ function populateFixVersionFilter(jiraIssuesDetails) {
     // Restore fixVersion value from URL after populating options
     if (currentFixVersion !== "Show all") {
         fixVersionSelect.value = currentFixVersion;
+        // If the value didn't stick (option doesn't exist), reset to "Show all"
+        if (fixVersionSelect.value !== currentFixVersion) {
+            currentFixVersion = "Show all";
+            fixVersionSelect.value = "Show all";
+        }
     }
 }
 
@@ -676,7 +718,9 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     let allOtherParticipantsApproved = true;
 
     for (const participant of pullRequest.participants) {
-        if (participant.user.account_id !== pullRequest.author.account_id) {
+        // Exclude author and Rovo Dev agent
+        if (participant.user.account_id !== pullRequest.author.account_id &&
+            participant.user.display_name !== 'Rovo Dev') {
             hasOtherParticipants = true;
             if (participant.approved) {
                 approvedDetails += renderParticipant(participant.user, "approved");
