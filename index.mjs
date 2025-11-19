@@ -77,7 +77,7 @@ async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
     try {
         // Create JQL to find all issues in Review status that aren't in our existing issues
         const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
-        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=*all`;
+        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,updated,assignee`;
 
         const response = await fetch(url, {
             method: 'GET',
@@ -187,7 +187,7 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const startTime = Date.now();
         const jiraIssuesBatch = jiraIssues.slice(i, i + pageSize);
         const jql = `issueKey in (${jiraIssuesBatch.join(',')}) AND project in (${jiraProjects.join(',')})`;
-        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=*all`;
+        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee`;
 
         try {
             const response = await fetch(url, {
