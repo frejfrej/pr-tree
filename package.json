@@ -1,6 +1,6 @@
 {
   "name": "version",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "releaseDate": "2025-11-19",
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
@@ -18,3 +18,4 @@
     "node-fetch": "^3.3.2"
   }
 }
+
