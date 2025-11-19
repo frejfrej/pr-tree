@@ -31,6 +31,7 @@
     * Performed when the tab is selected in the browser
     * Refresh date is visible at the top right of the page
     * Displays an icon when it's checking for updates
+    * Preserves toggle states across reloads (collapsed/expanded repositories, branches, and pull requests)
 * Pseudo-cache
     * Bitbucket PR and Jira issues data are retrieved server-side
     * A hash is computed based on that data
@@ -50,6 +51,11 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.13.1
+    * Fixed toggle state preservation across data reloads
+        * User's collapsed/expanded state for repositories, branches, and pull requests is now preserved when data refreshes
+        * Prevents UI from resetting every 2 minutes during automatic updates
+        * Improves user experience by maintaining the view state users have configured
 * Version 1.13.0
     * Renamed "Author" filter to "Assignee" and changed filtering logic
         * Now filters pull requests based on Jira issue assignee instead of Bitbucket PR author
