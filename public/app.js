@@ -1,10 +1,11 @@
 import { initializeFilter, filterBranches } from './app-filter.js';
+import { createMultiSelect, getMultiSelect } from './multi-select.js';
 
 let currentProject = null;
-let currentSprint = "Show all";
-let currentFixVersion = "Show all";
-let currentAssignee = "Show all";
-let currentReviewer = "Show all";
+let currentSprints = [];
+let currentFixVersions = [];
+let currentAssignees = [];
+let currentReviewers = [];
 let currentSync = "Show all";
 let currentReadyForReviewer = false;
 let currentApiResult = null;
@@ -15,23 +16,37 @@ let syncCheckComplete = false;
 function updateUrlWithFilters() {
     const url = new URL(window.location);
 
-    // Only set parameters if they're different from default
-    if (currentProject) url.searchParams.set('project', currentProject);
-    if (currentAssignee !== "Show all") url.searchParams.set('assignee', currentAssignee);
-    if (currentReviewer !== "Show all") url.searchParams.set('reviewer', currentReviewer);
-    if (currentSprint !== "Show all") url.searchParams.set('sprint', currentSprint);
-    if (currentFixVersion !== "Show all") url.searchParams.set('fixVersion', currentFixVersion);
-    if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
-    if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
+    // Clear existing multi-select params first
+    url.searchParams.delete('assignee');
+    url.searchParams.delete('reviewer');
+    url.searchParams.delete('sprint');
+    url.searchParams.delete('fixVersion');
 
-    // Remove parameters if they're set to default
-    if (currentAssignee === "Show all") url.searchParams.delete('assignee');
-    if (currentReviewer === "Show all") url.searchParams.delete('reviewer');
-    if (currentSprint === "Show all") url.searchParams.delete('sprint');
-    if (currentFixVersion === "Show all") url.searchParams.delete('fixVersion');
-    if (currentSync === "Show all") url.searchParams.delete('sync');
-    if (!currentReadyForReviewer) url.searchParams.delete('ready');
-    if (!currentProject) url.searchParams.delete('project');
+    // Set project
+    if (currentProject) {
+        url.searchParams.set('project', currentProject);
+    } else {
+        url.searchParams.delete('project');
+    }
+
+    // Set multi-select params (use repeated params format)
+    currentAssignees.forEach(v => url.searchParams.append('assignee', v));
+    currentReviewers.forEach(v => url.searchParams.append('reviewer', v));
+    currentSprints.forEach(v => url.searchParams.append('sprint', v));
+    currentFixVersions.forEach(v => url.searchParams.append('fixVersion', v));
+
+    // Set other params
+    if (currentSync !== "Show all") {
+        url.searchParams.set('sync', currentSync);
+    } else {
+        url.searchParams.delete('sync');
+    }
+
+    if (currentReadyForReviewer) {
+        url.searchParams.set('ready', 'true');
+    } else {
+        url.searchParams.delete('ready');
+    }
 
     // Update URL without reloading the page
     window.history.pushState({}, '', url);
@@ -40,43 +55,43 @@ function updateUrlWithFilters() {
 // Update filter restoration from URL
 function restoreFiltersFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
-    currentAssignee = urlParams.get('assignee') || "Show all";
-    currentReviewer = urlParams.get('reviewer') || "Show all";
-    currentSprint = urlParams.get('sprint') || "Show all";
-    currentFixVersion = urlParams.get('fixVersion') || "Show all";
+
+    // Get all values for multi-select filters (supports repeated params)
+    currentAssignees = urlParams.getAll('assignee');
+    currentReviewers = urlParams.getAll('reviewer');
+    currentSprints = urlParams.getAll('sprint');
+    currentFixVersions = urlParams.getAll('fixVersion');
+
     currentSync = "Show all"; // Not restored because it's calculated asynchronously
     currentReadyForReviewer = false; // Not restored because it requires a fully displayed and updated pr tree
 
-    // Update filter elements with restored values
-    const assigneeSelect = document.getElementById('assigneeSelect');
-    const reviewerSelect = document.getElementById('reviewerSelect');
-    const sprintSelect = document.getElementById('sprintSelect');
-    const fixVersionSelect = document.getElementById('fixVersionSelect');
+    // Update multi-select components with restored values
+    const assigneeMultiSelect = getMultiSelect('assigneeSelect');
+    const reviewerMultiSelect = getMultiSelect('reviewerSelect');
+    const sprintMultiSelect = getMultiSelect('sprintSelect');
+    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
+
+    if (assigneeMultiSelect) {
+        assigneeMultiSelect.setSelectedValues(currentAssignees);
+    }
+    if (reviewerMultiSelect) {
+        reviewerMultiSelect.setSelectedValues(currentReviewers);
+    }
+    if (sprintMultiSelect) {
+        sprintMultiSelect.setSelectedValues(currentSprints);
+    }
+    if (fixVersionMultiSelect) {
+        fixVersionMultiSelect.setSelectedValues(currentFixVersions);
+    }
+
+    // Update sync select and ready checkbox
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
-    if (assigneeSelect) {
-        assigneeSelect.value = currentAssignee;
-        // If the value didn't stick (option doesn't exist), reset to "Show all"
-        if (assigneeSelect.value !== currentAssignee) {
-            currentAssignee = "Show all";
-            assigneeSelect.value = "Show all";
-        }
-    }
-    if (reviewerSelect) {
-        reviewerSelect.value = currentReviewer;
-        // If the value didn't stick (option doesn't exist), reset to "Show all"
-        if (reviewerSelect.value !== currentReviewer) {
-            currentReviewer = "Show all";
-            reviewerSelect.value = "Show all";
-        }
-    }
-    if (sprintSelect) sprintSelect.value = currentSprint;
-    if (fixVersionSelect) fixVersionSelect.value = currentFixVersion;
     if (syncSelect) syncSelect.value = currentSync;
     if (readyCheck) {
         readyCheck.checked = currentReadyForReviewer;
-        readyCheck.disabled = currentReviewer === "Show all";
+        readyCheck.disabled = currentReviewers.length === 0;
     }
 }
 
@@ -84,8 +99,8 @@ function initializeReadyForReviewerFilter() {
     const readyCheck = document.getElementById('readyForReviewerCheck');
     if (readyCheck) {
         readyCheck.addEventListener('change', handleFilterChange);
-        // Set initial state
-        readyCheck.disabled = true;
+        // Set initial state - disabled when no reviewers selected
+        readyCheck.disabled = currentReviewers.length === 0;
         readyCheck.checked = currentReadyForReviewer;
     }
 }
@@ -130,6 +145,35 @@ async function handleProjectChange(event, isInitialLoad = false) {
             url.searchParams.delete('sync');
             url.searchParams.delete('ready');
             window.history.pushState({}, '', url);
+
+            // Clear multi-select state and UI
+            currentAssignees = [];
+            currentReviewers = [];
+            currentSprints = [];
+            currentFixVersions = [];
+            currentSync = "Show all";
+            currentReadyForReviewer = false;
+
+            // Clear multi-select components
+            const assigneeMultiSelect = getMultiSelect('assigneeSelect');
+            const reviewerMultiSelect = getMultiSelect('reviewerSelect');
+            const sprintMultiSelect = getMultiSelect('sprintSelect');
+            const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
+
+            // Pass false to prevent triggering handleFilterChange callbacks
+            if (assigneeMultiSelect) assigneeMultiSelect.clearAll(false);
+            if (reviewerMultiSelect) reviewerMultiSelect.clearAll(false);
+            if (sprintMultiSelect) sprintMultiSelect.clearAll(false);
+            if (fixVersionMultiSelect) fixVersionMultiSelect.clearAll(false);
+
+            // Reset sync select and ready checkbox
+            const syncSelect = document.getElementById('syncSelect');
+            const readyCheck = document.getElementById('readyForReviewerCheck');
+            if (syncSelect) syncSelect.value = "Show all";
+            if (readyCheck) {
+                readyCheck.checked = false;
+                readyCheck.disabled = true;
+            }
         }
 
         showLoading();
@@ -160,28 +204,34 @@ function hideLoading() {
 }
 
 function handleFilterChange() {
-    let assignee = document.getElementById("assigneeSelect").value;
-    let reviewer = document.getElementById("reviewerSelect").value;
-    let sprint = document.getElementById("sprintSelect").value;
-    let fixVersion = document.getElementById("fixVersionSelect").value;
-    let sync = document.getElementById("syncSelect").value;
-    let readyCheck = document.getElementById("readyForReviewerCheck");
+    // Get values from multi-select components
+    const assigneeMultiSelect = getMultiSelect('assigneeSelect');
+    const reviewerMultiSelect = getMultiSelect('reviewerSelect');
+    const sprintMultiSelect = getMultiSelect('sprintSelect');
+    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
 
-    currentAssignee = assignee;
-    currentReviewer = reviewer;
-    currentSprint = sprint;
-    currentFixVersion = fixVersion;
-    currentSync = sync;
-    currentReadyForReviewer = readyCheck.checked;
+    currentAssignees = assigneeMultiSelect ? assigneeMultiSelect.getSelectedValues() : [];
+    currentReviewers = reviewerMultiSelect ? reviewerMultiSelect.getSelectedValues() : [];
+    currentSprints = sprintMultiSelect ? sprintMultiSelect.getSelectedValues() : [];
+    currentFixVersions = fixVersionMultiSelect ? fixVersionMultiSelect.getSelectedValues() : [];
 
-    // Enable/disable checkbox based on reviewer selection
-    readyCheck.disabled = reviewer === "Show all";
-    if (reviewer === "Show all") {
-        readyCheck.checked = false;
-        currentReadyForReviewer = false;
+    // Get sync and ready values from regular form elements
+    const syncSelect = document.getElementById("syncSelect");
+    const readyCheck = document.getElementById("readyForReviewerCheck");
+
+    currentSync = syncSelect ? syncSelect.value : "Show all";
+    currentReadyForReviewer = readyCheck ? readyCheck.checked : false;
+
+    // Enable/disable checkbox based on reviewer selection (disabled when no reviewers selected)
+    if (readyCheck) {
+        readyCheck.disabled = currentReviewers.length === 0;
+        if (currentReviewers.length === 0) {
+            readyCheck.checked = false;
+            currentReadyForReviewer = false;
+        }
     }
 
-    filterBranches(currentAssignee, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
+    filterBranches(currentAssignees, currentReviewers, currentSprints, currentFixVersions, currentSync, currentReadyForReviewer);
     updateUrlWithFilters();
 }
 
@@ -216,8 +266,8 @@ function toggleRepository(button) {
 }
 
 function populateFilters(pullRequests) {
-    const assigneeSelect = document.getElementById('assigneeSelect');
-    const reviewerSelect = document.getElementById('reviewerSelect');
+    const assigneeMultiSelect = getMultiSelect('assigneeSelect');
+    const reviewerMultiSelect = getMultiSelect('reviewerSelect');
     const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
@@ -231,7 +281,10 @@ function populateFilters(pullRequests) {
         });
     }
     const sortedAssignees = [...assignees].sort();
-    assigneeSelect.innerHTML = `<option value="Show all">Show all</option>${sortedAssignees.map(assignee => `<option value="${assignee}">${assignee}</option>`).join('')}`;
+    const assigneeOptions = sortedAssignees.map(assignee => ({ value: assignee, label: assignee }));
+    if (assigneeMultiSelect) {
+        assigneeMultiSelect.setOptions(assigneeOptions);
+    }
 
     // Extract unique reviewers and sort them alphabetically
     // Exclude Rovo Dev agent from reviewers
@@ -242,7 +295,10 @@ function populateFilters(pullRequests) {
                 .map(p => p.user.display_name)
         )
     )].filter(reviewer => reviewer !== 'Rovo Dev').sort();
-    reviewerSelect.innerHTML = `<option value="Show all">Show all</option>${reviewers.map(reviewer => `<option value="${reviewer}">${reviewer}</option>`).join('')}`;
+    const reviewerOptions = reviewers.map(reviewer => ({ value: reviewer, label: reviewer }));
+    if (reviewerMultiSelect) {
+        reviewerMultiSelect.setOptions(reviewerOptions);
+    }
 
     // Initialize sync check status
     pendingSyncChecks = 0;
@@ -251,25 +307,21 @@ function populateFilters(pullRequests) {
     if (syncSelect) {
         syncSelect.disabled = true;
         syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
+        syncSelect.addEventListener('change', handleFilterChange);
     }
-
-    // Add event listeners
-    assigneeSelect.addEventListener('change', handleFilterChange);
-    reviewerSelect.addEventListener('change', handleFilterChange);
-    syncSelect.addEventListener('change', handleFilterChange);
 
     // Update checkbox state
     if (readyCheck) {
-        readyCheck.disabled = currentReviewer === "Show all";
+        readyCheck.disabled = currentReviewers.length === 0;
         readyCheck.checked = currentReadyForReviewer;
     }
 
     // Restore filter values and apply them
     restoreFiltersFromUrl();
-    if (currentAssignee !== "Show all" || currentReviewer !== "Show all" ||
-        currentSprint !== "Show all" || currentFixVersion !== "Show all" ||
+    if (currentAssignees.length > 0 || currentReviewers.length > 0 ||
+        currentSprints.length > 0 || currentFixVersions.length > 0 ||
         currentSync !== "Show all" || currentReadyForReviewer) {
-        filterBranches(currentAssignee, currentReviewer, currentSprint, currentFixVersion, currentSync, currentReadyForReviewer);
+        filterBranches(currentAssignees, currentReviewers, currentSprints, currentFixVersions, currentSync, currentReadyForReviewer);
     }
 }
 
@@ -678,28 +730,30 @@ function calculateDescendants(pullRequest, pullRequestsByDestination) {
 }
 
 function populateSprintFilter(sprints) {
-    const sprintSelect = document.getElementById('sprintSelect');
+    const sprintMultiSelect = getMultiSelect('sprintSelect');
+    if (!sprintMultiSelect) return;
 
     // Sort sprints by name
     const sortedSprints = sprints.sort((a, b) => a.name.localeCompare(b.name));
 
-    sprintSelect.innerHTML = '<option value="Show all">Show all</option>' +
-        sortedSprints.map(sprint => `<option value="${sprint.id}">${sprint.name}</option>`).join('');
-    sprintSelect.addEventListener('change', handleFilterChange);
+    const sprintOptions = sortedSprints.map(sprint => ({
+        value: String(sprint.id),
+        label: sprint.name
+    }));
+    sprintMultiSelect.setOptions(sprintOptions);
 
-    // Restore sprint value from URL after populating options
-    if (currentSprint !== "Show all") {
-        sprintSelect.value = currentSprint;
-        // If the value didn't stick (option doesn't exist), reset to "Show all"
-        if (sprintSelect.value !== currentSprint) {
-            currentSprint = "Show all";
-            sprintSelect.value = "Show all";
-        }
+    // Restore sprint values from URL after populating options
+    if (currentSprints.length > 0) {
+        // Filter out any sprint IDs that don't exist in the options
+        const validSprintIds = sprintOptions.map(opt => opt.value);
+        currentSprints = currentSprints.filter(id => validSprintIds.includes(id));
+        sprintMultiSelect.setSelectedValues(currentSprints);
     }
 }
 
 function populateFixVersionFilter(jiraIssuesDetails) {
-    const fixVersionSelect = document.getElementById('fixVersionSelect');
+    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
+    if (!fixVersionMultiSelect) return;
 
     // Extract all unique fix versions from jira issues, including project
     const fixVersions = new Map();
@@ -719,18 +773,18 @@ function populateFixVersionFilter(jiraIssuesDetails) {
     const sortedFixVersions = Array.from(fixVersions.values())
         .sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
 
-    fixVersionSelect.innerHTML = '<option value="Show all">Show all</option>' +
-        sortedFixVersions.map(version => `<option value="${version.id}">${version.name} (${version.project})</option>`).join('');
-    fixVersionSelect.addEventListener('change', handleFilterChange);
+    const fixVersionOptions = sortedFixVersions.map(version => ({
+        value: String(version.id),
+        label: `${version.name} (${version.project})`
+    }));
+    fixVersionMultiSelect.setOptions(fixVersionOptions);
 
-    // Restore fixVersion value from URL after populating options
-    if (currentFixVersion !== "Show all") {
-        fixVersionSelect.value = currentFixVersion;
-        // If the value didn't stick (option doesn't exist), reset to "Show all"
-        if (fixVersionSelect.value !== currentFixVersion) {
-            currentFixVersion = "Show all";
-            fixVersionSelect.value = "Show all";
-        }
+    // Restore fixVersion values from URL after populating options
+    if (currentFixVersions.length > 0) {
+        // Filter out any fixVersion IDs that don't exist in the options
+        const validFixVersionIds = fixVersionOptions.map(opt => opt.value);
+        currentFixVersions = currentFixVersions.filter(id => validFixVersionIds.includes(id));
+        fixVersionMultiSelect.setSelectedValues(currentFixVersions);
     }
 }
 
@@ -1145,8 +1199,17 @@ function initializePopovers() {
     });
 }
 
+// Initialize multi-select components
+function initializeMultiSelects() {
+    createMultiSelect('sprintSelect', { onChange: handleFilterChange });
+    createMultiSelect('fixVersionSelect', { onChange: handleFilterChange });
+    createMultiSelect('assigneeSelect', { onChange: handleFilterChange });
+    createMultiSelect('reviewerSelect', { onChange: handleFilterChange });
+}
+
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
+    initializeMultiSelects();
     loadProjects();
     initializeHelpModal();
     fetchAndDisplayVersion();

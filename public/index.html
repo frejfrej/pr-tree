@@ -29,29 +29,81 @@
       </div>
       <div class="filter-item">
         <span class="filter-label">Sprint</span>
-        <select id="sprintSelect">
-          <option value="Show all">Show all</option>
-        </select>
+        <div class="multi-select" id="sprintSelect" data-filter="sprint">
+          <div class="multi-select-trigger" tabindex="0">
+            <span class="multi-select-display">Show all</span>
+            <i class="fas fa-chevron-down multi-select-arrow"></i>
+          </div>
+          <div class="multi-select-dropdown">
+            <div class="multi-select-search">
+              <input type="text" placeholder="Search..." class="multi-select-search-input">
+            </div>
+            <div class="multi-select-options"></div>
+            <div class="multi-select-actions">
+              <button type="button" class="multi-select-clear">Clear all</button>
+              <button type="button" class="multi-select-select-all">Select all</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="filter-item">
         <span class="filter-label">Fix Version</span>
-        <select id="fixVersionSelect">
-          <option value="Show all">Show all</option>
-        </select>
+        <div class="multi-select" id="fixVersionSelect" data-filter="fixVersion">
+          <div class="multi-select-trigger" tabindex="0">
+            <span class="multi-select-display">Show all</span>
+            <i class="fas fa-chevron-down multi-select-arrow"></i>
+          </div>
+          <div class="multi-select-dropdown">
+            <div class="multi-select-search">
+              <input type="text" placeholder="Search..." class="multi-select-search-input">
+            </div>
+            <div class="multi-select-options"></div>
+            <div class="multi-select-actions">
+              <button type="button" class="multi-select-clear">Clear all</button>
+              <button type="button" class="multi-select-select-all">Select all</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="filter-item">
         <span class="filter-label">Assignee</span>
-        <select id="assigneeSelect">
-          <option value="Show all">Show all</option>
-        </select>
+        <div class="multi-select" id="assigneeSelect" data-filter="assignee">
+          <div class="multi-select-trigger" tabindex="0">
+            <span class="multi-select-display">Show all</span>
+            <i class="fas fa-chevron-down multi-select-arrow"></i>
+          </div>
+          <div class="multi-select-dropdown">
+            <div class="multi-select-search">
+              <input type="text" placeholder="Search..." class="multi-select-search-input">
+            </div>
+            <div class="multi-select-options"></div>
+            <div class="multi-select-actions">
+              <button type="button" class="multi-select-clear">Clear all</button>
+              <button type="button" class="multi-select-select-all">Select all</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="filters-row">
       <div class="filter-item">
         <span class="filter-label">Reviewer</span>
-        <select id="reviewerSelect">
-          <option value="Show all">Show all</option>
-        </select>
+        <div class="multi-select" id="reviewerSelect" data-filter="reviewer">
+          <div class="multi-select-trigger" tabindex="0">
+            <span class="multi-select-display">Show all</span>
+            <i class="fas fa-chevron-down multi-select-arrow"></i>
+          </div>
+          <div class="multi-select-dropdown">
+            <div class="multi-select-search">
+              <input type="text" placeholder="Search..." class="multi-select-search-input">
+            </div>
+            <div class="multi-select-options"></div>
+            <div class="multi-select-actions">
+              <button type="button" class="multi-select-clear">Clear all</button>
+              <button type="button" class="multi-select-select-all">Select all</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="filter-item">
         <div class="filter-label">
@@ -123,6 +175,7 @@
   </div>
 </footer>
 
+<script type="module" src="multi-select.js"></script>
 <script type="module" src="app-filter.js"></script>
 <script type="module" src="app.js"></script>
 </body>

@@ -51,6 +51,8 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 2.0.0
+    * Filters for sprint, fix version, assignee and reviewer are now multi-select filters
 * Version 1.14.0
     * Subtasks now inherit fix version from parent task
         * When a Jira subtask has no fix version, it automatically inherits from its parent task
