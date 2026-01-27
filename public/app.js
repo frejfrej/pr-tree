@@ -701,23 +701,26 @@ function populateSprintFilter(sprints) {
 function populateFixVersionFilter(jiraIssuesDetails) {
     const fixVersionSelect = document.getElementById('fixVersionSelect');
 
-    // Extract all unique fix versions from jira issues
-    const fixVersions = new Set();
+    // Extract all unique fix versions from jira issues, including project
+    const fixVersions = new Map();
     jiraIssuesDetails.forEach(issue => {
         if (issue.fields.fixVersions && issue.fields.fixVersions.length > 0) {
+            const project = issue.key.split('-')[0];
             issue.fields.fixVersions.forEach(version => {
-                fixVersions.add(JSON.stringify({ id: version.id, name: version.name }));
+                // Use version.id as key to avoid duplicates
+                if (!fixVersions.has(version.id)) {
+                    fixVersions.set(version.id, { id: version.id, name: version.name, project: project });
+                }
             });
         }
     });
 
-    // Convert to array and sort by name
-    const sortedFixVersions = Array.from(fixVersions)
-        .map(JSON.parse)
-        .sort((a, b) => a.name.localeCompare(b.name));
+    // Convert to array and sort by project then name
+    const sortedFixVersions = Array.from(fixVersions.values())
+        .sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
 
     fixVersionSelect.innerHTML = '<option value="Show all">Show all</option>' +
-        sortedFixVersions.map(version => `<option value="${version.id}">${version.name}</option>`).join('');
+        sortedFixVersions.map(version => `<option value="${version.id}">${version.name} (${version.project})</option>`).join('');
     fixVersionSelect.addEventListener('change', handleFilterChange);
 
     // Restore fixVersion value from URL after populating options

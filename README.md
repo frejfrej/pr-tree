@@ -56,6 +56,9 @@
         * When a Jira subtask has no fix version, it automatically inherits from its parent task
         * Parent issues are fetched if not already present in the results
         * Improves fix version filter accuracy for subtasks
+    * Fix version filter now shows project name
+        * Versions are displayed as "Version Name (PROJECT)"
+        * Sorted by project then version name for easier navigation
     * Updated dependencies to latest versions
         * Express: 4.19.2 → 5.2.1
         * dotenv: 16.4.5 → 17.2.3
