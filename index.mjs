@@ -187,7 +187,7 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const startTime = Date.now();
         const jiraIssuesBatch = jiraIssues.slice(i, i + pageSize);
         const jql = `issueKey in (${jiraIssuesBatch.join(',')}) AND project in (${jiraProjects.join(',')})`;
-        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee`;
+        const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee,parent,issuetype`;
 
         try {
             const response = await fetch(url, {
@@ -211,6 +211,53 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         } finally {
             const duration = Date.now() - startTime;
             log(`fetchJiraIssuesDetails - Batch ${i/50 + 1} - Duration: ${duration}ms`, performanceLogStream);
+        }
+    }
+
+    // Collect parent keys that aren't in our results (for subtasks)
+    const missingParentKeys = [];
+    for (const issue of jiraIssuesDetails) {
+        if (issue.fields.parent) {
+            const parentKey = issue.fields.parent.key;
+            if (!jiraIssuesDetails.find(i => i.key === parentKey) &&
+                !missingParentKeys.includes(parentKey)) {
+                missingParentKeys.push(parentKey);
+            }
+        }
+    }
+
+    // Fetch missing parent issues to get their fix versions
+    if (missingParentKeys.length > 0) {
+        const parentJql = `key IN (${missingParentKeys.join(',')})`;
+        const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,fixVersions`;
+        try {
+            const startTime = Date.now();
+            const response = await fetch(parentUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${jiraAuth}`,
+                    'Accept': 'application/json'
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                jiraIssuesDetails.push(...data.issues);
+            }
+            const duration = Date.now() - startTime;
+            log(`fetchJiraIssuesDetails - Parent issues fetch (${missingParentKeys.length}) - Duration: ${duration}ms`, performanceLogStream);
+        } catch (error) {
+            log(`Error fetching parent issues: ${error.message}`, errorLogStream);
+        }
+    }
+
+    // Inherit fix versions from parent for subtasks without fix versions
+    for (const issue of jiraIssuesDetails) {
+        if (issue.fields.parent &&
+            (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
+            const parent = jiraIssuesDetails.find(i => i.key === issue.fields.parent.key);
+            if (parent && parent.fields.fixVersions && parent.fields.fixVersions.length > 0) {
+                issue.fields.fixVersions = parent.fields.fixVersions;
+            }
         }
     }
 

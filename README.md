@@ -51,6 +51,14 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 1.14.0
+    * Subtasks now inherit fix version from parent task
+        * When a Jira subtask has no fix version, it automatically inherits from its parent task
+        * Parent issues are fetched if not already present in the results
+        * Improves fix version filter accuracy for subtasks
+    * Updated dependencies to latest versions
+        * Express: 4.19.2 → 5.2.1
+        * dotenv: 16.4.5 → 17.2.3
 * Version 1.13.1
     * Fixed toggle state preservation across data reloads
         * User's collapsed/expanded state for repositories, branches, and pull requests is now preserved when data refreshes
