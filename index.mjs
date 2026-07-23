@@ -1,5 +1,6 @@
 import express from 'express';
 import fetch from 'node-fetch';
+import { diff3Merge } from 'node-diff3';
 import dotenv from 'dotenv';
 import config from './config.js';
 import path from 'path';
@@ -508,25 +509,8 @@ app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
     const { repoName, spec } = req.params;
 
     try {
-        const conflictsData = await getCachedConflicts(repoName, spec, async () => {
-            const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diff/${spec}`;
-            const auth = Buffer.from(`${config.bitbucket.username}:${config.bitbucket.password}`).toString('base64');
-
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Basic ${auth}`,
-                    'Accept': 'application/json',
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Request failed with status code ${response.status}`);
-            }
-
-            const data = await response.text();
-            const conflictsCount = countOccurrences(data, '+<<<<<<< destination:');
-            return { conflicts: conflictsCount > 0 };
+        const conflictsData = await getCachedConflicts(repoName, spec, () => {
+            return conflictsLimiter(() => computeConflicts(repoName, spec));
         });
 
         res.json(conflictsData);
@@ -536,16 +520,143 @@ app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
     }
 });
 
-function countOccurrences(str, searchString) {
-    let count = 0;
-    let index = 0;
-    while ((index = str.indexOf(searchString, index)) !== -1) {
-        if (index === 0 || str[index - 1] === '\n') {
-            count++;
+async function fetchBitbucketJson(url) {
+    const response = await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(30000),
+        headers: {
+            'Authorization': `Basic ${bbAuth}`,
+            'Accept': 'application/json'
         }
-        index += searchString.length;
+    });
+    if (!response.ok) {
+        await response.arrayBuffer().catch(() => {}); // release the socket
+        throw new Error(`Request failed with status code ${response.status}`);
     }
-    return count;
+    return response.json();
+}
+
+// Serializes conflict computations: a page load requests conflicts for every PR
+// at once, and each computation makes many Bitbucket calls of its own.
+function createLimiter(maxConcurrent) {
+    let active = 0;
+    const queue = [];
+    const next = () => {
+        if (active >= maxConcurrent || queue.length === 0) return;
+        active++;
+        const { task, resolve, reject } = queue.shift();
+        task().then(resolve, reject).finally(() => { active--; next(); });
+    };
+    return task => new Promise((resolve, reject) => {
+        queue.push({ task, resolve, reject });
+        next();
+    });
+}
+const conflictsLimiter = createLimiter(4);
+
+// Returns a Map of touched file path -> {status, sidePath} for one side of a merge.
+// Bitbucket's diffstat/{a}..{b} is a topic (three-dot) diff: changes on side `a` since merge-base(a, b).
+// Renamed files are keyed by their old path (so both sides match) but read from their new path.
+async function fetchDiffstatFiles(repoName, sideCommit, otherCommit) {
+    const files = new Map();
+    let url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diffstat/${sideCommit}..${otherCommit}?pagelen=500`;
+    while (url) {
+        const page = await fetchBitbucketJson(url);
+        for (const entry of page.values || []) {
+            const oldPath = entry.old && entry.old.path;
+            const newPath = entry.new && entry.new.path;
+            files.set(oldPath || newPath, { status: entry.status, sidePath: newPath || oldPath });
+        }
+        url = page.next || null;
+    }
+    return files;
+}
+
+// Returns the file content at a commit, null if the file does not exist there.
+async function fetchFileAtCommit(repoName, commit, filePath) {
+    const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+    const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/src/${commit}/${encodedPath}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(30000),
+        headers: { 'Authorization': `Basic ${bbAuth}` }
+    });
+    if (response.status === 404) {
+        await response.arrayBuffer().catch(() => {}); // release the socket
+        return null;
+    }
+    if (!response.ok) {
+        await response.arrayBuffer().catch(() => {}); // release the socket
+        throw new Error(`Request failed with status code ${response.status}`);
+    }
+    return response.text();
+}
+
+// Bitbucket removed merge-preview diffs from its API and the replacement
+// /pullrequests/{id}/conflicts endpoint rejects API-token auth, so we compute
+// conflicts ourselves: intersect the files touched on each side since the merge
+// base, then 3-way merge each overlapping file with diff3.
+const maxConflictCandidates = 50;
+
+async function computeConflicts(repoName, spec) {
+    const startTime = Date.now();
+    const [destCommit, sourceCommit] = spec.split('..');
+
+    const sourceFiles = await fetchDiffstatFiles(repoName, sourceCommit, destCommit);
+    if (sourceFiles.size === 0) return { conflicts: false };
+    const destFiles = await fetchDiffstatFiles(repoName, destCommit, sourceCommit);
+    if (destFiles.size === 0) return { conflicts: false };
+
+    const overlap = [...sourceFiles.keys()].filter(p => destFiles.has(p));
+    if (overlap.length === 0) return { conflicts: false };
+    if (overlap.length > maxConflictCandidates) {
+        log(`Conflict check for ${repoName} ${spec}: ${overlap.length} overlapping files, only checking the first ${maxConflictCandidates}`, errorLogStream);
+    }
+
+    const mergeBase = (await fetchBitbucketJson(
+        `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/merge-base/${sourceCommit}..${destCommit}`
+    )).hash;
+
+    let conflicts = false;
+    for (const filePath of overlap.slice(0, maxConflictCandidates)) {
+        const sourceEntry = sourceFiles.get(filePath);
+        const destEntry = destFiles.get(filePath);
+        const sourceRemoved = sourceEntry.status === 'removed';
+        const destRemoved = destEntry.status === 'removed';
+
+        if (sourceRemoved && destRemoved) continue;
+        if (sourceRemoved !== destRemoved) { // modify/delete
+            conflicts = true;
+            break;
+        }
+
+        const [baseContent, sourceContent, destContent] = await Promise.all([
+            fetchFileAtCommit(repoName, mergeBase, filePath),
+            fetchFileAtCommit(repoName, sourceCommit, sourceEntry.sidePath),
+            fetchFileAtCommit(repoName, destCommit, destEntry.sidePath)
+        ]);
+
+        if (sourceContent === destContent) continue; // both sides made the same change
+        if (baseContent === null) { // add/add with different content
+            conflicts = true;
+            break;
+        }
+        const isBinary = [baseContent, sourceContent, destContent].some(c => c !== null && c.includes('\0'));
+        if (isBinary || sourceContent === null || destContent === null) {
+            conflicts = true;
+            break;
+        }
+
+        const merged = diff3Merge(sourceContent.split('\n'), baseContent.split('\n'), destContent.split('\n'));
+        if (merged.some(region => region.conflict)) {
+            conflicts = true;
+            break;
+        }
+    }
+
+    const duration = Date.now() - startTime;
+    log(`computeConflicts - ${repoName} ${spec} - ${overlap.length} overlapping files - conflicts: ${conflicts} - Duration: ${duration}ms`, performanceLogStream);
+    return { conflicts };
 }
 
 app.listen(port, () => {

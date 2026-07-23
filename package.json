@@ -1,7 +1,7 @@
 {
   "name": "version",
-  "version": "2.0.0",
-  "releaseDate": "2026-01-27",
+  "version": "2.0.1",
+  "releaseDate": "2026-07-22",
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
   "scripts": {
@@ -12,6 +12,7 @@
   "license": "Copyright François-Régis Jaunatre",
   "dependencies": {
     "node-cache": "^5.1.2",
+    "node-diff3": "^3.2.1",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "fetch": "^1.1.0",
