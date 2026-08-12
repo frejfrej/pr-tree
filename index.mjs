@@ -12,8 +12,10 @@ import {
     getCachedProjects,
     getCachedProjectData,
     getCachedConflicts,
+    getCachedSyncStatuses,
     getCachedSprints,
-    getCacheStats
+    getCacheStats,
+    raiseAllCacheTtls
 } from './cache.mjs';
 
 dotenv.config();
@@ -70,6 +72,44 @@ app.use((req, res, next) => {
     next();
 });
 
+// Atlassian rate-limit circuit breaker: after an HTTP 429, no request is sent
+// to Atlassian and cached data keeps being served until 10 minutes after the
+// last 429 received.
+const rateLimitBackoffSeconds = 600;
+let rateLimitedUntil = 0;
+
+class RateLimitError extends Error {
+    constructor() {
+        super('Atlassian rate limit reached (HTTP 429), requests are paused');
+        this.name = 'RateLimitError';
+    }
+}
+
+function isRateLimited() {
+    return Date.now() < rateLimitedUntil;
+}
+
+function noteRateLimit(url) {
+    rateLimitedUntil = Date.now() + rateLimitBackoffSeconds * 1000;
+    raiseAllCacheTtls(rateLimitBackoffSeconds);
+    log(`HTTP 429 received from ${url} - Atlassian requests paused until ${new Date(rateLimitedUntil).toISOString()}`, errorLogStream);
+}
+
+// Every Atlassian request goes through this wrapper so a single 429 pauses them all.
+async function atlassianFetch(url, options) {
+    if (isRateLimited()) {
+        throw new RateLimitError();
+    }
+
+    const response = await fetch(url, options);
+    if (response.status === 429) {
+        await response.arrayBuffer().catch(() => {}); // release the socket
+        noteRateLimit(url);
+        throw new RateLimitError();
+    }
+    return response;
+}
+
 async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
     const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/3/search/jql`;
     const existingIssuesSet = new Set(existingIssues);
@@ -80,7 +120,7 @@ async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
         const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
         const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,updated,assignee`;
 
-        const response = await fetch(url, {
+        const response = await atlassianFetch(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Basic ${jiraAuth}`,
@@ -114,7 +154,7 @@ async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
 async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
     try {
         const compareUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=100`;
-        const compareResponse = await fetch(compareUrl, {
+        const compareResponse = await atlassianFetch(compareUrl, {
             method: 'GET',
             headers: {
                 'Authorization': `Basic ${bbAuth}`,
@@ -138,7 +178,7 @@ async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
 async function fetchPullRequests(url, pullRequests) {
     const startTime = Date.now();
     try {
-        const response = await fetch(url, {
+        const response = await atlassianFetch(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Basic ${bbAuth}`,
@@ -191,7 +231,7 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee,parent,issuetype`;
 
         try {
-            const response = await fetch(url, {
+            const response = await atlassianFetch(url, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Basic ${jiraAuth}`,
@@ -233,7 +273,7 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,fixVersions`;
         try {
             const startTime = Date.now();
-            const response = await fetch(parentUrl, {
+            const response = await atlassianFetch(parentUrl, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Basic ${jiraAuth}`,
@@ -297,7 +337,7 @@ async function fetchJiraSprints(jiraProjects) {
         const boardsUrl = `https://${config.jira.siteName}.atlassian.net/rest/agile/1.0/board?projectKeyOrId=${project}&type=scrum`;
 
         try {
-            const boardsResponse = await fetch(boardsUrl, {
+            const boardsResponse = await atlassianFetch(boardsUrl, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Basic ${jiraAuth}`,
@@ -310,7 +350,7 @@ async function fetchJiraSprints(jiraProjects) {
                 log(`Fetched ${boardsData.total} boards for project ${project}`, performanceLogStream);
                 for (const board of boardsData.values) {
                     const sprintsUrl = `https://${config.jira.siteName}.atlassian.net/rest/agile/1.0/board/${board.id}/sprint?state=active`;
-                    const sprintsResponse = await fetch(sprintsUrl, {
+                    const sprintsResponse = await atlassianFetch(sprintsUrl, {
                         method: 'GET',
                         headers: {
                             'Authorization': `Basic ${jiraAuth}`,
@@ -350,7 +390,7 @@ async function fetchSprintIssues(sprints, jiraProjects) {
 
             try {
                 const startTime = Date.now();
-                const response = await fetch(url, {
+                const response = await atlassianFetch(url, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Basic ${jiraAuth}`,
@@ -400,100 +440,101 @@ app.get('/api/projects', async (req, res) => {
     }
 });
 
+async function buildProjectData(projectName) {
+    const projectConfig = config.projects[projectName];
+    if (!projectConfig) {
+        throw new Error('Project not found');
+    }
+
+    log(`Processing pull requests for project: ${projectName}`, accessLogStream);
+
+    let allPullRequests = [];
+    let pullRequestsByDestination = new Map();
+
+    for (const repoName of projectConfig.repositories) {
+        const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
+        let pullRequests = [];
+        await fetchPullRequests(baseUrl, pullRequests);
+        allPullRequests.push(...pullRequests);
+        log(`Retrieved ${pullRequests.length} pull requests for repository: ${repoName}`, accessLogStream);
+    }
+
+    fillPullRequestsMap(allPullRequests, pullRequestsByDestination);
+    const jiraIssuesMap = createJiraIssuesMap(allPullRequests, projectConfig.jiraRegex);
+    const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
+    log(`Total JIRA issues found: ${allJiraIssues.length}`, accessLogStream);
+
+    const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
+
+    // Fetch sprints
+    const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
+    log(`Retrieved ${sprints.length} sprints for project: ${projectName}`, accessLogStream);
+
+    // Fetch sprint issues
+    const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
+    log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
+
+    // retrieve orphaned issues
+    const orphanedIssues = await fetchInReviewIssuesWithoutPR(
+        projectConfig.jiraProjects,
+        allJiraIssues
+    );
+
+    // calculate dataHash and determine if the data is new based on the last saved response
+    let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
+
+    let response;
+    if (lastResponse?.dataHash !== dataHash) {
+        // if the hash is new, retrieve ahead and behind commit counts
+        // Fetch commit differences for each pull request
+        const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
+            const commitsAhead = await fetchCommitsDiff(
+                pr.source.repository.name,
+                pr.source.branch.name,
+                pr.destination.branch.name
+            );
+            const commitsBehind = await fetchCommitsDiff(
+                pr.source.repository.name,
+                pr.destination.branch.name,
+                pr.source.branch.name
+            );
+            return {
+                ...pr,
+                commitsAhead: commitsAhead,
+                commitsBehind: commitsBehind
+            };
+        }));
+
+        response = {
+            lastRefreshTime: new Date().toISOString(),
+            pullRequests: pullRequestsWithCommits,
+            jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
+            jiraIssuesDetails: jiraIssuesDetails,
+            pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
+            jiraSiteName: config.jira.siteName,
+            sprints: sprints,
+            sprintIssues: sprintIssues,
+            orphanedIssues: orphanedIssues,
+            dataHash: dataHash
+        };
+
+        lastResponse = response;
+
+    } else {
+        // response is the same, just update the lastRefreshTime
+        response = lastResponse;
+        response.lastRefreshTime = new Date().toISOString();
+    }
+
+    return response;
+}
+
 app.get('/api/pull-requests/:project', async (req, res) => {
     const startTime = Date.now();
     const projectName = req.params.project;
 
     try {
-        const projectData = await getCachedProjectData(projectName, async () => {
-            // Existing data fetching logic remains the same
-            const projectConfig = config.projects[projectName];
-            if (!projectConfig) {
-                throw new Error('Project not found');
-            }
-
-            log(`Processing pull requests for project: ${projectName}`, accessLogStream);
-
-            let allPullRequests = [];
-            let pullRequestsByDestination = new Map();
-
-            for (const repoName of projectConfig.repositories) {
-                const baseUrl = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
-                let pullRequests = [];
-                await fetchPullRequests(baseUrl, pullRequests);
-                allPullRequests.push(...pullRequests);
-                log(`Retrieved ${pullRequests.length} pull requests for repository: ${repoName}`, accessLogStream);
-            }
-
-            fillPullRequestsMap(allPullRequests, pullRequestsByDestination);
-            const jiraIssuesMap = createJiraIssuesMap(allPullRequests, projectConfig.jiraRegex);
-            const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
-            log(`Total JIRA issues found: ${allJiraIssues.length}`, accessLogStream);
-
-            const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
-
-            // Fetch sprints
-            const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
-            log(`Retrieved ${sprints.length} sprints for project: ${projectName}`, accessLogStream);
-
-            // Fetch sprint issues
-            const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
-            log(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`, accessLogStream);
-
-            // retrieve orphaned issues
-            const orphanedIssues = await fetchInReviewIssuesWithoutPR(
-                projectConfig.jiraProjects,
-                allJiraIssues
-            );
-
-            // calculate dataHash and determine if the data is new based on the last saved response
-            let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
-
-            let response;
-            if (lastResponse?.dataHash !== dataHash) {
-                // if the hash is new, retrieve ahead and behind commit counts
-                // Fetch commit differences for each pull request
-                const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
-                    const commitsAhead = await fetchCommitsDiff(
-                        pr.source.repository.name,
-                        pr.source.branch.name,
-                        pr.destination.branch.name
-                    );
-                    const commitsBehind = await fetchCommitsDiff(
-                        pr.source.repository.name,
-                        pr.destination.branch.name,
-                        pr.source.branch.name
-                    );
-                    return {
-                        ...pr,
-                        commitsAhead: commitsAhead,
-                        commitsBehind: commitsBehind
-                    };
-                }));
-
-                response = {
-                    lastRefreshTime: new Date().toISOString(),
-                    pullRequests: pullRequestsWithCommits,
-                    jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
-                    jiraIssuesDetails: jiraIssuesDetails,
-                    pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
-                    jiraSiteName: config.jira.siteName,
-                    sprints: sprints,
-                    sprintIssues: sprintIssues,
-                    orphanedIssues: orphanedIssues,
-                    dataHash: dataHash
-                };
-
-                lastResponse = response;
-
-            } else {
-                // response is the same, just update the lastRefreshTime
-                response = lastResponse;
-                response.lastRefreshTime = new Date().toISOString();
-            }
-
-            return response;
-        });
+        const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
 
         res.json(projectData);
 
@@ -501,7 +542,79 @@ app.get('/api/pull-requests/:project', async (req, res) => {
         log(`Completed processing for project ${projectName} - Duration: ${duration}ms`, performanceLogStream);
     } catch (error) {
         log(`Error processing pull requests: ${error.message}`, errorLogStream);
-        res.status(500).send('Internal Server Error');
+        if (error instanceof RateLimitError) {
+            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(rateLimitedUntil).toISOString() });
+        } else {
+            res.status(500).send('Internal Server Error');
+        }
+    }
+});
+
+// Computes the sync (conflicts) status of every pull request of a project in a
+// single response, so the frontend makes one call when the user asks for it.
+app.get('/api/sync-statuses/:project', async (req, res) => {
+    const startTime = Date.now();
+    const projectName = req.params.project;
+
+    if (!config.projects[projectName]) {
+        res.status(404).json({ error: 'Project not found' });
+        return;
+    }
+
+    try {
+        const syncStatuses = await getCachedSyncStatuses(projectName, async () => {
+            const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
+
+            const statuses = {};
+            await Promise.all(projectData.pullRequests.map(async (pullRequest) => {
+                const repoName = pullRequest.source.repository.name;
+                const spec = `${pullRequest.destination.commit?.hash}..${pullRequest.source.commit?.hash}`;
+                if (spec.includes('undefined')) {
+                    return; // no commit hashes to compare, the frontend flags these as invalid
+                }
+
+                try {
+                    statuses[`${repoName}/${spec}`] = await getCachedConflicts(repoName, spec, () => {
+                        return conflictsLimiter(() => computeConflicts(repoName, spec));
+                    });
+                } catch (error) {
+                    if (!(error instanceof RateLimitError)) {
+                        log(`Error computing sync status for ${repoName} ${spec}: ${error.message}`, errorLogStream);
+                    }
+                    statuses[`${repoName}/${spec}`] = { error: true };
+                }
+            }));
+
+            // Responses built during a rate-limit window are kept until it closes,
+            // regular ones are cached like individual conflicts (5 minutes)
+            const rateLimitedRemainingMs = rateLimitedUntil - Date.now();
+            const data = {
+                lastRefreshTime: new Date().toISOString(),
+                rateLimited: rateLimitedRemainingMs > 0,
+                rateLimitedUntil: rateLimitedRemainingMs > 0 ? new Date(rateLimitedUntil).toISOString() : null,
+                statuses: statuses
+            };
+            const ttl = rateLimitedRemainingMs > 0 ? Math.max(1, Math.ceil(rateLimitedRemainingMs / 1000)) : 300;
+            return { data, ttl };
+        });
+
+        res.json(syncStatuses);
+
+        const duration = Date.now() - startTime;
+        log(`Completed sync statuses for project ${projectName} - ${Object.keys(syncStatuses.statuses).length} pull requests - Duration: ${duration}ms`, performanceLogStream);
+    } catch (error) {
+        if (error instanceof RateLimitError) {
+            // no cached project data to enumerate pull requests from, just report the pause
+            res.json({
+                lastRefreshTime: new Date().toISOString(),
+                rateLimited: true,
+                rateLimitedUntil: new Date(rateLimitedUntil).toISOString(),
+                statuses: {}
+            });
+            return;
+        }
+        log(`Error fetching sync statuses for project ${projectName}: ${error.message}`, errorLogStream);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 });
 
@@ -515,13 +628,17 @@ app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
 
         res.json(conflictsData);
     } catch (error) {
+        if (error instanceof RateLimitError) {
+            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(rateLimitedUntil).toISOString() });
+            return;
+        }
         log(`Error fetching conflicts for commits ${spec}: ${error.message}`, errorLogStream);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
 
 async function fetchBitbucketJson(url) {
-    const response = await fetch(url, {
+    const response = await atlassianFetch(url, {
         method: 'GET',
         signal: AbortSignal.timeout(30000),
         headers: {
@@ -576,7 +693,7 @@ async function fetchDiffstatFiles(repoName, sideCommit, otherCommit) {
 async function fetchFileAtCommit(repoName, commit, filePath) {
     const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
     const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/src/${commit}/${encodedPath}`;
-    const response = await fetch(url, {
+    const response = await atlassianFetch(url, {
         method: 'GET',
         signal: AbortSignal.timeout(30000),
         headers: { 'Authorization': `Basic ${bbAuth}` }

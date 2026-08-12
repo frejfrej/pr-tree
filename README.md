@@ -37,6 +37,9 @@
     * A hash is computed based on that data
     * Ahead and Behind commit counts are only retrieved when the hash is updated to avoid issues with the Bitbucket API
 * Display SYNC in a badge onto each pull-requests that requires syncing with its parent branch
+    * SYNC status is only fetched when clicking the load button next to the SYNC filter
+    * A single server request retrieves the status of all pull requests, cached server-side
+    * After an Atlassian HTTP 429 response, the server pauses all Atlassian requests and serves cached data until 10 minutes after the last 429
 * Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
 * Online help displays the README.md file
 
@@ -51,6 +54,15 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 2.1.0
+    * SYNC status is now loaded on demand instead of automatically
+        * No conflict computation is triggered when a project loads or refreshes, only when clicking the new load button next to the SYNC filter
+        * The frontend makes a single call to the server, which retrieves everything needed from Atlassian and answers in one response
+        * The response is cached server-side for 5 minutes like individual conflict checks
+        * Loaded statuses are kept client-side and re-applied on automatic refreshes without new requests
+    * Atlassian rate-limit protection
+        * After any HTTP 429 from Bitbucket or Jira, the server stops sending requests to Atlassian until 10 minutes after the last 429 received
+        * All cached data is kept alive for those 10 minutes so the dashboard keeps working from cache during the pause
 * Version 2.0.0
     * Filters for sprint, fix version, assignee and reviewer are now multi-select filters
 * Version 1.14.0

@@ -10,8 +10,11 @@ let currentSync = "Show all";
 let currentReadyForReviewer = false;
 let currentApiResult = null;
 let reloadInterval = 100;
-let pendingSyncChecks = 0;
-let syncCheckComplete = false;
+// SYNC statuses are only fetched when the user clicks the load button; the
+// last response is kept so it can be re-applied after automatic re-renders
+let currentSyncStatuses = null;
+let syncStatusLoading = false;
+let syncLoadFailed = false;
 
 function updateUrlWithFilters() {
     const url = new URL(window.location);
@@ -62,7 +65,9 @@ function restoreFiltersFromUrl() {
     currentSprints = urlParams.getAll('sprint');
     currentFixVersions = urlParams.getAll('fixVersion');
 
-    currentSync = "Show all"; // Not restored because it's calculated asynchronously
+    if (!currentSyncStatuses) {
+        currentSync = "Show all"; // Not restored from URL because SYNC status is only loaded on demand
+    }
     currentReadyForReviewer = false; // Not restored because it requires a fully displayed and updated pr tree
 
     // Update multi-select components with restored values
@@ -93,6 +98,18 @@ function restoreFiltersFromUrl() {
         readyCheck.checked = currentReadyForReviewer;
         readyCheck.disabled = currentReviewers.length === 0;
     }
+}
+
+function initializeSyncControls() {
+    const syncSelect = document.getElementById('syncSelect');
+    if (syncSelect) {
+        syncSelect.addEventListener('change', handleFilterChange);
+    }
+    const loadSyncButton = document.getElementById('loadSyncButton');
+    if (loadSyncButton) {
+        loadSyncButton.addEventListener('click', loadSyncStatuses);
+    }
+    updateSyncControls();
 }
 
 function initializeReadyForReviewerFilter() {
@@ -166,10 +183,11 @@ async function handleProjectChange(event, isInitialLoad = false) {
             if (sprintMultiSelect) sprintMultiSelect.clearAll(false);
             if (fixVersionMultiSelect) fixVersionMultiSelect.clearAll(false);
 
-            // Reset sync select and ready checkbox
-            const syncSelect = document.getElementById('syncSelect');
+            // Reset sync statuses and ready checkbox (SYNC data belongs to the previous project)
+            currentSyncStatuses = null;
+            syncLoadFailed = false;
+            updateSyncControls();
             const readyCheck = document.getElementById('readyForReviewerCheck');
-            if (syncSelect) syncSelect.value = "Show all";
             if (readyCheck) {
                 readyCheck.checked = false;
                 readyCheck.disabled = true;
@@ -186,6 +204,9 @@ async function handleProjectChange(event, isInitialLoad = false) {
     } else {
         document.getElementById('pull-requests').innerHTML = 'Please select a project';
         currentProject = null;
+        currentSyncStatuses = null;
+        syncLoadFailed = false;
+        updateSyncControls();
         updateUrlWithFilters();
 
         // Stop periodic checking
@@ -268,7 +289,6 @@ function toggleRepository(button) {
 function populateFilters(pullRequests) {
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
     const reviewerMultiSelect = getMultiSelect('reviewerSelect');
-    const syncSelect = document.getElementById('syncSelect');
     const readyCheck = document.getElementById('readyForReviewerCheck');
 
     // Extract unique assignees from Jira issues and sort them alphabetically
@@ -300,15 +320,8 @@ function populateFilters(pullRequests) {
         reviewerMultiSelect.setOptions(reviewerOptions);
     }
 
-    // Initialize sync check status
-    pendingSyncChecks = 0;
-    syncCheckComplete = false;
-    // Initial state of sync select
-    if (syncSelect) {
-        syncSelect.disabled = true;
-        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
-        syncSelect.addEventListener('change', handleFilterChange);
-    }
+    // Reflect the current SYNC load state (statuses are only fetched on demand)
+    updateSyncControls();
 
     // Update checkbox state
     if (readyCheck) {
@@ -513,10 +526,12 @@ async function renderEverything() {
     // Restore toggle states after rendering
     restoreToggleStates(toggleStates);
 
+    // Re-apply the last loaded SYNC statuses (without fetching them again)
+    // before filters run, so the SYNC filter can rely on the rendered badges
+    applySyncStatuses();
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
-    updateAllConflictsCounters();
 
     // Update the last refresh time
     const lastRefreshElement = document.getElementById('lastRefreshTime');
@@ -565,7 +580,6 @@ async function checkForUpdates() {
         if (newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
             await renderEverything();
-            updateAllConflictsCounters();
         }
     } catch (error) {
         console.error('Error checking for updates:', error);
@@ -788,88 +802,118 @@ function populateFixVersionFilter(jiraIssuesDetails) {
     }
 }
 
-async function updateConflictsCounter(pullRequestElement) {
-    const conflictsCounter = pullRequestElement.querySelector('.conflicts-counter');
-    if (!conflictsCounter) return;
-
-    const { repoName, spec } = conflictsCounter.dataset;
-    // no need to go fetch the sync status if the spec is invalid
-    let validSpec = null;
-    if (!spec.includes('undefined')) {
-        validSpec = spec;
+// Fetches the SYNC status of every pull request of the current project in a
+// single server call. Only triggered by the load button, never automatically.
+async function loadSyncStatuses() {
+    if (!currentProject || syncStatusLoading) {
+        return;
     }
 
-    // Only increment counter for valid specs
-    if (validSpec) {
-        pendingSyncChecks++;
-        updateSyncFilterState();
-    }
+    syncStatusLoading = true;
+    updateSyncControls();
+    document.querySelectorAll('.conflicts-counter').forEach(counter => {
+        if (!counter.dataset.spec.includes('undefined')) {
+            counter.innerHTML = '<div class="conflicts-spinner"></div>';
+        }
+    });
 
     try {
-        const result = validSpec ? await fetchConflicts(repoName, validSpec) : null;
-
-        if (result) {
-            if (result.conflicts) {
-                conflictsCounter.innerHTML = `
-                    <div class="conflicts-count" title="Conflicts found">
-                        SYNC
-                    </div>
-                `;
-            } else {
-                // display nothing if there are no conflicts
-                conflictsCounter.innerHTML = ``;
-            }
-        } else {
-            if (spec !== validSpec) {
-                conflictsCounter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
-            } else {
-                conflictsCounter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
-            }
-        }
-    } finally {
-        if (validSpec) {
-            pendingSyncChecks--;
-            updateSyncFilterState();
-        }
-    }
-}
-
-function updateSyncFilterState() {
-    const syncSelect = document.getElementById('syncSelect');
-    if (!syncSelect) return;
-
-    if (pendingSyncChecks === 0) {
-        // All sync checks are complete
-        syncCheckComplete = true;
-        syncSelect.disabled = false;
-        syncSelect.innerHTML = `
-            <option value="Show all">Show all</option>
-            <option value="requested">SYNC required</option>
-            <option value="OK">SYNC ok</option>
-        `;
-        console.log('Enabling sync filter - all checks complete');
-    } else {
-        // Sync checks are in progress
-        syncSelect.disabled = true;
-        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
-    }
-}
-
-function updateAllConflictsCounters() {
-    const pullRequests = document.querySelectorAll('.pull-request');
-    pullRequests.forEach(updateConflictsCounter);
-}
-
-async function fetchConflicts(repoName, spec) {
-    try {
-        const response = await fetch(`/api/pull-request-conflicts/${repoName}/${spec}`);
+        const response = await fetch(`/api/sync-statuses/${encodeURIComponent(currentProject)}`);
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
-        return await response.json();
+        currentSyncStatuses = await response.json();
+        syncLoadFailed = false;
     } catch (error) {
-        console.error('Error fetching conflicts for', spec, 'with :', error);
-        return null;
+        console.error('Error fetching sync statuses:', error);
+        syncLoadFailed = true;
+        if (!currentSyncStatuses) {
+            currentSync = "Show all";
+        }
+    } finally {
+        syncStatusLoading = false;
+    }
+
+    updateSyncControls();
+    applySyncStatuses();
+    // Re-apply filters so an already selected SYNC filter uses the new statuses
+    filterBranches(currentAssignees, currentReviewers, currentSprints, currentFixVersions, currentSync, currentReadyForReviewer);
+}
+
+// Renders the stored SYNC statuses onto the conflicts counters
+function applySyncStatuses() {
+    document.querySelectorAll('.conflicts-counter').forEach(counter => {
+        const { repoName, spec } = counter.dataset;
+        if (spec.includes('undefined')) {
+            counter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
+            return;
+        }
+        if (!currentSyncStatuses) {
+            counter.innerHTML = '';
+            return;
+        }
+
+        const status = currentSyncStatuses.statuses[`${repoName}/${spec}`];
+        if (!status) {
+            counter.innerHTML = '<div class="conflicts-error" title="SYNC status unknown - use the SYNC load button to refresh">?</div>';
+        } else if (status.error) {
+            counter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
+        } else if (status.conflicts) {
+            counter.innerHTML = `
+                <div class="conflicts-count" title="Conflicts found">
+                    SYNC
+                </div>
+            `;
+        } else {
+            // display nothing if there are no conflicts
+            counter.innerHTML = ``;
+        }
+    });
+}
+
+function updateSyncControls() {
+    const syncSelect = document.getElementById('syncSelect');
+    const loadSyncButton = document.getElementById('loadSyncButton');
+    const syncWarning = document.getElementById('syncWarning');
+    if (!syncSelect || !loadSyncButton) return;
+
+    const buttonIcon = loadSyncButton.querySelector('i');
+    if (syncStatusLoading) {
+        loadSyncButton.disabled = true;
+        if (buttonIcon) buttonIcon.classList.add('fa-spin');
+        syncSelect.disabled = true;
+        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
+    } else {
+        loadSyncButton.disabled = !currentProject;
+        if (buttonIcon) buttonIcon.classList.remove('fa-spin');
+        if (currentSyncStatuses) {
+            syncSelect.disabled = false;
+            syncSelect.innerHTML = `
+                <option value="Show all">Show all</option>
+                <option value="requested">SYNC required</option>
+                <option value="OK">SYNC ok</option>
+            `;
+            syncSelect.value = currentSync;
+        } else {
+            syncSelect.disabled = true;
+            syncSelect.innerHTML = '<option value="Show all">SYNC status not loaded</option>';
+        }
+    }
+
+    if (syncWarning) {
+        let warningText = '';
+        if (!syncStatusLoading && syncLoadFailed) {
+            warningText = currentSyncStatuses
+                ? 'Failed to refresh SYNC status - showing previously loaded results'
+                : 'Failed to load SYNC status - use the load button to try again';
+        } else if (!syncStatusLoading && currentSyncStatuses && currentSyncStatuses.rateLimited) {
+            const until = currentSyncStatuses.rateLimitedUntil
+                ? new Date(currentSyncStatuses.rateLimitedUntil).toLocaleTimeString()
+                : '';
+            warningText = `Atlassian rate limit reached - SYNC status may be incomplete${until ? `, requests are paused until ${until}` : ''}`;
+        }
+        syncWarning.style.display = warningText ? '' : 'none';
+        syncWarning.title = warningText;
     }
 }
 
@@ -972,11 +1016,10 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                     ${descendantCount}
                 </div>
             ` : ''}
-            <div class="conflicts-counter" 
-                 data-id="conflicts_${pullRequest.id}" 
-                 data-repo-name="${pullRequest.source.repository.name}" 
+            <div class="conflicts-counter"
+                 data-id="conflicts_${pullRequest.id}"
+                 data-repo-name="${pullRequest.source.repository.name}"
                  data-spec="${spec}">
-                <div class="conflicts-spinner"></div>
             </div>
         </div>
     `;
@@ -1215,6 +1258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchAndDisplayVersion();
     initializePopovers();
     initializeReadyForReviewerFilter();
+    initializeSyncControls();
 
     // Add event listener for the footer help button
     const footerHelpButton = document.querySelector('.footer-link#helpButton');

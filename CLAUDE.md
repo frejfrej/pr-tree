@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **1.11.1** (as of 2025-01-22)
+Current version: **2.1.0** (as of 2026-08-12)
 
 ## Technology Stack
 
@@ -196,6 +196,24 @@ Checks for merge conflicts in a PR (cached 5 minutes).
   "conflicts": true
 }
 ```
+
+### GET /api/sync-statuses/:project
+Returns the SYNC (conflicts) status of every open PR of a project in a single response (cached 5 minutes). Only called by the frontend when the user clicks the load button next to the SYNC filter — never automatically.
+
+**Response:**
+```json
+{
+  "lastRefreshTime": "2026-08-12T10:30:00.000Z",
+  "rateLimited": false,
+  "rateLimitedUntil": null,
+  "statuses": {
+    "repo-name/destHash..sourceHash": { "conflicts": true },
+    "repo-name/otherDest..otherSource": { "error": true }
+  }
+}
+```
+
+**Rate-limit behavior (applies to all endpoints):** every Atlassian request goes through `atlassianFetch()` in index.mjs. After any HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429; all cache TTLs are raised to cover that window (`raiseAllCacheTtls` in cache.mjs) so cached data keeps being served. Responses built during the pause carry `rateLimited: true` and are cached until the window closes; uncached endpoints return 503 with `rateLimitedUntil`.
 
 ### GET /api/cache/stats
 Returns cache statistics.

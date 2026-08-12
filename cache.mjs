@@ -12,6 +12,7 @@ const cache = new NodeCache({
 const CACHE_KEYS = {
     PROJECT_DATA: (projectName) => `project_${projectName}`,
     CONFLICTS: (repoName, spec) => `conflicts_${repoName}_${spec}`,
+    SYNC_STATUSES: (projectName) => `sync_statuses_${projectName}`,
     SPRINTS: (projectName) => `sprints_${projectName}`,
     PROJECTS_LIST: 'projects_list'
 };
@@ -65,6 +66,26 @@ export async function getCachedConflicts(repoName, spec, fetchConflicts) {
 }
 
 /**
+ * Get sync statuses (conflicts for every pull request of a project) from cache
+ * or fetch from source. The fetch function decides the TTL so that responses
+ * built during an Atlassian rate-limit window can be kept until it closes.
+ * @param {string} projectName - Project identifier
+ * @param {function} fetchSyncStatuses - Async function returning { data, ttl } on cache miss (ttl in seconds)
+ * @returns {Promise<Object>} Sync statuses data
+ */
+export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
+    const key = CACHE_KEYS.SYNC_STATUSES(projectName);
+    const cachedData = cache.get(key);
+    if (cachedData !== undefined) {
+        return cachedData;
+    }
+
+    const { data, ttl } = await fetchSyncStatuses();
+    cache.set(key, data, ttl);
+    return data;
+}
+
+/**
  * Get sprints data from cache or fetch from source
  * @param {string} projectName - Project identifier
  * @param {function} fetchSprints - Function to fetch sprints if cache miss
@@ -72,6 +93,22 @@ export async function getCachedConflicts(repoName, spec, fetchConflicts) {
  */
 export async function getCachedSprints(projectName, fetchSprints) {
     return getOrSetCache(CACHE_KEYS.SPRINTS(projectName), fetchSprints, 600); // 10 minutes TTL
+}
+
+/**
+ * Raise the TTL of every cached entry so that nothing expires before the given
+ * number of seconds from now. Entries expiring later are left untouched.
+ * Used to keep serving cached data while Atlassian requests are paused after an HTTP 429.
+ * @param {number} seconds - Minimum remaining TTL in seconds
+ */
+export function raiseAllCacheTtls(seconds) {
+    const target = Date.now() + seconds * 1000;
+    for (const key of cache.keys()) {
+        const expiry = cache.getTtl(key); // epoch ms, 0 when the key never expires
+        if (expiry !== undefined && expiry !== 0 && expiry < target) {
+            cache.ttl(key, seconds);
+        }
+    }
 }
 
 /**
