@@ -77,3 +77,83 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ ...defaults, sync: 'requested' }), 1);
     assert.equal(countActiveFilters({ assignees: ['A'], reviewers: ['J'], sprints: ['1'], fixVersions: ['2'], sync: 'OK', ready: true }), 6);
 });
+
+// ------------------------------------------------------------------ index and evaluation
+
+import { buildFilterIndex, evaluatePullRequest } from '../public/app-filter.js';
+
+const sampleApiResult = {
+    pullRequests: [
+        { id: 10, author, participants: [{ user: author, approved: false }, { user: jane, approved: false }, { user: bob, approved: true }] },
+        { id: 11, author, participants: [{ user: author, approved: false }] }
+    ],
+    jiraIssuesMap: { 10: ['PROJ-1', 'PROJ-2', 'PROJ-404'], 11: [] },
+    jiraIssuesDetails: [
+        { key: 'PROJ-1', fields: { assignee: { displayName: 'Jane' }, fixVersions: [{ id: 100, name: '1.0' }] } },
+        { key: 'PROJ-2', fields: { assignee: null, fixVersions: [] } }
+    ],
+    sprintIssues: { 5240: ['PROJ-2', 'PROJ-9'], 5241: ['PROJ-9'] }
+};
+
+const rendered = { statusInProgress: false, statusInReview: true, hasSyncLabel: false };
+const noFilter = { assignees: [], reviewers: [], sprints: [], fixVersions: [], sync: 'Show all', ready: false };
+
+test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versions per pull request', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const entry = pullRequestsById.get(10);
+    assert.deepEqual(entry.linkedIssues.map(issue => issue.key), ['PROJ-1', 'PROJ-2']); // PROJ-404 is unknown
+    assert.deepEqual([...entry.assignees], ['Jane']);
+    assert.deepEqual([...entry.reviewers], ['Jane', 'Bob']); // the author is not a reviewer
+    assert.deepEqual([...entry.sprints], ['5240']);
+    assert.deepEqual([...entry.fixVersions], ['100']);
+    const bare = pullRequestsById.get(11);
+    assert.equal(bare.linkedIssues.length, 0);
+    assert.equal(bare.reviewers.size, 0);
+});
+
+test('buildFilterIndex tolerates an empty result', () => {
+    assert.equal(buildFilterIndex({}).pullRequestsById.size, 0);
+});
+
+test('evaluatePullRequest shows everything without filters', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    assert.equal(evaluatePullRequest(pullRequestsById.get(10), noFilter, rendered).visible, true);
+    assert.equal(evaluatePullRequest(pullRequestsById.get(11), noFilter, rendered).visible, true);
+});
+
+test('evaluatePullRequest matches any selected value of each filter, and every filter must match', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const entry = pullRequestsById.get(10);
+    const evaluate = filters => evaluatePullRequest(entry, { ...noFilter, ...filters }, rendered).visible;
+    assert.equal(evaluate({ assignees: ['Bob', 'Jane'] }), true);
+    assert.equal(evaluate({ assignees: ['Bob'] }), false);
+    assert.equal(evaluate({ reviewers: ['Bob'] }), true);
+    assert.equal(evaluate({ reviewers: ['Author'] }), false);
+    assert.equal(evaluate({ sprints: ['5240'] }), true);
+    assert.equal(evaluate({ sprints: [5240] }), true); // ids may come as numbers
+    assert.equal(evaluate({ sprints: ['5241'] }), false);
+    assert.equal(evaluate({ fixVersions: ['100'] }), true);
+    assert.equal(evaluate({ fixVersions: ['200'] }), false);
+    assert.equal(evaluate({ assignees: ['Jane'], reviewers: ['Bob'], sprints: ['5240'], fixVersions: ['100'] }), true);
+    assert.equal(evaluate({ assignees: ['Jane'], sprints: ['5241'] }), false);
+});
+
+test('evaluatePullRequest SYNC filter follows the rendered badge', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const entry = pullRequestsById.get(10);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, { ...rendered, hasSyncLabel: true }).visible, true);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, { ...rendered, hasSyncLabel: false }).visible, false);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, { ...rendered, hasSyncLabel: false }).visible, true);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, { ...rendered, hasSyncLabel: true }).visible, false);
+});
+
+test('evaluatePullRequest ready filter keeps pull requests with reviewer attention only', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const entry = pullRequestsById.get(10);
+    const jane = evaluatePullRequest(entry, { ...noFilter, reviewers: ['Jane'], ready: true }, rendered);
+    assert.equal(jane.visible, true);
+    assert.equal(jane.attention.reviewer, true);
+    const bobApproved = evaluatePullRequest(entry, { ...noFilter, reviewers: ['Bob'], ready: true }, rendered);
+    assert.equal(bobApproved.visible, false);
+    assert.equal(bobApproved.attention.any, false);
+});

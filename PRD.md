@@ -373,8 +373,12 @@ The application integrates with a Jira workflow where:
 3. **Frontend** (public/)
    - Single-page application (vanilla JS)
    - State management in app.js
-   - Filtering logic in app-filter.js
-   - Counter utilities in counter-utils.js
+   - Filtering logic in app-filter.js (index built per data load, single pass over the tree)
+   - Counter display in counter-utils.js
+
+4. **Fixtures** (fixtures/)
+   - Generated data modelled on the real projects, served by `node index.mjs --fixtures` without Atlassian access
+   - Used for UI work and performance checks
 
 ### 7.2 Technology Stack
 
