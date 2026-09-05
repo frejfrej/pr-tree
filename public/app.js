@@ -1,6 +1,7 @@
 import { initializeFilter, filterBranches } from './app-filter.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
+import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer } from './app-shell.js';
 
 let currentProject = null;
 let currentSprints = [];
@@ -152,6 +153,8 @@ async function handleProjectChange(event, isInitialLoad = false) {
     const projectName = event.target.value;
     if (projectName) {
         currentProject = projectName;
+        updateDocumentTitle({ project: currentProject, attentionCount: 0 });
+        closeSidebarDrawer();
 
         // Only clear filters from URL when manually switching projects, not during initial page load
         if (!isInitialLoad) {
@@ -195,34 +198,49 @@ async function handleProjectChange(event, isInitialLoad = false) {
             }
         }
 
-        showLoading();
-        await renderEverything();
-        hideLoading();
+        showLoadingState();
+        renderEverything(await fetchData());
         updateUrlWithFilters();
 
         // Start periodic checking
         startPeriodicChecking();
     } else {
-        document.getElementById('pull-requests').innerHTML = 'Please select a project';
         currentProject = null;
         currentSyncStatuses = null;
         syncLoadFailed = false;
         updateSyncControls();
         updateUrlWithFilters();
+        updateDocumentTitle({ project: null, attentionCount: 0 });
+        showEmptyState();
 
         // Stop periodic checking
         stopPeriodicChecking();
     }
 }
 
-function showLoading() {
-    document.getElementById('pull-requests').style.display = 'none';
-    document.getElementById('loading').style.display = 'block';
+// Messages shown in the main pane instead of the tree. Built with DOM nodes so
+// project names never go through innerHTML.
+function showStateMessage(iconClass, text, modifier = '') {
+    const message = document.createElement('div');
+    message.className = `state-message ${modifier}`.trim();
+    const icon = document.createElement('i');
+    icon.className = iconClass;
+    const label = document.createElement('span');
+    label.textContent = text;
+    message.append(icon, label);
+    document.getElementById('pull-requests').replaceChildren(message);
 }
 
-function hideLoading() {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('pull-requests').style.display = 'block';
+function showEmptyState() {
+    showStateMessage('fas fa-code-branch', 'Select a project to display its pull requests');
+}
+
+function showLoadingState() {
+    showStateMessage('fas fa-spinner fa-spin', `Loading ${currentProject}…`);
+}
+
+function showErrorState() {
+    showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
 }
 
 function handleFilterChange() {
@@ -373,15 +391,20 @@ function renderOrphanedIssues(issues) {
 }
 
 
-async function renderEverything() {
+function renderEverything(apiResult) {
     if (!currentProject) {
+        return;
+    }
+    if (!apiResult) {
+        currentApiResult = null;
+        showErrorState();
         return;
     }
 
     // Capture current toggle states before re-rendering
     const toggleStates = captureToggleStates();
 
-    currentApiResult = await fetchData();
+    currentApiResult = apiResult;
     initializeFilter(currentApiResult);
     const container = document.getElementById('pull-requests');
 
@@ -453,10 +476,10 @@ async function checkForUpdates() {
             lastRefreshElement.textContent = formatRefreshTime(newData.lastRefreshTime);
         }
 
-        // Update the full content only if data has changed
-        if (newData.dataHash !== currentApiResult.dataHash) {
+        // Re-render when the data changed, or when nothing is displayed yet because the last fetch failed
+        if (!currentApiResult || newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
-            await renderEverything();
+            renderEverything(newData);
         }
     } catch (error) {
         console.error('Error checking for updates:', error);
@@ -789,7 +812,7 @@ function updateSyncControls() {
                 : '';
             warningText = `Atlassian rate limit reached - SYNC status may be incomplete${until ? `, requests are paused until ${until}` : ''}`;
         }
-        syncWarning.style.display = warningText ? '' : 'none';
+        syncWarning.hidden = !warningText;
         syncWarning.title = warningText;
     }
 }
@@ -976,48 +999,6 @@ function renderParticipant(participant, status) {
     `;
 }
 
-function initializeHelpModal() {
-    const modal = document.getElementById("helpModal");
-    const btn = document.getElementById("helpButton");
-    const span = document.getElementsByClassName("close")[0];
-    const helpContent = document.getElementById("helpContent");
-
-    btn.onclick = function() {
-        modal.style.display = "block";
-        if (!helpContent.innerHTML) {
-            fetchAndRenderReadme();
-        }
-    }
-
-    span.onclick = function() {
-        modal.style.display = "none";
-    }
-
-    window.onclick = function(event) {
-        if (event.target == modal) {
-            modal.style.display = "none";
-        }
-    }
-}
-
-async function fetchAndRenderReadme() {
-    const helpContent = document.getElementById("helpContent");
-    helpContent.innerHTML = 'Loading...';
-
-    try {
-        const response = await fetch('README.md');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const markdown = await response.text();
-        const html = marked.parse(markdown);
-        helpContent.innerHTML = html;
-    } catch (error) {
-        console.error('Error fetching README:', error);
-        helpContent.innerHTML = 'Error loading help content. Please try again later.';
-    }
-}
-
 async function fetchAndDisplayVersion() {
     try {
         const response = await fetch('/api/version');
@@ -1026,20 +1007,9 @@ async function fetchAndDisplayVersion() {
         }
         const data = await response.json();
         const versionElement = document.getElementById('versionNumber');
-        const dateElement = document.getElementById('versionDate');
-        const authorElement = document.getElementById('authorInfo');
-        const licenseElement = document.getElementById('licenseInfo');
-
-        if (versionElement && dateElement && authorElement && licenseElement) {
+        if (versionElement) {
             versionElement.textContent = `v${data.version}`;
-            dateElement.textContent = `Released: ${data.releaseDate}`;
-            authorElement.textContent = `Created by ${data.author}`;
-            licenseElement.textContent = `${data.license}`;
-
-            versionElement.style.animation = 'versionPulse 0.5s ease';
-            setTimeout(() => {
-                versionElement.style.animation = '';
-            }, 500);
+            versionElement.title = `Version ${data.version}, released ${data.releaseDate}\nCreated by ${data.author}\n${data.license}`;
         }
     } catch (error) {
         console.error('Error fetching version:', error);
@@ -1054,8 +1024,6 @@ function initializePopovers() {
     document.body.appendChild(popover);
 
     function showPopover(link) {
-        const rect = link.getBoundingClientRect();
-
         if (link.classList.contains('jira-issue-link')) {
             const key = link.dataset.issueKey;
             const summary = link.dataset.issueSummary;
@@ -1074,9 +1042,15 @@ function initializePopovers() {
             `;
         }
 
-        popover.style.left = `${rect.left}px`;
-        popover.style.top = `${rect.bottom + window.scrollY}px`;
+        // The popover is fixed: viewport coordinates, kept inside the viewport
         popover.style.display = 'block';
+        const rect = link.getBoundingClientRect();
+        const margin = 8;
+        const left = Math.max(margin, Math.min(rect.left, window.innerWidth - popover.offsetWidth - margin));
+        const fitsBelow = rect.bottom + popover.offsetHeight + margin <= window.innerHeight;
+        const top = fitsBelow ? rect.bottom : Math.max(margin, rect.top - popover.offsetHeight);
+        popover.style.left = `${left}px`;
+        popover.style.top = `${top}px`;
     }
 
     function hidePopover() {
@@ -1117,6 +1091,9 @@ function initializePopovers() {
         clearTimeout(popoverTimeout);
         popoverTimeout = setTimeout(hidePopover, 300);
     });
+
+    // A popover left open while the tree scrolls would float away from its link
+    document.getElementById('main').addEventListener('scroll', hidePopover, { passive: true });
 }
 
 // Initialize multi-select components
@@ -1129,28 +1106,14 @@ function initializeMultiSelects() {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
+    initializeAppShell();
     initializeMultiSelects();
+    showEmptyState();
     loadProjects();
-    initializeHelpModal();
     fetchAndDisplayVersion();
     initializePopovers();
     initializeReadyForReviewerFilter();
     initializeSyncControls();
-
-    // Add event listener for the footer help button
-    const footerHelpButton = document.querySelector('.footer-link#helpButton');
-    if (footerHelpButton) {
-        footerHelpButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            const helpModal = document.getElementById('helpModal');
-            if (helpModal) {
-                helpModal.style.display = 'block';
-                if (!document.getElementById('helpContent').innerHTML) {
-                    fetchAndRenderReadme();
-                }
-            }
-        });
-    }
 });
 
 // Export functions that need to be accessible globally

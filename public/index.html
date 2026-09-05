@@ -3,183 +3,180 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bitbucket Pull Requests Review Dashboard</title>
+  <title>Bitbucket Pull-Requests Tree</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script>
+    // Runs before the stylesheet so a hidden sidebar does not flash open on load.
+    (function () {
+      var sidebarHidden = null;
+      try {
+        sidebarHidden = localStorage.getItem('prTree.sidebarHidden');
+      } catch (error) { /* storage unavailable */ }
+      if (sidebarHidden === 'true' || !window.matchMedia('(min-width: 900px)').matches) {
+        document.documentElement.classList.add('sidebar-hidden');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-<div class="container">
-  <div class="header-container">
-    <h1>Bitbucket Pull Requests Review Dashboard</h1>
-    <div class="refresh-container">
-      <i class="fas fa-sync refresh-icon" id="refreshIcon"></i>
-      <div class="last-refresh" id="lastRefreshTime"></div>
-    </div>
+<header class="app-header">
+  <button type="button" id="sidebarToggle" class="icon-button" aria-expanded="true" aria-controls="sidebar"
+          title="Toggle filters (F)">
+    <i class="fas fa-bars"></i>
+  </button>
+  <h1 class="app-brand">
+    <img src="favicon.svg" alt="" class="app-logo">
+    <span class="app-name">Bitbucket Pull-Requests Tree</span>
+  </h1>
+  <select id="projectSelect" class="project-select" aria-label="Project">
+    <option value="">Select a project</option>
+  </select>
+  <div class="header-spacer"></div>
+  <div class="refresh-container">
+    <i class="fas fa-sync refresh-icon" id="refreshIcon" title="Checking for updates"></i>
+    <span class="last-refresh" id="lastRefreshTime"></span>
+  </div>
+  <button type="button" id="helpButton" class="icon-button" title="Help">
+    <i class="fas fa-question-circle"></i>
+  </button>
+  <a href="https://github.com/frejfrej/pr-tree" target="_blank" rel="noopener" class="icon-button"
+     title="GitHub repository">
+    <i class="fab fa-github"></i>
+  </a>
+  <span id="versionNumber" class="version-number"></span>
+</header>
+
+<aside id="sidebar" class="sidebar" aria-label="Filters">
+  <div class="sidebar-header">
+    <h2>Filters</h2>
   </div>
 
-  <div class="filters-container">
-    <div class="filters-row">
-      <div class="filter-item">
-        <span class="filter-label">Project</span>
-        <select id="projectSelect">
-          <option value="">Select a project</option>
-        </select>
+  <div class="filter-item">
+    <span class="filter-label">Sprint</span>
+    <div class="multi-select" id="sprintSelect" data-filter="sprint">
+      <div class="multi-select-trigger" tabindex="0">
+        <span class="multi-select-display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow"></i>
       </div>
-      <div class="filter-item">
-        <span class="filter-label">Sprint</span>
-        <div class="multi-select" id="sprintSelect" data-filter="sprint">
-          <div class="multi-select-trigger" tabindex="0">
-            <span class="multi-select-display">Show all</span>
-            <i class="fas fa-chevron-down multi-select-arrow"></i>
-          </div>
-          <div class="multi-select-dropdown">
-            <div class="multi-select-search">
-              <input type="text" placeholder="Search..." class="multi-select-search-input">
-            </div>
-            <div class="multi-select-options"></div>
-            <div class="multi-select-actions">
-              <button type="button" class="multi-select-clear">Clear all</button>
-              <button type="button" class="multi-select-select-all">Select all</button>
-            </div>
-          </div>
+      <div class="multi-select-dropdown">
+        <div class="multi-select-search">
+          <input type="text" placeholder="Search..." class="multi-select-search-input">
         </div>
-      </div>
-      <div class="filter-item">
-        <span class="filter-label">Fix Version</span>
-        <div class="multi-select" id="fixVersionSelect" data-filter="fixVersion">
-          <div class="multi-select-trigger" tabindex="0">
-            <span class="multi-select-display">Show all</span>
-            <i class="fas fa-chevron-down multi-select-arrow"></i>
-          </div>
-          <div class="multi-select-dropdown">
-            <div class="multi-select-search">
-              <input type="text" placeholder="Search..." class="multi-select-search-input">
-            </div>
-            <div class="multi-select-options"></div>
-            <div class="multi-select-actions">
-              <button type="button" class="multi-select-clear">Clear all</button>
-              <button type="button" class="multi-select-select-all">Select all</button>
-            </div>
-          </div>
+        <div class="multi-select-options"></div>
+        <div class="multi-select-actions">
+          <button type="button" class="multi-select-clear">Clear all</button>
+          <button type="button" class="multi-select-select-all">Select all</button>
         </div>
-      </div>
-      <div class="filter-item">
-        <span class="filter-label">Assignee</span>
-        <div class="multi-select" id="assigneeSelect" data-filter="assignee">
-          <div class="multi-select-trigger" tabindex="0">
-            <span class="multi-select-display">Show all</span>
-            <i class="fas fa-chevron-down multi-select-arrow"></i>
-          </div>
-          <div class="multi-select-dropdown">
-            <div class="multi-select-search">
-              <input type="text" placeholder="Search..." class="multi-select-search-input">
-            </div>
-            <div class="multi-select-options"></div>
-            <div class="multi-select-actions">
-              <button type="button" class="multi-select-clear">Clear all</button>
-              <button type="button" class="multi-select-select-all">Select all</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="filters-row">
-      <div class="filter-item">
-        <span class="filter-label">Reviewer</span>
-        <div class="multi-select" id="reviewerSelect" data-filter="reviewer">
-          <div class="multi-select-trigger" tabindex="0">
-            <span class="multi-select-display">Show all</span>
-            <i class="fas fa-chevron-down multi-select-arrow"></i>
-          </div>
-          <div class="multi-select-dropdown">
-            <div class="multi-select-search">
-              <input type="text" placeholder="Search..." class="multi-select-search-input">
-            </div>
-            <div class="multi-select-options"></div>
-            <div class="multi-select-actions">
-              <button type="button" class="multi-select-clear">Clear all</button>
-              <button type="button" class="multi-select-select-all">Select all</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="filter-item">
-        <div class="filter-label">
-          <input type="checkbox" id="readyForReviewerCheck" disabled>
-          <label for="readyForReviewerCheck">Ready for reviewer
-            <i class="fas fa-info-circle info-icon" title="This filter will be reset when the page is reloaded"></i>
-          </label>
-        </div>
-      </div>
-      <div class="filter-item">
-        <span class="filter-label">SYNC
-          <i class="fas fa-info-circle info-icon" title="SYNC status is only fetched when you click the load button. This filter will be reset when the page is reloaded"></i>
-        </span>
-        <select id="syncSelect" disabled>
-          <option value="Show all">SYNC status not loaded</option>
-        </select>
-        <button id="loadSyncButton" class="load-sync-button" disabled
-                title="Load SYNC status for all pull requests">
-          <i class="fas fa-sync-alt"></i> Load
-        </button>
-        <span id="syncWarning" class="sync-warning" style="display: none;">
-          <i class="fas fa-exclamation-triangle"></i>
-        </span>
       </div>
     </div>
   </div>
 
-  <div id="pull-requests">
-    Please select a project
-  </div>
-  <div id="loading" style="display: none;">
-    <i class="fas fa-spinner fa-spin"></i> Loading...
+  <div class="filter-item">
+    <span class="filter-label">Fix version</span>
+    <div class="multi-select" id="fixVersionSelect" data-filter="fixVersion">
+      <div class="multi-select-trigger" tabindex="0">
+        <span class="multi-select-display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow"></i>
+      </div>
+      <div class="multi-select-dropdown">
+        <div class="multi-select-search">
+          <input type="text" placeholder="Search..." class="multi-select-search-input">
+        </div>
+        <div class="multi-select-options"></div>
+        <div class="multi-select-actions">
+          <button type="button" class="multi-select-clear">Clear all</button>
+          <button type="button" class="multi-select-select-all">Select all</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div id="helpModal" class="modal">
-    <div class="modal-content">
-      <span class="close">&times;</span>
-      <!-- The closing tag must absolutely remain immediately next to the open tag -->
-      <div id="helpContent" class="help-content"></div>
+  <div class="filter-item">
+    <span class="filter-label">Assignee</span>
+    <div class="multi-select" id="assigneeSelect" data-filter="assignee">
+      <div class="multi-select-trigger" tabindex="0">
+        <span class="multi-select-display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow"></i>
+      </div>
+      <div class="multi-select-dropdown">
+        <div class="multi-select-search">
+          <input type="text" placeholder="Search..." class="multi-select-search-input">
+        </div>
+        <div class="multi-select-options"></div>
+        <div class="multi-select-actions">
+          <button type="button" class="multi-select-clear">Clear all</button>
+          <button type="button" class="multi-select-select-all">Select all</button>
+        </div>
+      </div>
     </div>
+  </div>
+
+  <div class="filter-item">
+    <span class="filter-label">Reviewer</span>
+    <div class="multi-select" id="reviewerSelect" data-filter="reviewer">
+      <div class="multi-select-trigger" tabindex="0">
+        <span class="multi-select-display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow"></i>
+      </div>
+      <div class="multi-select-dropdown">
+        <div class="multi-select-search">
+          <input type="text" placeholder="Search..." class="multi-select-search-input">
+        </div>
+        <div class="multi-select-options"></div>
+        <div class="multi-select-actions">
+          <button type="button" class="multi-select-clear">Clear all</button>
+          <button type="button" class="multi-select-select-all">Select all</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-item filter-item-checkbox">
+    <input type="checkbox" id="readyForReviewerCheck" disabled>
+    <label for="readyForReviewerCheck">Ready for reviewer</label>
+    <i class="fas fa-info-circle info-icon" title="This filter will be reset when the page is reloaded"></i>
+  </div>
+
+  <hr class="sidebar-divider">
+
+  <div class="filter-item">
+    <span class="filter-label">SYNC
+      <i class="fas fa-info-circle info-icon"
+         title="SYNC status is only fetched when you click the load button. This filter will be reset when the page is reloaded"></i>
+    </span>
+    <select id="syncSelect" disabled>
+      <option value="Show all">SYNC status not loaded</option>
+    </select>
+    <div class="filter-row">
+      <button type="button" id="loadSyncButton" class="button" disabled
+              title="Load SYNC status for all pull requests">
+        <i class="fas fa-sync-alt"></i> Load
+      </button>
+      <span id="syncWarning" class="sync-warning" hidden>
+        <i class="fas fa-exclamation-triangle"></i>
+      </span>
+    </div>
+  </div>
+</aside>
+<div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+<main id="main" class="main-pane">
+  <div id="pull-requests" class="tree-pane"></div>
+</main>
+
+<div id="helpModal" class="modal" hidden>
+  <div class="modal-content" role="dialog" aria-modal="true" aria-label="Help">
+    <button type="button" id="helpClose" class="icon-button modal-close" aria-label="Close help">
+      <i class="fas fa-times"></i>
+    </button>
+    <!-- The closing tag must absolutely remain immediately next to the open tag -->
+    <div id="helpContent" class="help-content"></div>
   </div>
 </div>
 
-<footer id="appFooter" class="app-footer">
-  <div class="footer-content">
-    <div class="footer-section">
-      <h3>About</h3>
-      <p id="authorInfo" class="author-info"></p>
-      <p id="licenseInfo" class="license-info"></p>
-    </div>
-    <div class="footer-section">
-      <h3>Version</h3>
-      <div class="version-info">
-        <span id="versionNumber" class="version-number"></span>
-        <span id="versionDate" class="version-date"></span>
-      </div>
-    </div>
-    <div class="footer-section">
-      <h3>Links</h3>
-      <ul class="footer-links">
-        <li><a href="#" id="helpButton" class="footer-link">
-          <i class="fas fa-question-circle"></i> Help
-        </a></li>
-        <li><a href="https://github.com/frejfrej/pr-tree" target="_blank" class="footer-link">
-          <i class="fab fa-github"></i> GitHub
-        </a></li>
-      </ul>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    <p>&copy; 2024 Bitbucket Pull-Requests Tree. All rights reserved.</p>
-  </div>
-</footer>
-
-<script type="module" src="multi-select.js"></script>
-<script type="module" src="app-filter.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
