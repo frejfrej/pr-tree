@@ -1874,7 +1874,7 @@ Run: `grep -nE "#[0-9A-Fa-f]{3,6}\b" public/styles.css | grep -v "^[0-9]*:    --
 Expected: no output (every hex colour sits on a token line inside `:root`).
 
 Run: `grep -n "style=" public/index.html`
-Expected: no output.
+Expected: only the two `display: none` toggles on `#syncWarning` and `#loading`, which the old JavaScript still drives until Task 4.
 
 - [ ] **Step 4: Run the tests and check in the browser**
 
@@ -2285,7 +2285,7 @@ Replace the whole of `public/index.html` with:
 <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
 
 <main id="main" class="main-pane">
-  <div id="pull-requests"></div>
+  <div id="pull-requests" class="tree-pane"></div>
 </main>
 
 <div id="helpModal" class="modal" hidden>
@@ -2558,8 +2558,13 @@ html.sidebar-hidden .sidebar {
 .main-pane {
     grid-area: main;
     min-width: 0;
-    padding: 24px;
     overflow-y: auto;
+}
+
+/* Padding lives on the content, not on the scroll container: the container's own
+   padding would inset the sticky area and leave a strip above the sticky headers */
+.tree-pane {
+    padding: 24px;
 }
 ```
 
@@ -3105,14 +3110,19 @@ In `public/styles.css`, section 3, add after the `.app-header .icon-button:hover
 }
 ```
 
-and after the `.main-pane` rule:
+and after the `.tree-pane` rule:
 
 ```css
 .tree-toolbar {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-bottom: 12px;
+    padding: 12px 24px 0;
+}
+
+/* With the toolbar shown, the tree needs less room above its first header */
+.tree-toolbar:not([hidden]) + .tree-pane {
+    padding-top: 12px;
 }
 ```
 
@@ -3635,5 +3645,5 @@ Claude-Session: https://claude.ai/code/session_01EZCANUDoVq6pd6b9i8vGbg"
 ## Plan self-review
 
 - **Spec coverage:** banner (Task 4), tab title with project (4) and attention count (5), stacked filters in a fixed sidebar (4), hideable with persistence and drawer (4), one app name (4, 7), project selector and refresh in the banner (4), footer retired (4), badge and clear (5), sticky headers (4), ready-for-reviewer fix (1), CSS cleanup and tokens (3), system font (3), dark theme (6), shortcut (4), collapse/expand all (2, 5), empty/loading/error states (4), popover fix (4), version and docs (7).
-- **Spec deviations, on purpose:** the sidebar class lives on `<html>` instead of `<body>` so the inline head script can set it before paint; the token for text on coloured backgrounds is named `--on-accent-text` instead of `--repo-header-text` because it serves counters and badges too; the popover also flips above its link when it does not fit below.
+- **Spec deviations, on purpose:** the sidebar class lives on `<html>` instead of `<body>` so the inline head script can set it before paint; the token for text on coloured backgrounds is named `--on-accent-text` instead of `--repo-header-text` because it serves counters and badges too; the popover also flips above its link when it does not fit below; the tree pane's padding sits on the `.tree-pane` content element rather than on the scrolling `.main-pane`, because a scroll container's own padding insets the sticky area and left a 24px strip above the sticky headers.
 - **Names used across tasks:** `computeAttention`, `countActiveFilters`, `filterBranches` (returns a number) from Task 1; `collapseAll`, `expandAll`, `captureToggleStates`, `restoreToggleStates`, `toggleChildren`, `toggleRootBranch`, `toggleRepository`, class `pull-request-root` from Task 2; `.button`, `.info-icon`, `--on-accent-text`, `--chevron-icon` from Task 3; `initializeAppShell`, `updateDocumentTitle`, `closeSidebarDrawer`, `buildDocumentTitle`, `showEmptyState`, `showLoadingState`, `showErrorState`, `renderEverything(apiResult)` from Task 4; `applyFilters`, `clearAllFilters`, `currentFilters`, `updateActiveFilterBadge`, `setToolbarVisible` from Task 5; `applyTheme`, `initializeTheme` from Task 6.
