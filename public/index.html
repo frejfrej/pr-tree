@@ -6,14 +6,21 @@
   <title>Bitbucket Pull-Requests Tree</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script>
-    // Runs before the stylesheet so a hidden sidebar does not flash open on load.
+    // Runs before the stylesheet so neither the theme nor a hidden sidebar flashes on load.
     (function () {
+      var theme = null;
       var sidebarHidden = null;
       try {
+        theme = localStorage.getItem('prTree.theme');
         sidebarHidden = localStorage.getItem('prTree.sidebarHidden');
       } catch (error) { /* storage unavailable */ }
+      var root = document.documentElement;
+      if (theme !== 'light' && theme !== 'dark') {
+        theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      root.dataset.theme = theme;
       if (sidebarHidden === 'true' || !window.matchMedia('(min-width: 900px)').matches) {
-        document.documentElement.classList.add('sidebar-hidden');
+        root.classList.add('sidebar-hidden');
       }
     })();
   </script>
@@ -40,6 +47,9 @@
     <i class="fas fa-sync refresh-icon" id="refreshIcon" title="Checking for updates"></i>
     <span class="last-refresh" id="lastRefreshTime"></span>
   </div>
+  <button type="button" id="themeToggle" class="icon-button" title="Switch to dark theme">
+    <i class="fas fa-moon"></i>
+  </button>
   <button type="button" id="helpButton" class="icon-button" title="Help">
     <i class="fas fa-question-circle"></i>
   </button>
