@@ -41,16 +41,16 @@ Untouched: `public/multi-select.js`, `public/counter-utils.js`, `index.mjs`, `ca
 
 Every task below is tracked by a GitHub issue and delivered as its own pull request, stacked on the previous task's branch. The spec and this plan form the base of the stack.
 
-| Task | Branch | PR base |
-|---|---|---|
-| (docs) spec and plan | `claude/sidebar-layout` | `master` |
-| 1 | `claude/sidebar-layout-1-attention` | `claude/sidebar-layout` |
-| 2 | `claude/sidebar-layout-2-tree-toggle` | `claude/sidebar-layout-1-attention` |
-| 3 | `claude/sidebar-layout-3-css-tokens` | `claude/sidebar-layout-2-tree-toggle` |
-| 4 | `claude/sidebar-layout-4-app-shell` | `claude/sidebar-layout-3-css-tokens` |
-| 5 | `claude/sidebar-layout-5-filter-chrome` | `claude/sidebar-layout-4-app-shell` |
-| 6 | `claude/sidebar-layout-6-dark-theme` | `claude/sidebar-layout-5-filter-chrome` |
-| 7 | `claude/sidebar-layout-7-docs` | `claude/sidebar-layout-6-dark-theme` |
+| Task | Issue | Branch | PR base |
+|---|---|---|---|
+| (docs) spec and plan | #16 (tracking) | `claude/sidebar-layout` | `master` |
+| 1 | #9 | `claude/sidebar-layout-1-attention` | `claude/sidebar-layout` |
+| 2 | #10 | `claude/sidebar-layout-2-tree-toggle` | `claude/sidebar-layout-1-attention` |
+| 3 | #11 | `claude/sidebar-layout-3-css-tokens` | `claude/sidebar-layout-2-tree-toggle` |
+| 4 | #12 | `claude/sidebar-layout-4-app-shell` | `claude/sidebar-layout-3-css-tokens` |
+| 5 | #13 | `claude/sidebar-layout-5-filter-chrome` | `claude/sidebar-layout-4-app-shell` |
+| 6 | #14 | `claude/sidebar-layout-6-dark-theme` | `claude/sidebar-layout-5-filter-chrome` |
+| 7 | #15 | `claude/sidebar-layout-7-docs` | `claude/sidebar-layout-6-dark-theme` |
 
 For each task:
 
@@ -64,7 +64,7 @@ gh pr create --base <PR base branch> --title "<commit title>" --body "$(cat <<'B
 <one paragraph: what and why>
 
 Closes #<issue number>
-Part of #<tracking issue number>
+Part of #16
 Stacked on #<previous PR number>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
