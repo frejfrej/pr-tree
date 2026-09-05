@@ -11,6 +11,7 @@ import { collapseAll, expandAll } from './tree-toggle.js';
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
 const SIDEBAR_STORAGE_KEY = 'prTree.sidebarHidden';
+const THEME_STORAGE_KEY = 'prTree.theme';
 const WIDE_LAYOUT_QUERY = '(min-width: 900px)';
 
 let wideLayout = null;
@@ -89,6 +90,42 @@ function initializeSidebar() {
     wideLayout.addEventListener('change', applyLayoutMode);
     document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
     document.getElementById('sidebarBackdrop').addEventListener('click', closeSidebarDrawer);
+}
+
+// ------------------------------------------------------------------- theme
+
+function currentTheme() {
+    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    const button = document.getElementById('themeToggle');
+    if (!button) {
+        return;
+    }
+    const dark = theme === 'dark';
+    const icon = button.querySelector('i');
+    icon.classList.toggle('fa-moon', !dark);
+    icon.classList.toggle('fa-sun', dark);
+    button.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+}
+
+function initializeTheme() {
+    // The inline script in <head> already chose the theme; this syncs the button with it
+    applyTheme(currentTheme());
+    document.getElementById('themeToggle').addEventListener('click', () => {
+        const next = currentTheme() === 'dark' ? 'light' : 'dark';
+        writeStorage(THEME_STORAGE_KEY, next);
+        applyTheme(next);
+    });
+    // Follow the OS setting live as long as no preference has been stored
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+        const stored = readStorage(THEME_STORAGE_KEY);
+        if (stored !== 'light' && stored !== 'dark') {
+            applyTheme(event.matches ? 'dark' : 'light');
+        }
+    });
 }
 
 // -------------------------------------------------------------- help modal
@@ -194,6 +231,7 @@ function initializeToolbar() {
 
 export function initializeAppShell({ onClearFilters }) {
     initializeSidebar();
+    initializeTheme();
     initializeHelpModal();
     initializeToolbar();
     document.getElementById('clearFiltersButton').addEventListener('click', onClearFilters);
