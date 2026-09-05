@@ -2,7 +2,6 @@ import express from 'express';
 import fetch from 'node-fetch';
 import { diff3Merge } from 'node-diff3';
 import dotenv from 'dotenv';
-import config from './config.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -17,8 +16,14 @@ import {
     getCacheStats,
     raiseAllCacheTtls
 } from './cache.mjs';
+import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
 
 dotenv.config();
+
+// Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
+const fixtureOptions = parseFixtureOptions();
+const config = fixtureOptions.enabled ? fixtureConfig() : (await import('./config.js')).default;
+const fixtureSource = fixtureOptions.enabled ? createFixtureSource(config, { scale: fixtureOptions.scale, chainDepth: fixtureOptions.chainDepth }) : null;
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -97,6 +102,9 @@ function noteRateLimit(url) {
 
 // Every Atlassian request goes through this wrapper so a single 429 pauses them all.
 async function atlassianFetch(url, options) {
+    if (fixtureSource) {
+        throw new Error(`Fixture mode: no request is sent to Atlassian (${url})`);
+    }
     if (isRateLimited()) {
         throw new RateLimitError();
     }
@@ -445,6 +453,9 @@ async function buildProjectData(projectName) {
     if (!projectConfig) {
         throw new Error('Project not found');
     }
+    if (fixtureSource) {
+        return fixtureSource.buildProjectData(projectName);
+    }
 
     log(`Processing pull requests for project: ${projectName}`, accessLogStream);
 
@@ -563,6 +574,9 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
 
     try {
         const syncStatuses = await getCachedSyncStatuses(projectName, async () => {
+            if (fixtureSource) {
+                return { data: await fixtureSource.buildSyncStatuses(projectName), ttl: 300 };
+            }
             const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
 
             const statuses = {};
@@ -778,4 +792,7 @@ async function computeConflicts(repoName, spec) {
 
 app.listen(port, () => {
     log(`Server is running at http://localhost:${port}`, accessLogStream);
+    if (fixtureSource) {
+        log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
+    }
 });

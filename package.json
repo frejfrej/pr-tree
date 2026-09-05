@@ -5,6 +5,8 @@
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
   "scripts": {
+    "start": "node index.mjs",
+    "start:fixtures": "node index.mjs --fixtures",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test"
   },
   "keywords": [],
