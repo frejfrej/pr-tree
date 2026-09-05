@@ -6,6 +6,54 @@ export function initializeFilter(apiResult) {
     currentApiResult = apiResult;
 }
 
+/**
+ * Counts the filters that are not at their default value.
+ * A multi-select with several values counts once.
+ */
+export function countActiveFilters({ assignees, reviewers, sprints, fixVersions, sync, ready }) {
+    return [
+        assignees.length > 0,
+        reviewers.length > 0,
+        sprints.length > 0,
+        fixVersions.length > 0,
+        ready === true,
+        sync !== 'Show all'
+    ].filter(Boolean).length;
+}
+
+/**
+ * Decides whether a pull request needs the attention of the people selected
+ * in the assignee and reviewer filters. Pure: everything it needs is passed in.
+ *
+ * - assignee: the PR is in progress and a linked issue is assigned to a selected assignee
+ * - reviewer: the PR is in review and a selected reviewer (never the author) has not approved
+ *
+ * The title of a PR with attention is highlighted; the "Ready for reviewer"
+ * filter keeps the PRs with reviewer attention.
+ */
+export function computeAttention(pullRequestData, { statusInProgress, statusInReview, linkedIssues, assignees, reviewers }) {
+    const assignee = assignees.length > 0 && statusInProgress &&
+        linkedIssues.some(issue => issue.fields.assignee && assignees.includes(issue.fields.assignee.displayName));
+    const reviewer = reviewers.length > 0 && statusInReview &&
+        pullRequestData.participants.some(participant =>
+            participant.user.uuid !== pullRequestData.author.uuid &&
+            reviewers.includes(participant.user.display_name) &&
+            !participant.approved
+        );
+    return { assignee, reviewer, any: assignee || reviewer };
+}
+
+function getLinkedIssues(pullRequestData) {
+    const keys = currentApiResult.jiraIssuesMap[pullRequestData.id] || [];
+    return keys
+        .map(key => currentApiResult.jiraIssuesDetails.find(issue => issue.key === key))
+        .filter(issue => issue);
+}
+
+/**
+ * Applies the filters to the rendered tree and refreshes the counters.
+ * @returns {number} how many pull requests are left shown and need attention
+ */
 export function filterBranches(assignees, reviewers, sprints, fixVersions, sync, ready) {
     // Start filtering from the root branches
     let rootBranches = document.getElementsByClassName("root-branch");
@@ -19,6 +67,14 @@ export function filterBranches(assignees, reviewers, sprints, fixVersions, sync,
     const reviewer = reviewers.length > 0 ? reviewers[0] : "Show all";
     const sprint = sprints.length > 0 ? sprints[0] : "Show all";
     updateAllCounters(assignee, reviewer, sprint, sync);
+
+    return countShownAttention();
+}
+
+function countShownAttention() {
+    return Array.from(document.querySelectorAll('.pull-request.needs-attention'))
+        .filter(pr => pr.style.display !== 'none' && !pr.classList.contains('filtered'))
+        .length;
 }
 
 function filterBranch(branch, assignees, reviewers, sprints, fixVersions, sync, ready) {
@@ -52,8 +108,19 @@ function filterPullRequests(pullRequests, assignees, reviewers, sprints, fixVers
             visiblePullRequests += visibleChildren;
         }
 
+        // Attention is computed from data before visibility, so the ready filter never
+        // depends on what a previous pass rendered
+        const attention = computeAttention(pullRequestData, {
+            statusInProgress: pr.classList.contains('status-in-progress'),
+            statusInReview: pr.classList.contains('status-in-review'),
+            linkedIssues: getLinkedIssues(pullRequestData),
+            assignees,
+            reviewers
+        });
+        pr.classList.toggle('needs-attention', attention.any);
+
         // Check if this pull request should be visible
-        let isVisible = isPullRequestVisible(pr, pullRequestData, assignees, reviewers, sprints, fixVersions, sync, ready);
+        let isVisible = isPullRequestVisible(pr, pullRequestData, assignees, reviewers, sprints, fixVersions, sync, ready, attention);
 
         // Update visibility state
         pr.classList.toggle("filtered", !isVisible);
@@ -61,14 +128,13 @@ function filterPullRequests(pullRequests, assignees, reviewers, sprints, fixVers
 
         if (isVisible) {
             visiblePullRequests++;
-            updatePullRequestStyle(pr, pullRequestData, assignees, reviewers, sprints);
         }
     }
 
     return visiblePullRequests;
 }
 
-function isPullRequestVisible(prElement, pullRequestData, assignees, reviewers, sprints, fixVersions, sync, ready) {
+function isPullRequestVisible(prElement, pullRequestData, assignees, reviewers, sprints, fixVersions, sync, ready, attention) {
     // Assignee filter - check Jira issue assignees
     // Empty array = show all (no filtering)
     // Non-empty = match ANY selected value
@@ -113,54 +179,8 @@ function isPullRequestVisible(prElement, pullRequestData, assignees, reviewers, 
         (sync === "requested" && hasSyncLabel) ||
         (sync === "OK" && !hasSyncLabel);
 
-    // Ready for reviewer filter
-    let readyMatch = true;
-    if (ready) {
-        const isInReview = prElement.classList.contains('status-in-review');
-        const link = prElement.querySelector('.pull-request-link');
-        const style = window.getComputedStyle(link);
-        const hasSecondaryColor = style.color === 'rgb(255, 86, 48)'; // --secondary-color in RGB
-        readyMatch = isInReview && hasSecondaryColor;
-    }
+    // Ready for reviewer filter: in review, and a selected reviewer has not approved yet
+    const readyMatch = !ready || attention.reviewer;
 
     return assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && syncMatch && readyMatch;
-}
-
-// Update the updatePullRequestStyle function in app-filter.js
-function updatePullRequestStyle(prElement, pullRequestData, assignees, reviewers) {
-    let title = prElement.querySelector("a");
-    let titleColor = "";
-
-    // Check if any Jira issue for this PR is assigned to any filtered assignee
-    if (assignees.length > 0) {
-        const jiraIssueKeys = currentApiResult.jiraIssuesMap[pullRequestData.id] || [];
-        const hasAssignee = jiraIssueKeys.some(issueKey => {
-            const issue = currentApiResult.jiraIssuesDetails.find(i => i.key === issueKey);
-            return issue && issue.fields.assignee && assignees.includes(issue.fields.assignee.displayName);
-        });
-
-        if (hasAssignee && prElement.classList.contains("status-in-progress")) {
-            titleColor = "var(--secondary-color)";
-        }
-    }
-
-    if (reviewers.length > 0) {
-        // Check if any selected reviewer has not approved this PR
-        let hasUnapprovedReviewer = reviewers.some(reviewer => {
-            let reviewerParticipant = pullRequestData.participants.find(p =>
-                p.user.uuid !== pullRequestData.author.uuid && p.user.display_name === reviewer
-            );
-            return reviewerParticipant && !reviewerParticipant.approved;
-        });
-
-        if (hasUnapprovedReviewer && prElement.classList.contains("status-in-review")) {
-            titleColor = "var(--secondary-color)";
-        }
-    }
-
-    if (titleColor) {
-        title.style.color = titleColor;
-    } else {
-        title.style.color = ""; // Reset color if no condition is met
-    }
 }
