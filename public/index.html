@@ -26,6 +26,7 @@
   <button type="button" id="sidebarToggle" class="icon-button" aria-expanded="true" aria-controls="sidebar"
           title="Toggle filters (F)">
     <i class="fas fa-bars"></i>
+    <span id="activeFilterBadge" class="header-badge" hidden></span>
   </button>
   <h1 class="app-brand">
     <img src="favicon.svg" alt="" class="app-logo">
@@ -52,6 +53,7 @@
 <aside id="sidebar" class="sidebar" aria-label="Filters">
   <div class="sidebar-header">
     <h2>Filters</h2>
+    <button type="button" id="clearFiltersButton" class="link-button" hidden>Clear filters</button>
   </div>
 
   <div class="filter-item">
@@ -164,6 +166,14 @@
 <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
 
 <main id="main" class="main-pane">
+  <div id="treeToolbar" class="tree-toolbar" hidden>
+    <button type="button" id="collapseAllButton" class="link-button">
+      <i class="fas fa-compress-alt"></i> Collapse all
+    </button>
+    <button type="button" id="expandAllButton" class="link-button">
+      <i class="fas fa-expand-alt"></i> Expand all
+    </button>
+  </div>
   <div id="pull-requests" class="tree-pane"></div>
 </main>
 
