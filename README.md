@@ -1,6 +1,16 @@
 # Bitbucket Pull-Requests tree
 
 ## Features
+* Application layout
+    * A top banner shows the app name, the project selector, the refresh status, the theme toggle, the help and GitHub links and the version
+    * Filters live in a left sidebar that stays in place while the pull-request tree scrolls
+    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser
+    * On windows narrower than 900px the sidebar becomes a drawer over the tree
+    * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
+    * Repository and branch headers stick to the top of the tree while scrolling
+    * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
+    * The tab title shows the selected project and, when an assignee or reviewer filter is active, the number of pull requests waiting for them
+* Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
 * Displays a link to related issues with the corresponding status
@@ -54,6 +64,21 @@
 * Go to http://localhost:3000
 
 ## Changelog:
+* Version 2.2.0
+    * New application layout
+        * Top banner with the app name, project selector, refresh status, theme toggle, help, GitHub link and version
+        * Filters stacked in a left sidebar that does not scroll with the tree; the sidebar can be hidden (button or `F` key) and its state is remembered
+        * Below 900px the sidebar becomes a drawer over the tree
+        * Repository and branch headers stick to the top of the tree while scrolling
+        * Collapse all / expand all buttons above the tree
+        * Active-filter badge on the sidebar button and a "Clear filters" button
+        * The tab title shows the selected project and the number of pull requests needing attention
+        * Empty, loading and error states are shown in the tree pane; a failed load no longer leaves the spinner forever
+        * The footer is gone; its links and version moved to the banner
+    * Dark theme, following the system setting until the toggle is used
+    * "Ready for reviewer" is now computed from the data instead of the title colour
+    * Stylesheet rebuilt on colour tokens, duplicate rules removed, system font stack
+    * `npm test` runs unit tests for the pure filter and title logic (node:test)
 * Version 2.1.0
     * SYNC status is now loaded on demand instead of automatically
         * No conflict computation is triggered when a project loads or refreshes, only when clicking the new load button next to the SYNC filter
