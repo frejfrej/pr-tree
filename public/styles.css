@@ -1,6 +1,6 @@
 :root {
     --primary-color: #0052CC;
-    --secondary-color: #FF5630;
+    --attention-color: #FF5630;
     --background-color: #F4F5F7;
     --text-color: #172B4D;
     --border-color: #DFE1E6;
@@ -263,6 +263,10 @@ select {
 
 .pull-request a:hover {
     text-decoration: underline;
+}
+
+.pull-request.needs-attention .pull-request-link {
+    color: var(--attention-color);
 }
 
 .participants {
