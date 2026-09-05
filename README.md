@@ -52,6 +52,8 @@
     * After an Atlassian HTTP 429 response, the server pauses all Atlassian requests and serves cached data until 10 minutes after the last 429
 * Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
 * Online help displays the README.md file
+* Filtering cost does not depend on how deep pull requests are stacked: one pass over the tree, whatever the project size
+* Fixture mode: `npm run start:fixtures` serves realistic generated data for the configured projects without any Atlassian credentials or network access
 
 ## Installation
 * Clone this repository
@@ -63,7 +65,21 @@
 * Run `node index.mjs`
 * Go to http://localhost:3000
 
+## Running without Atlassian access (fixture mode)
+* Run `npm run start:fixtures` (or `node index.mjs --fixtures`), no `config.js` needed
+* Both configured projects are served from generated data modelled on the real SECOLLAB and OSLC projects: same repositories, Jira projects, volumes, branch naming, sprints, fix versions and the 24-deep stack of pull requests; the people are fictional
+* The SYNC load button answers from the fixtures too; no request is ever sent to Atlassian
+* `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
+
 ## Changelog:
+* Version 2.3.0
+    * Filtering is now a single pass over the tree
+        * Each pull request is visited once; the previous recursion revisited a stacked pull request once per ancestor, so a 24-deep stack (as in SECOLLAB) cost about 16 million visits and 20 seconds per filter change
+        * Lookups go through indexes built once per data load instead of array searches per pull request
+        * Counters are summed in the same pass instead of re-scanning the tree
+        * On the SECOLLAB-sized fixture with the 24-deep stack, a filter change takes under a millisecond of JavaScript (about 7 ms with layout) in the browser
+    * Fixture mode (`npm run start:fixtures`) serves generated data for the configured projects without Atlassian access, with scale and stack-depth options
+    * `npm test` covers the fixture generator and the pure filter logic (`buildFilterIndex`, `evaluatePullRequest`)
 * Version 2.2.0
     * New application layout
         * Top banner with the app name, project selector, refresh status, theme toggle, help, GitHub link and version

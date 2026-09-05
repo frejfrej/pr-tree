@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.2.0** (as of 2026-09-05)
+Current version: **2.3.0** (as of 2026-09-05)
 
 ## Technology Stack
 
@@ -49,17 +49,20 @@ pr-tree/
 ├── package.json           # Dependencies & version metadata
 ├── .gitignore             # Excludes config.js, node_modules, logs
 ├── start.bat              # Windows startup script
+├── fixtures/              # Fixture mode: generated data served instead of Atlassian (npm run start:fixtures)
+│   ├── generate.mjs       # Deterministic generator modelled on the real projects
+│   └── index.mjs          # Command-line/env options, config replacement, data source
 ├── test/                  # node:test unit tests (npm test)
 ├── README.md              # User-facing documentation
 └── public/                # Frontend assets
     ├── index.html         # App shell: banner, filter sidebar, tree pane, help modal
     ├── styles.css         # Application styles (colour tokens, light and dark themes)
     ├── app.js             # Data loading, rendering, filter state
-    ├── app-filter.js      # Filtering logic for PRs (visibility, attention, active-filter count)
+    ├── app-filter.js      # Filter index, pure evaluation, single-pass tree filtering and counters
     ├── app-shell.js       # Banner, sidebar, theme, keyboard shortcuts, help modal, tab title
     ├── tree-toggle.js     # Collapse/expand helpers and toggle-state capture/restore
     ├── multi-select.js    # Multi-select dropdown component
-    └── counter-utils.js   # Counter utilities for filtered/total counts
+    └── counter-utils.js   # Display of a filtered/total counter
 ```
 
 ### Key Files Explained
@@ -122,14 +125,19 @@ pr-tree/
 - Event handlers for user interactions
 
 **public/app-filter.js**
-- Filtering logic for PRs based on multiple criteria
-- Hierarchical filtering (respects parent-child PR relationships)
-- Visual state updates (highlighting, hiding)
-- Counter updates after filtering
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against; built once per data load by `initializeFilter()`
+- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
+- `filterBranches(...)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
+- `computeAttention`, `countActiveFilters` (pure)
 
 **public/counter-utils.js**
-- Counter calculations for filtered vs total PRs
-- Badge updates in UI
+- `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
+
+**fixtures/generate.mjs** and **fixtures/index.mjs**
+- `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one
+- Volumes and structure follow the real projects (see the constants at the top of generate.mjs), including the 24-deep stack of `products.secollab` under `feat/ai_investigations` that made the old filtering explode
+- Seeded PRNG: the same repository always yields the same pull requests, so `dataHash` is stable and the smart reload stays quiet
+- `parseFixtureOptions()` reads `--fixtures`, `--fixture-scale=N`, `--fixture-chain-depth=N` or the `PR_TREE_FIXTURES*` environment variables; `fixtureConfig()` replaces config.js; `createFixtureSource()` is what index.mjs calls instead of Atlassian
 
 **public/app-shell.js**
 - Banner and sidebar chrome, independent of pull-request data
@@ -292,11 +300,13 @@ State is synchronized with URL query parameters for deep linking:
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches()` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL.
 
 ### Filtering Architecture
-Hierarchical filtering in app-filter.js:
-1. Start from root branches
-2. Filter recursively from bottom-up (children first)
-3. Hide parents if no visible children and parent doesn't match filter
-4. Update counters after visibility changes
+Single pass in app-filter.js:
+1. `initializeFilter(apiResult)` builds the index once per data load (Maps and Sets, no array search later)
+2. `filterBranches()` collects the SYNC badges once, then walks repositories → root branches → direct child pull requests → their `.children` container, recursively; every pull request is visited exactly once
+3. Children are evaluated first; a filtered-out parent stays displayed while a descendant is visible
+4. Counters (repository, root branch, child counters shown) are summed on the way back up and written through `updateCounterDisplay`; DOM writes only happen when the value changes
+
+Never re-select descendants (`querySelectorAll('.pull-request')`) inside the recursion: the previous implementation did, and a pull request at depth *d* was visited 2^d times (16 million visits per filter change on SECOLLAB).
 
 ## Development Workflows
 
@@ -315,6 +325,9 @@ Hierarchical filtering in app-filter.js:
 6. Update `projects.js` with your projects
 7. Run `node index.mjs`
 8. Navigate to http://localhost:3000
+
+### Running Without Atlassian Access (Fixture Mode)
+`npm run start:fixtures` (or `node index.mjs --fixtures`) serves both configured projects from generated data and never calls Atlassian; no config.js is needed. `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (default 24, the real SECOLLAB value). Use it for UI work and for performance checks: SECOLLAB in fixture mode has the same volumes and tree shape as the real project.
 
 ### Adding a New Project
 1. Edit `projects.js`
@@ -357,8 +370,8 @@ When adding/modifying endpoints:
 4. Use browser DevTools for debugging
 
 ### Testing Changes
-- **Manual testing**: Use the UI to verify functionality
-- **Unit tests**: `npm test` (node:test, pure logic only)
+- **Manual testing**: Use the UI to verify functionality; `npm run start:fixtures` gives realistic data without credentials
+- **Unit tests**: `npm test` (node:test, pure logic and the fixture generator)
 - **API testing**: Use browser DevTools Network tab or curl
 - **Cache testing**: Check `/api/cache/stats` endpoint
 
@@ -409,7 +422,7 @@ try {
 2. **Frontend HTML**: Add filter UI element in index.html
 3. **Frontend State**: Add state variable in app.js
 4. **URL Sync**: Update `updateUrlWithFilters()` and `restoreFiltersFromUrl()`
-5. **Filter Logic**: Update `isPullRequestVisible()` in app-filter.js
+5. **Filter Logic**: Add the precomputed set to `buildFilterIndex()` and the match to `evaluatePullRequest()` in app-filter.js, with a unit test
 6. **Event Handler**: Wire up filter change event
 
 ### Add New Jira Field
@@ -464,9 +477,12 @@ Three streams available:
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
 6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
 7. **Ready for reviewer**: computed by `computeAttention()` from the data, never from rendered styles
+8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
+9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`computeAttention`, `countActiveFilters`, `buildDocumentTitle`); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack); no DOM, no extra dependency
+- **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
 - **API testing**: Use browser DevTools or Postman
