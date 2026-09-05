@@ -465,25 +465,20 @@ The application integrates with a Jira workflow where:
 
 ### 8.1 Layout Structure
 ```
-+--------------------------------------------------+
-| Header: Project Selector | Help | Last Refresh  |
-+--------------------------------------------------+
-| Filters: Author | Reviewer | Sprint | Sync |... |
-+--------------------------------------------------+
-| Pull Requests (Hierarchical Tree View)           |
-|   Repository 1                        [X / Y]    |
-|     Branch A                          [X / Y]    |
-|       PR #1 [SYNC] [Ahead:3] [Behind:1]          |
-|         JIRA-123 [In Progress]                   |
-|       PR #2 [Conflicts:5]                        |
-|     Branch B                          [X / Y]    |
-|       PR #3 [Ahead:2]                            |
-+--------------------------------------------------+
-| Orphaned Issues                                   |
-|   JIRA-456 [In Review] - Issue Summary           |
-+--------------------------------------------------+
-| Footer: Version | GitHub Link                     |
-+--------------------------------------------------+
++------------------------------------------------------------------+
+| Banner: ☰ | App name | Project ▾ | Last refresh | ☾ | ? | GitHub | v |
++----------------+-------------------------------------------------+
+| Filters  Clear | [Collapse all] [Expand all]                     |
+|  Sprint        | Repository 1                          [X / Y]   |
+|  Fix version   |   Branch A                            [X / Y]   |
+|  Assignee      |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
+|  Reviewer      |       JIRA-123 [In Progress]                    |
+|  Ready         |     PR #2                                       |
+|  SYNC + Load   |   Branch B                            [X / Y]   |
+|                |     PR #3 [Ahead:2]                             |
+| (does not      | Orphaned Issues                                 |
+|  scroll)       |   JIRA-456 [In Review] - Issue Summary          |
++----------------+-------------------------------------------------+
 ```
 
 ### 8.2 Visual Design Requirements
@@ -507,10 +502,12 @@ The application integrates with a Jira workflow where:
 - Collapsible sections for repositories/branches
 
 ### 8.3 Responsive Behavior
-- Minimum width: 1024px (desktop-focused)
-- Scrollable main content area
-- Fixed header and filter bar
-- Modal overlays for help content
+- Desktop-first: the banner and the filter sidebar stay fixed while the pull-request pane scrolls
+- The sidebar can be hidden (button or `F` key); the state is remembered per browser
+- Below 900px the sidebar becomes a drawer over the pane and the banner hides its text labels
+- Repository and branch headers stick to the top of the pane while scrolling
+- Modal overlay for help content
+- Light and dark themes, following the OS setting until the toggle is used
 
 ### 8.4 Interactive Elements
 

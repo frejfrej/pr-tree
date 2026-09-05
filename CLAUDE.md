@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.1.0** (as of 2026-08-12)
+Current version: **2.2.0** (as of 2026-09-05)
 
 ## Technology Stack
 
@@ -49,12 +49,16 @@ pr-tree/
 ├── package.json           # Dependencies & version metadata
 ├── .gitignore             # Excludes config.js, node_modules, logs
 ├── start.bat              # Windows startup script
+├── test/                  # node:test unit tests (npm test)
 ├── README.md              # User-facing documentation
 └── public/                # Frontend assets
-    ├── index.html         # Main HTML structure
-    ├── styles.css         # Application styles
-    ├── app.js             # Main application logic & state management
-    ├── app-filter.js      # Filtering logic for PRs
+    ├── index.html         # App shell: banner, filter sidebar, tree pane, help modal
+    ├── styles.css         # Application styles (colour tokens, light and dark themes)
+    ├── app.js             # Data loading, rendering, filter state
+    ├── app-filter.js      # Filtering logic for PRs (visibility, attention, active-filter count)
+    ├── app-shell.js       # Banner, sidebar, theme, keyboard shortcuts, help modal, tab title
+    ├── tree-toggle.js     # Collapse/expand helpers and toggle-state capture/restore
+    ├── multi-select.js    # Multi-select dropdown component
     └── counter-utils.js   # Counter utilities for filtered/total counts
 ```
 
@@ -127,11 +131,20 @@ pr-tree/
 - Counter calculations for filtered vs total PRs
 - Badge updates in UI
 
+**public/app-shell.js**
+- Banner and sidebar chrome, independent of pull-request data
+- Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed
+- Theme toggle, stored under `prTree.theme`; the OS setting is followed until a choice is stored; an inline script in `index.html` applies both before the first paint
+- Help modal, active-filter badge, tree toolbar (collapse all / expand all), document title (`(attention) PROJECT · Bitbucket Pull-Requests Tree`)
+- No DOM access at import time, so its pure helpers are unit-tested
+
+**public/tree-toggle.js**
+- `setRepositoryCollapsed`, `setRootBranchCollapsed`, `setPullRequestCollapsed` are the only code paths that change a collapsed state
+- `collapseAll` / `expandAll`, `captureToggleStates` / `restoreToggleStates` used across re-renders
+
 **public/index.html**
-- Single-page application structure
-- Filter UI (dropdowns, checkboxes)
-- Modal for help content
-- Footer with version information
+- App shell: banner (project selector, refresh status, theme toggle, help, GitHub, version), filter sidebar, tree pane with the collapse/expand toolbar, help modal
+- Inline `<head>` script applies the stored theme and sidebar state before the first paint
 
 ## API Endpoints
 
@@ -261,18 +274,22 @@ log(message, logStream);  // Logs to both console and file
 State is managed through module-level variables in app.js:
 ```javascript
 let currentProject = null;
-let currentSprint = "Show all";
-let currentAuthor = "Show all";
-let currentReviewer = "Show all";
+let currentSprints = [];        // sprint ids
+let currentFixVersions = [];    // fix version ids
+let currentAssignees = [];
+let currentReviewers = [];
 let currentSync = "Show all";
 let currentReadyForReviewer = false;
 let currentApiResult = null;
+let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied on re-render
 ```
 
 State is synchronized with URL query parameters for deep linking:
 ```
 ?project=PROJ&author=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
 ```
+
+Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches()` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL.
 
 ### Filtering Architecture
 Hierarchical filtering in app-filter.js:
@@ -341,7 +358,7 @@ When adding/modifying endpoints:
 
 ### Testing Changes
 - **Manual testing**: Use the UI to verify functionality
-- **No automated tests**: Currently no test suite (scripts shows `echo "Error: no test specified"`)
+- **Unit tests**: `npm test` (node:test, pure logic only)
 - **API testing**: Use browser DevTools Network tab or curl
 - **Cache testing**: Check `/api/cache/stats` endpoint
 
@@ -445,9 +462,12 @@ Three streams available:
 3. **API rate limits**: Bitbucket can return HTTP 429 if too many requests
 4. **Filter restoration**: SYNC and "ready for reviewer" filters NOT restored from URL (calculated async)
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
+6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
+7. **Ready for reviewer**: computed by `computeAttention()` from the data, never from rendered styles
 
 ### Testing Approach
-- **No automated tests**: All testing is manual via UI
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`computeAttention`, `countActiveFilters`, `buildDocumentTitle`); no DOM, no extra dependency
+- **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
 - **API testing**: Use browser DevTools or Postman
 - **Error scenarios**: Check error.log for unexpected issues
