@@ -1,5 +1,6 @@
 import { initializeFilter, filterBranches } from './app-filter.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
+import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 
 let currentProject = null;
 let currentSprints = [];
@@ -257,34 +258,6 @@ function handleFilterChange() {
 }
 
 
-function toggleChildren(button) {
-    const pullRequest = button.closest('.pull-request');
-    const children = pullRequest.nextElementSibling;
-    if (children && children.classList.contains('children')) {
-        pullRequest.classList.toggle('collapsed');
-        children.style.display = children.style.display === 'none' ? 'block' : 'none';
-
-        // Toggle visibility of child counter
-        const childCounter = pullRequest.querySelector('.child-counter');
-        if (childCounter) {
-            childCounter.classList.toggle('visible');
-        }
-    }
-}
-
-
-function toggleRootBranch(button) {
-    const rootBranch = button.closest('.root-branch');
-    rootBranch.classList.toggle('collapsed');
-}
-
-function toggleRepository(button) {
-    const repository = button.closest('.repository');
-    repository.classList.toggle('collapsed');
-    const icon = button.querySelector('i');
-    icon.classList.toggle('fa-chevron-down');
-    icon.classList.toggle('fa-chevron-right');
-}
 
 function populateFilters(pullRequests) {
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
@@ -399,102 +372,6 @@ function renderOrphanedIssues(issues) {
     `;
 }
 
-// Function to capture current toggle states before re-rendering
-function captureToggleStates() {
-    const states = {
-        repositories: [],
-        rootBranches: [],
-        pullRequests: []
-    };
-
-    // Capture repository states
-    document.querySelectorAll('.repository').forEach(repo => {
-        const repoNameElement = repo.querySelector('.repository-header h1');
-        if (repoNameElement) {
-            const repoName = repoNameElement.textContent.trim();
-            states.repositories.push({
-                name: repoName,
-                collapsed: repo.classList.contains('collapsed')
-            });
-        }
-    });
-
-    // Capture root branch states
-    document.querySelectorAll('.root-branch').forEach(branch => {
-        const branchNameElement = branch.querySelector('.root-branch-header h2 a');
-        if (branchNameElement) {
-            // Extract just the branch name, removing the external link icon
-            const branchName = branchNameElement.childNodes[0].textContent.trim();
-            states.rootBranches.push({
-                name: branchName,
-                collapsed: branch.classList.contains('collapsed')
-            });
-        }
-    });
-
-    // Capture pull request states (children visibility)
-    document.querySelectorAll('.pull-request').forEach(pr => {
-        const prId = pr.dataset.id;
-        const children = pr.nextElementSibling;
-        if (children && children.classList.contains('children')) {
-            states.pullRequests.push({
-                id: prId,
-                collapsed: pr.classList.contains('collapsed')
-            });
-        }
-    });
-
-    return states;
-}
-
-// Function to restore toggle states after re-rendering
-function restoreToggleStates(states) {
-    if (!states) return;
-
-    // Restore repository states
-    states.repositories.forEach(state => {
-        const repo = Array.from(document.querySelectorAll('.repository')).find(r => {
-            const nameElement = r.querySelector('.repository-header h1');
-            return nameElement && nameElement.textContent.trim() === state.name;
-        });
-        if (repo && state.collapsed) {
-            repo.classList.add('collapsed');
-        }
-    });
-
-    // Restore root branch states
-    states.rootBranches.forEach(state => {
-        const branch = Array.from(document.querySelectorAll('.root-branch')).find(b => {
-            const nameElement = b.querySelector('.root-branch-header h2 a');
-            if (nameElement) {
-                const branchName = nameElement.childNodes[0].textContent.trim();
-                return branchName === state.name;
-            }
-            return false;
-        });
-        if (branch && state.collapsed) {
-            branch.classList.add('collapsed');
-        }
-    });
-
-    // Restore pull request states
-    states.pullRequests.forEach(state => {
-        const pr = document.querySelector(`.pull-request[data-id="${state.id}"]`);
-        if (pr && state.collapsed) {
-            const children = pr.nextElementSibling;
-            if (children && children.classList.contains('children')) {
-                pr.classList.add('collapsed');
-                children.style.display = 'none';
-
-                // Toggle visibility of child counter
-                const childCounter = pr.querySelector('.child-counter');
-                if (childCounter) {
-                    childCounter.classList.add('visible');
-                }
-            }
-        }
-    });
-}
 
 async function renderEverything() {
     if (!currentProject) {
@@ -638,8 +515,9 @@ function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                 <div class="repository-header" onclick="toggleRepository(this)">
                     <button class="toggle-button">
                         <i class="fas fa-chevron-down"></i>
+                        <i class="fas fa-chevron-right"></i>
                     </button>
-                    <h1>${repoName}</h1>
+                    <h2 class="repository-name">${repoName}</h2>
                     <div class="repo-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
                         ${pullRequestCount}
                     </div>
@@ -699,13 +577,12 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                             <i class="fas fa-chevron-down"></i>
                             <i class="fas fa-chevron-right"></i>
                         </button>
-                        <h2>
-                            <a href="${branchUrl}" target="_blank" onclick="event.stopPropagation();" 
-                               style="color: inherit; text-decoration: none;">
+                        <h3 class="root-branch-name">
+                            <a href="${branchUrl}" target="_blank" onclick="event.stopPropagation();" class="root-branch-link">
                                 ${rootBranch}
-                                <i class="fas fa-external-link-alt" style="font-size: 0.8em; margin-left: 5px;"></i>
+                                <i class="fas fa-external-link-alt external-link-icon"></i>
                             </a>
-                        </h2>
+                        </h3>
                         <div class="branch-pr-counter" title="${totalPullRequestCount} total pull request${totalPullRequestCount !== 1 ? 's' : ''} (including all descendants)">
                             ${totalPullRequestCount}
                         </div>
@@ -1028,7 +905,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     const renderedDescription = pullRequest.rendered.description.html || 'No description provided.';
 
     let html = `
-        <div class="pull-request ${statusClass}" data-id="${pullRequest.id}">
+        <div class="pull-request ${statusClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${pullRequest.id}">
             ${countersHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">

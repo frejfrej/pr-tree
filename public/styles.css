@@ -415,12 +415,12 @@ select {
     position: relative;  /* Add this line */
 }
 
-.root-branch-header h2 {
+.root-branch-name {
     margin: 0;
     font-size: 18px;
     font-weight: bold;
     color: var(--primary-color);
-    flex-grow: 1;  /* Add this line to push the counter to the right */
+    flex-grow: 1;
 }
 
 .branch-pr-counter {
@@ -468,13 +468,11 @@ select {
     position: relative;
 }
 
-.repository-header h1 {
+.repository-name {
     margin: 0;
     font-size: 24px;
     font-weight: bold;
     color: white;
-    border-bottom: none;
-    padding-bottom: 0;
     flex-grow: 1;
 }
 
@@ -859,22 +857,22 @@ select {
     border-top: 1px solid #eee;
 }
 
-.root-branch-header h2 a:hover {
+.root-branch-link {
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
     text-decoration: none;
 }
 
-.root-branch-header h2 a:hover .fa-external-link-alt {
-    opacity: 1;
-}
-
-.root-branch-header h2 .fa-external-link-alt {
+.external-link-icon {
+    margin-left: 5px;
+    font-size: 0.8em;
     opacity: 0.6;
     transition: opacity 0.2s ease;
 }
 
-.root-branch-header h2 a {
-    display: inline-flex;
-    align-items: center;
+.root-branch-link:hover .external-link-icon {
+    opacity: 1;
 }
 
 .jira-priority-icon {
