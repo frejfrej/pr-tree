@@ -1,7 +1,7 @@
-import { initializeFilter, filterBranches } from './app-filter.js';
+import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
-import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer } from './app-shell.js';
+import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
 
 let currentProject = null;
 let currentSprints = [];
@@ -17,6 +17,41 @@ let reloadInterval = 100;
 let currentSyncStatuses = null;
 let syncStatusLoading = false;
 let syncLoadFailed = false;
+
+function currentFilters() {
+    return {
+        assignees: currentAssignees,
+        reviewers: currentReviewers,
+        sprints: currentSprints,
+        fixVersions: currentFixVersions,
+        sync: currentSync,
+        ready: currentReadyForReviewer
+    };
+}
+
+// Runs the filter pass and refreshes everything that depends on it: the
+// counters (inside filterBranches), the active-filter badge, the clear button
+// and the attention count in the tab title.
+function applyFilters() {
+    const filters = currentFilters();
+    const attentionCount = filterBranches(filters.assignees, filters.reviewers, filters.sprints, filters.fixVersions, filters.sync, filters.ready);
+    updateActiveFilterBadge(countActiveFilters(filters));
+    updateDocumentTitle({ project: currentProject, attentionCount });
+}
+
+// Resets every filter control to its default and applies the result once.
+// The project and the loaded SYNC statuses are kept.
+function clearAllFilters() {
+    ['sprintSelect', 'fixVersionSelect', 'assigneeSelect', 'reviewerSelect'].forEach(id => {
+        const multiSelect = getMultiSelect(id);
+        if (multiSelect) multiSelect.clearAll(false);
+    });
+    const readyCheck = document.getElementById('readyForReviewerCheck');
+    if (readyCheck) readyCheck.checked = false;
+    const syncSelect = document.getElementById('syncSelect');
+    if (syncSelect) syncSelect.value = 'Show all';
+    handleFilterChange();
+}
 
 function updateUrlWithFilters() {
     const url = new URL(window.location);
@@ -210,7 +245,8 @@ async function handleProjectChange(event, isInitialLoad = false) {
         syncLoadFailed = false;
         updateSyncControls();
         updateUrlWithFilters();
-        updateDocumentTitle({ project: null, attentionCount: 0 });
+        setToolbarVisible(false);
+        applyFilters(); // no tree to filter: refreshes the badge and the tab title
         showEmptyState();
 
         // Stop periodic checking
@@ -271,7 +307,7 @@ function handleFilterChange() {
         }
     }
 
-    filterBranches(currentAssignees, currentReviewers, currentSprints, currentFixVersions, currentSync, currentReadyForReviewer);
+    applyFilters();
     updateUrlWithFilters();
 }
 
@@ -320,13 +356,8 @@ function populateFilters(pullRequests) {
         readyCheck.checked = currentReadyForReviewer;
     }
 
-    // Restore filter values and apply them
+    // Restore filter values; renderEverything applies them once every filter is populated
     restoreFiltersFromUrl();
-    if (currentAssignees.length > 0 || currentReviewers.length > 0 ||
-        currentSprints.length > 0 || currentFixVersions.length > 0 ||
-        currentSync !== "Show all" || currentReadyForReviewer) {
-        filterBranches(currentAssignees, currentReviewers, currentSprints, currentFixVersions, currentSync, currentReadyForReviewer);
-    }
 }
 
 // Function to format the refresh time
@@ -397,6 +428,7 @@ function renderEverything(apiResult) {
     }
     if (!apiResult) {
         currentApiResult = null;
+        setToolbarVisible(false);
         showErrorState();
         return;
     }
@@ -432,6 +464,10 @@ function renderEverything(apiResult) {
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
+
+    // Every filter is populated and restored from the URL: apply them once
+    applyFilters();
+    setToolbarVisible(true);
 
     // Update the last refresh time
     const lastRefreshElement = document.getElementById('lastRefreshTime');
@@ -737,7 +773,7 @@ async function loadSyncStatuses() {
     updateSyncControls();
     applySyncStatuses();
     // Re-apply filters so an already selected SYNC filter uses the new statuses
-    filterBranches(currentAssignees, currentReviewers, currentSprints, currentFixVersions, currentSync, currentReadyForReviewer);
+    applyFilters();
 }
 
 // Renders the stored SYNC statuses onto the conflicts counters
@@ -1106,7 +1142,7 @@ function initializeMultiSelects() {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
-    initializeAppShell();
+    initializeAppShell({ onClearFilters: clearAllFilters });
     initializeMultiSelects();
     showEmptyState();
     loadProjects();

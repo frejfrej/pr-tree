@@ -6,6 +6,8 @@
  * unit-tested with node:test.
  */
 
+import { collapseAll, expandAll } from './tree-toggle.js';
+
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
 const SIDEBAR_STORAGE_KEY = 'prTree.sidebarHidden';
@@ -161,10 +163,39 @@ function handleKeydown(event) {
     }
 }
 
+// -------------------------------------------------------- filters and tree
+
+/** Shows the number of active filters on the sidebar toggle and the clear button in the sidebar. */
+export function updateActiveFilterBadge(count) {
+    const badge = document.getElementById('activeFilterBadge');
+    if (badge) {
+        badge.textContent = String(count);
+        badge.hidden = count === 0;
+    }
+    const clearButton = document.getElementById('clearFiltersButton');
+    if (clearButton) {
+        clearButton.hidden = count === 0;
+    }
+}
+
+export function setToolbarVisible(visible) {
+    const toolbar = document.getElementById('treeToolbar');
+    if (toolbar) {
+        toolbar.hidden = !visible;
+    }
+}
+
+function initializeToolbar() {
+    document.getElementById('collapseAllButton').addEventListener('click', collapseAll);
+    document.getElementById('expandAllButton').addEventListener('click', expandAll);
+}
+
 // -------------------------------------------------------------------- init
 
-export function initializeAppShell() {
+export function initializeAppShell({ onClearFilters }) {
     initializeSidebar();
     initializeHelpModal();
+    initializeToolbar();
+    document.getElementById('clearFiltersButton').addEventListener('click', onClearFilters);
     document.addEventListener('keydown', handleKeydown, true);
 }
