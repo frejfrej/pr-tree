@@ -124,13 +124,14 @@ pr-tree/
 - Periodic refresh logic (2-minute intervals, tab visibility detection)
 - Loading state management
 - Event handlers for user interactions
+- `populateIssueFilter(elementId, issues, selectedKeys)`: fills an issue multi-select from the index and returns the selection restricted to the offered keys
 
 **public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against and the epic keys (`epics`), plus `index.epics`, the epics to list in the filter; built once per data load by `initializeFilter()`, which returns it
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`); it also returns `index.epics`, the epics to list in the filter; built once per data load by `initializeFilter()`, which returns it
 - `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
 - `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
 - `issueLevel`, `epicOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
-- `parseTextQuery`, `matchesText`, `computeAttention`, `countActiveFilters` (pure)
+- `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/counter-utils.js**
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass

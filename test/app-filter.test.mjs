@@ -213,7 +213,7 @@ test('evaluatePullRequest text filter is case-insensitive and needs every word',
 
 // ------------------------------------------------------------------ epic filter
 
-import { issueLevel, epicOf } from '../public/app-filter.js';
+import { issueLevel, epicOf, issueOptions } from '../public/app-filter.js';
 
 const epicType = { name: 'Epic', subtask: false, hierarchyLevel: 1 };
 const storyType = { name: 'Story', subtask: false, hierarchyLevel: 0 };
@@ -225,7 +225,9 @@ const inlineEpicAi = { id: '1', key: 'PROJ-100', fields: { summary: 'Assistive A
 const inlineStoryChat = { id: '2', key: 'PROJ-200', fields: { summary: 'Chat panel', status: {}, priority: {}, issuetype: storyType } };
 
 const epicAi = { key: 'PROJ-100', fields: { summary: 'Assistive AI', issuetype: epicType } };
+const epicUx = { key: 'PROJ-101', fields: { summary: 'UX', issuetype: epicType } };
 const storyInEpic = { key: 'PROJ-200', fields: { summary: 'Chat panel', issuetype: storyType, parent: inlineEpicAi } };
+const storyInUx = { key: 'PROJ-203', fields: { summary: 'Toolbar', issuetype: storyType, parent: { id: '3', key: 'PROJ-101', fields: { summary: 'UX', status: {}, priority: {}, issuetype: epicType } } } };
 const bugWithoutEpic = { key: 'PROJ-201', fields: { summary: 'Crash on save', issuetype: bugType } };
 const subtaskOfStory = { key: 'PROJ-300', fields: { summary: 'Chat panel: API', issuetype: subtaskType, parent: inlineStoryChat } };
 const subtaskOfUnknown = { key: 'PROJ-301', fields: { summary: 'Orphan work', issuetype: subtaskType, parent: { key: 'PROJ-999', fields: { summary: 'Unknown story', issuetype: storyType } } } };
@@ -249,6 +251,8 @@ test('epicOf resolves the epic itself, a direct epic parent and the epic of a su
     assert.equal(epicOf(bugWithoutEpic, issuesByKey), null);
     assert.equal(epicOf(subtaskOfUnknown, issuesByKey), null); // the parent is not in the details
     assert.equal(epicOf(parentOnlyStory, issuesByKey), null);
+    // A sub-task whose direct parent is an epic needs no lookup
+    assert.deepEqual(epicOf({ key: 'PROJ-304', fields: { summary: 'Odd', issuetype: subtaskType, parent: inlineEpicAi } }, new Map()), { key: 'PROJ-100', summary: 'Assistive AI' });
 });
 
 test('epicOf needs the parent of the parent story, which the server now fetches for parent-only stories', () => {
@@ -263,10 +267,11 @@ const hierarchyApiResult = {
         { id: 20, title: 'PROJ-200 chat panel', source: { branch: { name: 'feature/PROJ-200' } }, author, participants: [] },
         { id: 21, title: 'PROJ-300 chat panel api', source: { branch: { name: 'feature/PROJ-300' } }, author, participants: [] },
         { id: 22, title: 'PROJ-201 crash on save', source: { branch: { name: 'bugfix/PROJ-201' } }, author, participants: [] },
-        { id: 23, title: 'PROJ-100 epic branch', source: { branch: { name: 'feature/PROJ-100' } }, author, participants: [] }
+        { id: 23, title: 'PROJ-100 epic branch', source: { branch: { name: 'feature/PROJ-100' } }, author, participants: [] },
+        { id: 24, title: 'PROJ-200 PROJ-203 both', source: { branch: { name: 'feature/both' } }, author, participants: [] }
     ],
-    jiraIssuesMap: { 20: ['PROJ-200'], 21: ['PROJ-300'], 22: ['PROJ-201'], 23: ['PROJ-100'] },
-    jiraIssuesDetails: [epicAi, storyInEpic, bugWithoutEpic, subtaskOfStory],
+    jiraIssuesMap: { 20: ['PROJ-200'], 21: ['PROJ-300'], 22: ['PROJ-201'], 23: ['PROJ-100'], 24: ['PROJ-200', 'PROJ-203'] },
+    jiraIssuesDetails: [epicAi, epicUx, storyInEpic, storyInUx, bugWithoutEpic, subtaskOfStory],
     sprintIssues: {}
 };
 
@@ -276,7 +281,8 @@ test('buildFilterIndex collects the epics of every pull request and the list of 
     assert.deepEqual([...pullRequestsById.get(21).epics], ['PROJ-100']); // through the parent story
     assert.deepEqual([...pullRequestsById.get(22).epics], []);
     assert.deepEqual([...pullRequestsById.get(23).epics], ['PROJ-100']); // linked to the epic itself
-    assert.deepEqual([...epics.values()], [{ key: 'PROJ-100', summary: 'Assistive AI' }]);
+    assert.deepEqual([...pullRequestsById.get(24).epics], ['PROJ-100', 'PROJ-101']); // two issues under two epics
+    assert.deepEqual([...epics.values()], [{ key: 'PROJ-100', summary: 'Assistive AI' }, { key: 'PROJ-101', summary: 'UX' }]);
     assert.equal(buildFilterIndex({}).epics.size, 0);
 });
 
@@ -289,4 +295,16 @@ test('evaluatePullRequest epic filter matches any selected epic', () => {
     assert.equal(evaluate(22, []), true);
     assert.equal(evaluate(20, ['PROJ-999', 'PROJ-100']), true);
     assert.equal(evaluate(20, ['PROJ-999']), false);
+});
+
+test('issueOptions labels "KEY Summary" and sorts by project then newest issue first', () => {
+    const options = issueOptions([
+        { key: 'PROJ-9', summary: 'Nine' }, { key: 'ALPHA-100', summary: 'Hundred' },
+        { key: 'PROJ-10', summary: 'Ten' }, { key: 'ALPHA-2', summary: 'Two' }
+    ]);
+    assert.deepEqual(options, [
+        { value: 'ALPHA-100', label: 'ALPHA-100 Hundred' }, { value: 'ALPHA-2', label: 'ALPHA-2 Two' },
+        { value: 'PROJ-10', label: 'PROJ-10 Ten' }, { value: 'PROJ-9', label: 'PROJ-9 Nine' }
+    ]);
+    assert.deepEqual(issueOptions(new Map([['X-1', { key: 'X-1', summary: 'One' }]]).values()), [{ value: 'X-1', label: 'X-1 One' }]);
 });

@@ -309,7 +309,7 @@ const epicSummaries = {
     WEBCMN: ['Design tokens migration', 'Session handling']
 };
 
-function createEpic(project, number, summary) {
+function createEpic(project, number, summary, fixVersions) {
     const key = `${project}-${number}`;
     return {
         id: String(10000 + number),
@@ -319,14 +319,20 @@ function createEpic(project, number, summary) {
             summary,
             status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
             priority: { name: 'Medium', iconUrl: priorityIconUrl('#e97f33'), id: '3' },
-            fixVersions: [],
+            fixVersions,
             issuetype: { name: 'Epic', subtask: false, hierarchyLevel: 1 }
         }
     };
 }
 
+// The first epic of a project has a fix version, so issues inherit one from their epic
 const epicIssues = Object.fromEntries(Object.entries(epicSummaries).map(([project, summaries]) =>
-    [project, summaries.map((summary, index) => createEpic(project, (issueNumberBase[project] || 100) + 8000 + index + 1, summary))]
+    [project, summaries.map((summary, index) => createEpic(
+        project,
+        (issueNumberBase[project] || 100) + 8000 + index + 1,
+        summary,
+        index === 0 ? (fixVersionsByProject[project] || []).slice(0, 1) : []
+    ))]
 ));
 
 // The parent field as Jira returns it: the key and a few inline fields
@@ -354,7 +360,7 @@ function createIssue(random, nextIssueNumber, project, { status, assignee, paren
     const assigneePerson = assignee === null ? null : (assignee || (random() < 0.85 ? pick(random, team) : null));
     // Sub-tasks get the parent they were given; standard issues belong to an epic 40% of the time
     const epics = epicIssues[project] || [];
-    const parentIssue = parent || (issueType !== 'Sub-task' && random() < 0.4 && epics.length > 0 ? pick(random, epics) : null);
+    const parentIssue = parent || (epics.length > 0 && issueType !== 'Sub-task' && random() < 0.4 ? pick(random, epics) : null);
     return {
         id: String(10000 + Number(key.split('-')[1])),
         key,

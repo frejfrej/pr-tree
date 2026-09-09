@@ -1,4 +1,4 @@
-import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
+import { initializeFilter, filterBranches, countActiveFilters, issueOptions } from './app-filter.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
@@ -142,10 +142,6 @@ function restoreFiltersFromUrl() {
     }
     if (fixVersionMultiSelect) {
         fixVersionMultiSelect.setSelectedValues(currentFixVersions);
-    }
-    const epicMultiSelect = getMultiSelect('epicSelect');
-    if (epicMultiSelect) {
-        epicMultiSelect.setSelectedValues(currentEpics);
     }
 
     // Update sync select and ready checkbox
@@ -513,7 +509,7 @@ function renderEverything(apiResult) {
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
-    populateEpicFilter(filterIndex.epics);
+    currentEpics = populateIssueFilter('epicSelect', filterIndex.epics, currentEpics);
 
     // Every filter is populated and restored from the URL: apply them once
     applyFilters();
@@ -788,36 +784,14 @@ function populateFixVersionFilter(jiraIssuesDetails) {
     }
 }
 
-// Options of an issue filter: "KEY Summary", newest issue first within each Jira project
-function issueOptions(issues) {
-    return [...issues.values()]
-        .sort((a, b) => compareIssueKeys(a.key, b.key))
-        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}` }));
-}
-
-// Jira project alphabetically, then issue number descending
-function compareIssueKeys(a, b) {
-    const [projectA, numberA] = splitIssueKey(a);
-    const [projectB, numberB] = splitIssueKey(b);
-    return projectA.localeCompare(projectB) || numberB - numberA;
-}
-
-function splitIssueKey(key) {
-    const dash = key.lastIndexOf('-');
-    return [key.slice(0, dash), Number(key.slice(dash + 1))];
-}
-
-function populateEpicFilter(epics) {
-    const epicMultiSelect = getMultiSelect('epicSelect');
-    if (!epicMultiSelect) return;
-
-    const options = issueOptions(epics);
-    epicMultiSelect.setOptions(options);
-
-    // Keep only the epics that exist in the options (the URL may carry unknown keys)
-    const known = new Set(options.map(option => option.value));
-    currentEpics = currentEpics.filter(key => known.has(key));
-    epicMultiSelect.setSelectedValues(currentEpics);
+// Fills an issue multi-select (epics, stories) and returns the selection
+// restricted to the keys it offers (the URL may carry keys of another project)
+function populateIssueFilter(elementId, issues, selectedKeys) {
+    const multiSelect = getMultiSelect(elementId);
+    if (!multiSelect) return selectedKeys;
+    multiSelect.setOptions(issueOptions(issues.values()));
+    multiSelect.setSelectedValues(selectedKeys);
+    return multiSelect.getSelectedValues();
 }
 
 // Fetches the SYNC status of every pull request of the current project in a

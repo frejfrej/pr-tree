@@ -80,6 +80,9 @@ function issueReference(issue) {
  * the parent is an epic, or the epic of its parent story when the issue is a
  * sub-task (the story is looked up in issuesByKey, where the server puts the
  * parents it fetched). Pure.
+ * @param {object} issue - a linked issue or an inline parent
+ * @param {Map<string, object>} issuesByKey - the issues of jiraIssuesDetails by
+ *   key (required: the sub-task branch reads it)
  * @returns {{ key: string, summary: string } | null}
  */
 export function epicOf(issue, issuesByKey) {
@@ -94,6 +97,30 @@ export function epicOf(issue, issuesByKey) {
         if (grandParent && issueLevel(grandParent) === 'epic') return issueReference(grandParent);
     }
     return null;
+}
+
+/**
+ * Options of an issue multi-select: "KEY Summary", valued by key, sorted by
+ * Jira project then issue number descending (newest first). Pure.
+ * @param {Iterable<{ key: string, summary: string }>} issues - records, e.g. index.epics.values()
+ * @returns {{ value: string, label: string }[]}
+ */
+export function issueOptions(issues) {
+    return [...issues]
+        .sort((a, b) => compareIssueKeys(a.key, b.key))
+        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}` }));
+}
+
+// Jira project alphabetically, then issue number descending
+function compareIssueKeys(a, b) {
+    const [projectA, numberA] = splitIssueKey(a);
+    const [projectB, numberB] = splitIssueKey(b);
+    return projectA.localeCompare(projectB) || numberB - numberA;
+}
+
+function splitIssueKey(key) {
+    const dash = key.lastIndexOf('-');
+    return [key.slice(0, dash), Number(key.slice(dash + 1))];
 }
 
 // --------------------------------------------------------------- attention
