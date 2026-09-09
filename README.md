@@ -33,12 +33,15 @@
     * Highlights in red those where an effort is expected
 * Provides a ready for reviewer filter
     * Filters In Review pull requests which reviewer has not already approved
+* Provides a ready for assignee filter
+    * Filters In Progress pull requests with a linked issue assigned to the selected assignee
+    * With both ready filters checked, pull requests needing either attention are kept
 * Provides a fix version filter
     * Filters pull requests based on the fixVersion field of associated Jira issues
     * Dynamically populates with all available fixVersions from the project's Jira issues
 * Allows simultaneous filtering by both assignee and reviewer
 * Maintains filter selections in URL
-    * All filter selections (project, text, sprint, fixVersion, epic, story, assignee, reviewer) are saved in the URL
+    * All filter selections (project, text, sprint, fixVersion, epic, story, assignee, reviewer, ready for assignee, ready for reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
 * Displays Ahead (green) and Behind (red) commit counts
@@ -86,6 +89,8 @@
         * The server now fetches the summary, type and parent of parent issues (previously their fix versions only)
         * Fixture data carries epics
     * Story filter: pull requests of the selected issues, the linked issue itself or the parent of a linked sub-task
+    * Ready for assignee filter: In Progress pull requests with a linked issue assigned to the selected assignee, the counterpart of Ready for reviewer
+    * Both ready filters are now restored from the URL (`readyAssignee`, `readyReviewer`); only the SYNC filter is still reset on reload
 * Version 2.3.0
     * Filtering is now a single pass over the tree
         * Each pull request is visited once; the previous recursion revisited a stacked pull request once per ancestor, so a 24-deep stack (as in SECOLLAB) cost about 16 million visits and 20 seconds per filter change

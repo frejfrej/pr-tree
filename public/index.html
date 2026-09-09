@@ -181,6 +181,13 @@
     </div>
   </div>
 
+  <div class="filter-item filter-item-checkbox">
+    <input type="checkbox" id="readyForAssigneeCheck" disabled>
+    <label for="readyForAssigneeCheck">Ready for assignee</label>
+    <i class="fas fa-info-circle info-icon"
+       title="Pull requests in progress with a linked issue assigned to a selected assignee"></i>
+  </div>
+
   <div class="filter-item">
     <span class="filter-label">Reviewer</span>
     <div class="multi-select" id="reviewerSelect" data-filter="reviewer">
@@ -204,7 +211,8 @@
   <div class="filter-item filter-item-checkbox">
     <input type="checkbox" id="readyForReviewerCheck" disabled>
     <label for="readyForReviewerCheck">Ready for reviewer</label>
-    <i class="fas fa-info-circle info-icon" title="This filter will be reset when the page is reloaded"></i>
+    <i class="fas fa-info-circle info-icon"
+       title="Pull requests in review that a selected reviewer has not approved yet"></i>
   </div>
 
   <hr class="sidebar-divider">

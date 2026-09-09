@@ -125,6 +125,7 @@ pr-tree/
 - Loading state management
 - Event handlers for user interactions
 - `populateIssueFilter(elementId, issues, selectedKeys)`: fills an issue multi-select (epics and stories) from the index and returns the selection restricted to the offered keys
+- `updateReadyCheckboxes()`: the two ready checkboxes are disabled and unchecked while their multi-select is empty; both checked keeps pull requests needing either attention
 
 **public/app-filter.js**
 - `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
@@ -295,14 +296,16 @@ let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
 let currentReadyForReviewer = false;
+let currentReadyForAssignee = false;
 let currentApiResult = null;
 let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied on re-render
 ```
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&sync=requested&ready=true
+?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&sync=requested&readyReviewer=true&readyAssignee=true
 ```
+(`ready`, the former name of `readyReviewer`, is still read from old links but never written.)
 
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
 
@@ -480,10 +483,10 @@ Three streams available:
 1. **Module type mismatch**: Backend uses ES modules (.mjs), config uses CommonJS (module.exports)
 2. **Cache staleness**: Remember that data can be up to 2 minutes old
 3. **API rate limits**: Bitbucket can return HTTP 429 if too many requests
-4. **Filter restoration**: SYNC and "ready for reviewer" filters NOT restored from URL (calculated async)
+4. **Filter restoration**: the SYNC filter is NOT restored from the URL (its statuses are loaded on demand); every other filter is, including the two ready checkboxes
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
 6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
-7. **Ready for reviewer**: computed by `computeAttention()` from the data, never from rendered styles
+7. **Ready for reviewer / assignee**: computed by `computeAttention()` from the data, never from rendered styles; `evaluatePullRequest` takes `readyReviewer` and `readyAssignee`
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes

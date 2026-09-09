@@ -181,13 +181,14 @@ The application integrates with a Jira workflow where:
 - F4.10: Filter by text: title, source branch name and linked issue keys must contain every word typed
 - F4.11: Filter by epic (the epic above the linked issues, through the parent story for sub-tasks)
 - F4.12: Filter by story (the linked issue, or the parent of a linked sub-task)
+- F4.13: Filter by "ready for assignee" status: In Progress pull requests with a linked issue assigned to a selected assignee; with both ready filters checked, pull requests needing either attention are kept
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
 - Applying filters hides non-matching PRs instantly
 - Filtered counters update to show X of Y PRs visible
 - URL updates with all filter selections
-- Sharing URL restores all filters (except SYNC and ready-for-reviewer, which require async calculation)
+- Sharing URL restores all filters (except SYNC, whose statuses are loaded on demand)
 - PRs highlighted in red when action required from filtered user
 - Parent PRs remain visible if any children match filter
 - Ready for reviewer filter correctly identifies PRs in "In Review" status needing reviewer action
@@ -483,8 +484,9 @@ The application integrates with a Jira workflow where:
 |  Epic          |                                                 |
 |  Story         |                                                 |
 |  Assignee      |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
+|  Ready assignee|                                                 |
 |  Reviewer      |       JIRA-123 [In Progress]                    |
-|  Ready         |     PR #2                                       |
+|  Ready reviewer|     PR #2                                       |
 |  SYNC + Load   |   Branch B                            [X / Y]   |
 |                |     PR #3 [Ahead:2]                             |
 | (does not      | Orphaned Issues                                 |
@@ -778,6 +780,7 @@ The following are explicitly **not** part of current requirements:
 - **In Progress**: Jira issue status indicating active development work
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
 - **Ready for Reviewer**: PR with associated issue in "In Review" status that hasn't been approved yet
+- **Ready for Assignee**: PR with associated issue in "In Progress" status assigned to the selected assignee
 - **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch

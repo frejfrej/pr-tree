@@ -13,6 +13,7 @@ let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
 let currentReadyForReviewer = false;
+let currentReadyForAssignee = false;
 let currentApiResult = null;
 let reloadInterval = 100;
 // SYNC statuses are only fetched when the user clicks the load button; the
@@ -23,8 +24,10 @@ let syncLoadFailed = false;
 
 // Multi-select filters, in sidebar order
 const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect'];
-// URL parameters written by the filters
-const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'assignee', 'reviewer', 'sync', 'ready'];
+// The two ready checkboxes, in sidebar order
+const readyCheckboxIds = ['readyForAssigneeCheck', 'readyForReviewerCheck'];
+// URL parameters written by the filters ('ready', the former name of readyReviewer, is only ever removed)
+const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'assignee', 'reviewer', 'sync', 'readyReviewer', 'readyAssignee', 'ready'];
 
 function currentFilters() {
     return {
@@ -36,7 +39,8 @@ function currentFilters() {
         epics: currentEpics,
         stories: currentStories,
         sync: currentSync,
-        ready: currentReadyForReviewer
+        readyReviewer: currentReadyForReviewer,
+        readyAssignee: currentReadyForAssignee
     };
 }
 
@@ -51,7 +55,8 @@ function applyFilters() {
 }
 
 // Puts every filter control back to its default without applying anything:
-// the search box, the multi-selects, the ready checkbox and the SYNC select
+// the search box, the multi-selects, the ready checkboxes (unchecked; their
+// disabled state follows the selection in readFilterControls) and the SYNC select
 function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
@@ -59,8 +64,10 @@ function resetFilterControls() {
         const multiSelect = getMultiSelect(id);
         if (multiSelect) multiSelect.clearAll(false);
     });
-    const readyCheck = document.getElementById('readyForReviewerCheck');
-    if (readyCheck) readyCheck.checked = false;
+    readyCheckboxIds.forEach(id => {
+        const checkbox = document.getElementById(id);
+        if (checkbox) checkbox.checked = false;
+    });
     const syncSelect = document.getElementById('syncSelect');
     if (syncSelect) syncSelect.value = 'Show all';
 }
@@ -96,7 +103,8 @@ function updateUrlWithFilters({ replace = false } = {}) {
     currentEpics.forEach(v => url.searchParams.append('epic', v));
     currentStories.forEach(v => url.searchParams.append('story', v));
     if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
-    if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
+    if (currentReadyForReviewer) url.searchParams.set('readyReviewer', 'true');
+    if (currentReadyForAssignee) url.searchParams.set('readyAssignee', 'true');
 
     // Update URL without reloading the page. Safari throws past 100 updates
     // per 30 seconds: the URL then catches up on the next change
@@ -128,7 +136,9 @@ function restoreFiltersFromUrl() {
     if (!currentSyncStatuses) {
         currentSync = "Show all"; // Not restored from URL because SYNC status is only loaded on demand
     }
-    currentReadyForReviewer = false; // Not restored because it requires a fully displayed and updated pr tree
+    // Restored like the other filters; 'ready' is the former name of readyReviewer
+    currentReadyForReviewer = urlParams.get('readyReviewer') === 'true' || urlParams.get('ready') === 'true';
+    currentReadyForAssignee = urlParams.get('readyAssignee') === 'true';
 
     // Update multi-select components with restored values
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
@@ -136,11 +146,16 @@ function restoreFiltersFromUrl() {
     const sprintMultiSelect = getMultiSelect('sprintSelect');
     const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
 
+    // Assignee and reviewer options already exist here: keep only the names they offer, so a
+    // stale name in the URL cannot leave a ready checkbox enabled over an empty selection
+    // (sprints and fix versions are populated after this and validate their own selection)
     if (assigneeMultiSelect) {
         assigneeMultiSelect.setSelectedValues(currentAssignees);
+        currentAssignees = assigneeMultiSelect.getSelectedValues();
     }
     if (reviewerMultiSelect) {
         reviewerMultiSelect.setSelectedValues(currentReviewers);
+        currentReviewers = reviewerMultiSelect.getSelectedValues();
     }
     if (sprintMultiSelect) {
         sprintMultiSelect.setSelectedValues(currentSprints);
@@ -149,15 +164,10 @@ function restoreFiltersFromUrl() {
         fixVersionMultiSelect.setSelectedValues(currentFixVersions);
     }
 
-    // Update sync select and ready checkbox
+    // Update the sync select and the ready checkboxes
     const syncSelect = document.getElementById('syncSelect');
-    const readyCheck = document.getElementById('readyForReviewerCheck');
-
     if (syncSelect) syncSelect.value = currentSync;
-    if (readyCheck) {
-        readyCheck.checked = currentReadyForReviewer;
-        readyCheck.disabled = currentReviewers.length === 0;
-    }
+    updateReadyCheckboxes();
 
     // The URL holds the trimmed query: a box the user is typing in is authoritative
     const textFilter = document.getElementById('textFilter');
@@ -181,13 +191,30 @@ function initializeSyncControls() {
     updateSyncControls();
 }
 
-function initializeReadyForReviewerFilter() {
-    const readyCheck = document.getElementById('readyForReviewerCheck');
-    if (readyCheck) {
-        readyCheck.addEventListener('change', handleFilterChange);
-        // Set initial state - disabled when no reviewers selected
-        readyCheck.disabled = currentReviewers.length === 0;
-        readyCheck.checked = currentReadyForReviewer;
+function initializeReadyFilters() {
+    readyCheckboxIds.forEach(id => {
+        const checkbox = document.getElementById(id);
+        if (checkbox) checkbox.addEventListener('change', handleFilterChange);
+    });
+    updateReadyCheckboxes();
+}
+
+// The ready checkboxes depend on their multi-select: while no assignee (or
+// reviewer) is selected the matching state is cleared (so a readyAssignee=true
+// without an assignee in the URL is dropped) and the box is disabled and
+// unchecked; otherwise the box shows the state
+function updateReadyCheckboxes() {
+    if (currentAssignees.length === 0) currentReadyForAssignee = false;
+    if (currentReviewers.length === 0) currentReadyForReviewer = false;
+    const assigneeCheck = document.getElementById('readyForAssigneeCheck');
+    if (assigneeCheck) {
+        assigneeCheck.disabled = currentAssignees.length === 0;
+        assigneeCheck.checked = currentReadyForAssignee;
+    }
+    const reviewerCheck = document.getElementById('readyForReviewerCheck');
+    if (reviewerCheck) {
+        reviewerCheck.disabled = currentReviewers.length === 0;
+        reviewerCheck.checked = currentReadyForReviewer;
     }
 }
 
@@ -284,7 +311,7 @@ function showErrorState() {
 }
 
 // Copies the filter controls into the state variables and refreshes the
-// controls that depend on them (ready checkbox, clear button)
+// controls that depend on them (ready checkboxes, clear button)
 function readFilterControls() {
     const textFilter = document.getElementById('textFilter');
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
@@ -304,19 +331,13 @@ function readFilterControls() {
 
     // Get sync and ready values from regular form elements
     const syncSelect = document.getElementById("syncSelect");
-    const readyCheck = document.getElementById("readyForReviewerCheck");
+    const assigneeCheck = document.getElementById('readyForAssigneeCheck');
+    const reviewerCheck = document.getElementById('readyForReviewerCheck');
 
     currentSync = syncSelect ? syncSelect.value : "Show all";
-    currentReadyForReviewer = readyCheck ? readyCheck.checked : false;
-
-    // Enable/disable checkbox based on reviewer selection (disabled when no reviewers selected)
-    if (readyCheck) {
-        readyCheck.disabled = currentReviewers.length === 0;
-        if (currentReviewers.length === 0) {
-            readyCheck.checked = false;
-            currentReadyForReviewer = false;
-        }
-    }
+    currentReadyForAssignee = assigneeCheck ? assigneeCheck.checked : false;
+    currentReadyForReviewer = reviewerCheck ? reviewerCheck.checked : false;
+    updateReadyCheckboxes();
 
     updateTextFilterClearButton();
 }
@@ -368,7 +389,6 @@ function initializeTextFilter() {
 function populateFilters(pullRequests) {
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
     const reviewerMultiSelect = getMultiSelect('reviewerSelect');
-    const readyCheck = document.getElementById('readyForReviewerCheck');
 
     // Extract unique assignees from Jira issues and sort them alphabetically
     const assignees = new Set();
@@ -401,12 +421,6 @@ function populateFilters(pullRequests) {
 
     // Reflect the current SYNC load state (statuses are only fetched on demand)
     updateSyncControls();
-
-    // Update checkbox state
-    if (readyCheck) {
-        readyCheck.disabled = currentReviewers.length === 0;
-        readyCheck.checked = currentReadyForReviewer;
-    }
 
     // Restore filter values; renderEverything applies them once every filter is populated
     restoreFiltersFromUrl();
@@ -1210,7 +1224,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
     fetchAndDisplayVersion();
     initializePopovers();
-    initializeReadyForReviewerFilter();
+    initializeReadyFilters();
     initializeSyncControls();
 });
 
