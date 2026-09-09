@@ -184,12 +184,18 @@ test('matchesText requires every term as a substring', () => {
     assert.equal(matchesText(searchText, ['proj-12', 'restore']), true);
     assert.equal(matchesText(searchText, ['banner', 'footer']), false);
     assert.equal(matchesText(searchText, ['ann']), true); // substring, not whole word
+    assert.equal(matchesText('', ['x']), false);
 });
 
 test('buildFilterIndex searches the title, the source branch and the issue keys only', () => {
     const { pullRequestsById } = buildFilterIndex(sampleApiResult);
     assert.equal(pullRequestsById.get(10).searchText, 'fix(proj-1): restore the banner jd_260901_proj-1_banner proj-1 proj-2 proj-404');
     assert.equal(pullRequestsById.get(11).searchText, 'chore: bump dependencies chore/bump-deps');
+    const bare = buildFilterIndex({
+        pullRequests: [{ id: 12, title: 'Hotfix', author, participants: [] }],
+        jiraIssuesMap: {}, jiraIssuesDetails: [], sprintIssues: {}
+    });
+    assert.equal(bare.pullRequestsById.get(12).searchText, 'hotfix'); // no source branch
 });
 
 test('evaluatePullRequest text filter is case-insensitive and needs every word', () => {
@@ -197,7 +203,7 @@ test('evaluatePullRequest text filter is case-insensitive and needs every word',
     const evaluate = text => evaluatePullRequest(pullRequestsById.get(10), { ...noFilter, text }, rendered).visible;
     assert.equal(evaluate(''), true);
     assert.equal(evaluate('BANNER'), true);
-    assert.equal(evaluate('proj-404'), true); // an issue key of the title, even without details
+    assert.equal(evaluate('proj-404'), true); // a key of jiraIssuesMap without details (the keys are searched even when the title changes)
     assert.equal(evaluate('jd_260901'), true); // the source branch
     assert.equal(evaluate('restore banner'), true);
     assert.equal(evaluate('banner footer'), false);

@@ -295,7 +295,7 @@ let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied 
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&q=banner&author=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
+?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
 ```
 
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.

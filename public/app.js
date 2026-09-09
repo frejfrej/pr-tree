@@ -19,6 +19,11 @@ let currentSyncStatuses = null;
 let syncStatusLoading = false;
 let syncLoadFailed = false;
 
+// Multi-select filters, in sidebar order
+const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'assigneeSelect', 'reviewerSelect'];
+// URL parameters written by the filters
+const filterUrlParams = ['q', 'sprint', 'fixVersion', 'assignee', 'reviewer', 'sync', 'ready'];
+
 function currentFilters() {
     return {
         text: currentText,
@@ -41,12 +46,12 @@ function applyFilters() {
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
 
-// Resets every filter control to its default and applies the result once.
-// The project and the loaded SYNC statuses are kept.
-function clearAllFilters() {
+// Puts every filter control back to its default without applying anything:
+// the search box, the multi-selects, the ready checkbox and the SYNC select
+function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
-    ['sprintSelect', 'fixVersionSelect', 'assigneeSelect', 'reviewerSelect'].forEach(id => {
+    multiSelectIds.forEach(id => {
         const multiSelect = getMultiSelect(id);
         if (multiSelect) multiSelect.clearAll(false);
     });
@@ -54,6 +59,12 @@ function clearAllFilters() {
     if (readyCheck) readyCheck.checked = false;
     const syncSelect = document.getElementById('syncSelect');
     if (syncSelect) syncSelect.value = 'Show all';
+}
+
+// Resets every filter and applies the result once.
+// The project and the loaded SYNC statuses are kept.
+function clearAllFilters() {
+    resetFilterControls();
     handleFilterChange();
 }
 
@@ -62,11 +73,7 @@ function clearAllFilters() {
 function updateUrlWithFilters({ replace = false } = {}) {
     const url = new URL(window.location);
 
-    // Clear existing multi-select params first
-    url.searchParams.delete('assignee');
-    url.searchParams.delete('reviewer');
-    url.searchParams.delete('sprint');
-    url.searchParams.delete('fixVersion');
+    filterUrlParams.forEach(param => url.searchParams.delete(param));
 
     // Set project
     if (currentProject) {
@@ -75,38 +82,26 @@ function updateUrlWithFilters({ replace = false } = {}) {
         url.searchParams.delete('project');
     }
 
-    // Set the text filter
+    // Set the active filters (multi-selects use the repeated params format)
     const text = currentText.trim();
-    if (text !== '') {
-        url.searchParams.set('q', text);
-    } else {
-        url.searchParams.delete('q');
-    }
-
-    // Set multi-select params (use repeated params format)
+    if (text !== '') url.searchParams.set('q', text);
     currentAssignees.forEach(v => url.searchParams.append('assignee', v));
     currentReviewers.forEach(v => url.searchParams.append('reviewer', v));
     currentSprints.forEach(v => url.searchParams.append('sprint', v));
     currentFixVersions.forEach(v => url.searchParams.append('fixVersion', v));
+    if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
+    if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
-    // Set other params
-    if (currentSync !== "Show all") {
-        url.searchParams.set('sync', currentSync);
-    } else {
-        url.searchParams.delete('sync');
-    }
-
-    if (currentReadyForReviewer) {
-        url.searchParams.set('ready', 'true');
-    } else {
-        url.searchParams.delete('ready');
-    }
-
-    // Update URL without reloading the page
-    if (replace) {
-        window.history.replaceState({}, '', url);
-    } else {
-        window.history.pushState({}, '', url);
+    // Update URL without reloading the page. Safari throws past 100 updates
+    // per 30 seconds: the URL then catches up on the next change
+    try {
+        if (replace) {
+            window.history.replaceState({}, '', url);
+        } else {
+            window.history.pushState({}, '', url);
+        }
+    } catch (error) {
+        // The filters are already applied; only the address bar lags
     }
 }
 
@@ -155,8 +150,9 @@ function restoreFiltersFromUrl() {
         readyCheck.disabled = currentReviewers.length === 0;
     }
 
+    // The URL holds the trimmed query: leave a box the user is typing in alone
     const textFilter = document.getElementById('textFilter');
-    if (textFilter) textFilter.value = currentText;
+    if (textFilter && document.activeElement !== textFilter) textFilter.value = currentText;
     updateTextFilterClearButton();
 }
 
@@ -217,49 +213,15 @@ async function handleProjectChange(event, isInitialLoad = false) {
         // Only clear filters from URL when manually switching projects, not during initial page load
         if (!isInitialLoad) {
             const url = new URL(window.location);
-            url.searchParams.delete('q');
-            url.searchParams.delete('assignee');
-            url.searchParams.delete('reviewer');
-            url.searchParams.delete('sprint');
-            url.searchParams.delete('fixVersion');
-            url.searchParams.delete('sync');
-            url.searchParams.delete('ready');
+            filterUrlParams.forEach(param => url.searchParams.delete(param));
             window.history.pushState({}, '', url);
 
-            // Clear multi-select state and UI
-            currentText = '';
-            currentAssignees = [];
-            currentReviewers = [];
-            currentSprints = [];
-            currentFixVersions = [];
-            currentSync = "Show all";
-            currentReadyForReviewer = false;
-
-            // Clear multi-select components
-            const assigneeMultiSelect = getMultiSelect('assigneeSelect');
-            const reviewerMultiSelect = getMultiSelect('reviewerSelect');
-            const sprintMultiSelect = getMultiSelect('sprintSelect');
-            const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
-
-            // Pass false to prevent triggering handleFilterChange callbacks
-            if (assigneeMultiSelect) assigneeMultiSelect.clearAll(false);
-            if (reviewerMultiSelect) reviewerMultiSelect.clearAll(false);
-            if (sprintMultiSelect) sprintMultiSelect.clearAll(false);
-            if (fixVersionMultiSelect) fixVersionMultiSelect.clearAll(false);
-
-            const textFilter = document.getElementById('textFilter');
-            if (textFilter) textFilter.value = '';
-            updateTextFilterClearButton();
-
-            // Reset sync statuses and ready checkbox (SYNC data belongs to the previous project)
+            // SYNC data belongs to the previous project; then reset the controls and read them into the state
             currentSyncStatuses = null;
             syncLoadFailed = false;
             updateSyncControls();
-            const readyCheck = document.getElementById('readyForReviewerCheck');
-            if (readyCheck) {
-                readyCheck.checked = false;
-                readyCheck.disabled = true;
-            }
+            resetFilterControls();
+            readFilterControls();
         }
 
         showLoadingState();
@@ -308,7 +270,7 @@ function showErrorState() {
     showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
 }
 
-// Copies the filter controls into the state variables
+// Copies the filter controls into the state variables and refreshes the controls that depend on them (ready checkbox, clear button)
 function readFilterControls() {
     const textFilter = document.getElementById('textFilter');
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
@@ -1206,10 +1168,7 @@ function initializePopovers() {
 
 // Initialize multi-select components
 function initializeMultiSelects() {
-    createMultiSelect('sprintSelect', { onChange: handleFilterChange });
-    createMultiSelect('fixVersionSelect', { onChange: handleFilterChange });
-    createMultiSelect('assigneeSelect', { onChange: handleFilterChange });
-    createMultiSelect('reviewerSelect', { onChange: handleFilterChange });
+    multiSelectIds.forEach(id => createMultiSelect(id, { onChange: handleFilterChange }));
 }
 
 // Update the DOMContentLoaded event listener
