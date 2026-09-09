@@ -164,7 +164,7 @@ export class MultiSelect {
             return `
                 <label class="multi-select-option">
                     <input type="checkbox" value="${this.escapeHtml(opt.value)}" ${isChecked ? 'checked' : ''}>
-                    <span class="multi-select-option-label">${this.escapeHtml(opt.label)}</span>
+                    <span class="multi-select-option-label" title="${this.escapeHtml(opt.label)}">${this.escapeHtml(opt.label)}</span>
                 </label>
             `;
         }).join('');

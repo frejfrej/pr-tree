@@ -7,6 +7,7 @@ let currentProject = null;
 let currentText = '';
 let currentSprints = [];
 let currentFixVersions = [];
+let currentEpics = [];
 let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
@@ -20,9 +21,9 @@ let syncStatusLoading = false;
 let syncLoadFailed = false;
 
 // Multi-select filters, in sidebar order
-const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'assigneeSelect', 'reviewerSelect'];
+const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'assigneeSelect', 'reviewerSelect'];
 // URL parameters written by the filters
-const filterUrlParams = ['q', 'sprint', 'fixVersion', 'assignee', 'reviewer', 'sync', 'ready'];
+const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'assignee', 'reviewer', 'sync', 'ready'];
 
 function currentFilters() {
     return {
@@ -31,6 +32,7 @@ function currentFilters() {
         reviewers: currentReviewers,
         sprints: currentSprints,
         fixVersions: currentFixVersions,
+        epics: currentEpics,
         sync: currentSync,
         ready: currentReadyForReviewer
     };
@@ -89,6 +91,7 @@ function updateUrlWithFilters({ replace = false } = {}) {
     currentReviewers.forEach(v => url.searchParams.append('reviewer', v));
     currentSprints.forEach(v => url.searchParams.append('sprint', v));
     currentFixVersions.forEach(v => url.searchParams.append('fixVersion', v));
+    currentEpics.forEach(v => url.searchParams.append('epic', v));
     if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
     if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
@@ -114,6 +117,7 @@ function restoreFiltersFromUrl() {
     currentReviewers = urlParams.getAll('reviewer');
     currentSprints = urlParams.getAll('sprint');
     currentFixVersions = urlParams.getAll('fixVersion');
+    currentEpics = urlParams.getAll('epic');
     currentText = urlParams.get('q') || '';
 
     if (!currentSyncStatuses) {
@@ -138,6 +142,10 @@ function restoreFiltersFromUrl() {
     }
     if (fixVersionMultiSelect) {
         fixVersionMultiSelect.setSelectedValues(currentFixVersions);
+    }
+    const epicMultiSelect = getMultiSelect('epicSelect');
+    if (epicMultiSelect) {
+        epicMultiSelect.setSelectedValues(currentEpics);
     }
 
     // Update sync select and ready checkbox
@@ -282,12 +290,14 @@ function readFilterControls() {
     const reviewerMultiSelect = getMultiSelect('reviewerSelect');
     const sprintMultiSelect = getMultiSelect('sprintSelect');
     const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
+    const epicMultiSelect = getMultiSelect('epicSelect');
 
     currentText = textFilter ? textFilter.value : '';
     currentAssignees = assigneeMultiSelect ? assigneeMultiSelect.getSelectedValues() : [];
     currentReviewers = reviewerMultiSelect ? reviewerMultiSelect.getSelectedValues() : [];
     currentSprints = sprintMultiSelect ? sprintMultiSelect.getSelectedValues() : [];
     currentFixVersions = fixVersionMultiSelect ? fixVersionMultiSelect.getSelectedValues() : [];
+    currentEpics = epicMultiSelect ? epicMultiSelect.getSelectedValues() : [];
 
     // Get sync and ready values from regular form elements
     const syncSelect = document.getElementById("syncSelect");
@@ -476,7 +486,7 @@ function renderEverything(apiResult) {
     const toggleStates = captureToggleStates();
 
     currentApiResult = apiResult;
-    initializeFilter(currentApiResult);
+    const filterIndex = initializeFilter(currentApiResult);
     const container = document.getElementById('pull-requests');
 
     // Create main content
@@ -503,6 +513,7 @@ function renderEverything(apiResult) {
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
+    populateEpicFilter(filterIndex.epics);
 
     // Every filter is populated and restored from the URL: apply them once
     applyFilters();
@@ -775,6 +786,38 @@ function populateFixVersionFilter(jiraIssuesDetails) {
         currentFixVersions = currentFixVersions.filter(id => validFixVersionIds.includes(id));
         fixVersionMultiSelect.setSelectedValues(currentFixVersions);
     }
+}
+
+// Options of an issue filter: "KEY Summary", newest issue first within each Jira project
+function issueOptions(issues) {
+    return [...issues.values()]
+        .sort((a, b) => compareIssueKeys(a.key, b.key))
+        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}` }));
+}
+
+// Jira project alphabetically, then issue number descending
+function compareIssueKeys(a, b) {
+    const [projectA, numberA] = splitIssueKey(a);
+    const [projectB, numberB] = splitIssueKey(b);
+    return projectA.localeCompare(projectB) || numberB - numberA;
+}
+
+function splitIssueKey(key) {
+    const dash = key.lastIndexOf('-');
+    return [key.slice(0, dash), Number(key.slice(dash + 1))];
+}
+
+function populateEpicFilter(epics) {
+    const epicMultiSelect = getMultiSelect('epicSelect');
+    if (!epicMultiSelect) return;
+
+    const options = issueOptions(epics);
+    epicMultiSelect.setOptions(options);
+
+    // Keep only the epics that exist in the options (the URL may carry unknown keys)
+    const known = new Set(options.map(option => option.value));
+    currentEpics = currentEpics.filter(key => known.has(key));
+    epicMultiSelect.setSelectedValues(currentEpics);
 }
 
 // Fetches the SYNC status of every pull request of the current project in a
