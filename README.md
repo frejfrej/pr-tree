@@ -23,6 +23,8 @@
     * `/` focuses the search box, Escape clears it
 * Provides an epic filter
     * Keeps the pull requests whose linked issues belong to the selected epics; a pull request linked to a sub-task follows the epic of its parent story
+* Provides a story filter
+    * Keeps the pull requests delivering the selected issues: the linked issue itself, or the parent of a linked sub-task
 * Provides an assignee filter
     * Filters pull requests based on the assignee of associated Jira issues
     * Highlights in red those where an effort is expected
@@ -36,7 +38,7 @@
     * Dynamically populates with all available fixVersions from the project's Jira issues
 * Allows simultaneous filtering by both assignee and reviewer
 * Maintains filter selections in URL
-    * All filter selections (project, text, sprint, fixVersion, epic, assignee, reviewer) are saved in the URL
+    * All filter selections (project, text, sprint, fixVersion, epic, story, assignee, reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
 * Displays Ahead (green) and Behind (red) commit counts
@@ -83,6 +85,7 @@
     * Epic filter: pull requests of the selected epics, resolved through the parent story when the pull request is linked to a sub-task
         * The server now fetches the summary, type and parent of parent issues (previously their fix versions only)
         * Fixture data carries epics
+    * Story filter: pull requests of the selected issues, the linked issue itself or the parent of a linked sub-task
 * Version 2.3.0
     * Filtering is now a single pass over the tree
         * Each pull request is visited once; the previous recursion revisited a stacked pull request once per ancestor, so a 24-deep stack (as in SECOLLAB) cost about 16 million visits and 20 seconds per filter change

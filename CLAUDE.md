@@ -8,7 +8,7 @@
 - Multi-project support with dropdown selection
 - Pull request visualization ordered by most recently updated
 - Jira issue integration with status tracking
-- Advanced filtering (text, sprint, fix version, epic, assignee, reviewer, sync status)
+- Advanced filtering (text, sprint, fix version, epic, story, assignee, reviewer, sync status)
 - Real-time conflict detection
 - Commit ahead/behind tracking
 - Smart reload (auto-updates every 2 minutes when data changes)
@@ -124,13 +124,13 @@ pr-tree/
 - Periodic refresh logic (2-minute intervals, tab visibility detection)
 - Loading state management
 - Event handlers for user interactions
-- `populateIssueFilter(elementId, issues, selectedKeys)`: fills an issue multi-select from the index and returns the selection restricted to the offered keys
+- `populateIssueFilter(elementId, issues, selectedKeys)`: fills an issue multi-select (epics and stories) from the index and returns the selection restricted to the offered keys
 
 **public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`); it also returns `index.epics`, the epics to list in the filter; built once per data load by `initializeFilter()`, which returns it
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
 - `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
 - `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
-- `issueLevel`, `epicOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
+- `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/counter-utils.js**
@@ -290,6 +290,7 @@ let currentText = '';          // text filter
 let currentSprints = [];        // sprint ids
 let currentFixVersions = [];    // fix version ids
 let currentEpics = [];         // epic keys
+let currentStories = [];       // story keys
 let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
@@ -300,7 +301,7 @@ let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied 
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&sync=requested&ready=true
+?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&sync=requested&ready=true
 ```
 
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
@@ -486,10 +487,10 @@ Three streams available:
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes
-11. **Jira hierarchy**: only `issueLevel`/`epicOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
+11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
