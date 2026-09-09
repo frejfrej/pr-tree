@@ -880,7 +880,7 @@ a. `package.json`: set `"version": "2.4.0"` and `"releaseDate": "2026-09-09"`.
 
 b. `README.md`:
 
-- In "Features", replace the line `    * The sidebar can be hidden with the banner button or the \`F\` key; the choice is remembered by the browser` with:
+- In "Features", replace the line starting with `    * The sidebar can be hidden with the banner button or the` with:
 
 ```
     * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser; `/` focuses the search box
@@ -937,7 +937,7 @@ c. `CLAUDE.md`:
 ?project=PROJ&q=banner&author=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
 ```
 
-- Replace the sentence starting `Every filter pass goes through \`applyFilters()\`` with:
+- Replace the paragraph starting with `Every filter pass goes through` with:
 
 ```
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
