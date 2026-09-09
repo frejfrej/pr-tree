@@ -23,7 +23,7 @@ export function initializeFilter(apiResult) {
  * Counts the filters that are not at their default value.
  * A multi-select with several values counts once.
  */
-export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, ready }) {
+export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, readyReviewer = false, readyAssignee = false }) {
     return [
         parseTextQuery(text).length > 0,
         assignees.length > 0,
@@ -32,7 +32,8 @@ export function countActiveFilters({ text = '', assignees, reviewers, sprints, f
         fixVersions.length > 0,
         epics.length > 0,
         stories.length > 0,
-        ready === true,
+        readyReviewer === true,
+        readyAssignee === true,
         sync !== 'Show all'
     ].filter(Boolean).length;
 }
@@ -228,12 +229,12 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 /**
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, readyReviewer, readyAssignee }
  * @param {object} rendered - what the tree shows for this pull request:
  *   statusInProgress, statusInReview (from the Jira statuses) and hasSyncLabel
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
+export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, readyReviewer = false, readyAssignee = false }, { statusInProgress, statusInReview, hasSyncLabel }) {
     const attention = computeAttention(entry.pullRequest, {
         statusInProgress,
         statusInReview,
@@ -253,8 +254,12 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
     const syncMatch = sync === 'Show all' ||
         (sync === 'requested' && hasSyncLabel) ||
         (sync === 'OK' && !hasSyncLabel);
-    // Ready for reviewer: in review, and a selected reviewer has not approved yet
-    const readyMatch = !ready || attention.reviewer;
+    // Ready filters: with one or both checked, keep the pull requests that need the
+    // attention of the selected reviewers or assignees. A pull request is never in
+    // review and in progress at once, so the two boxes combine as OR
+    const readyMatch = (!readyReviewer && !readyAssignee) ||
+        (readyReviewer && attention.reviewer) ||
+        (readyAssignee && attention.assignee);
 
     return {
         visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch && syncMatch && readyMatch,
@@ -266,7 +271,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
 
 /**
  * Applies the filters to the rendered tree and refreshes the counters.
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, readyReviewer, readyAssignee }
  * @returns {number} how many pull requests are left shown and need attention
  */
 export function filterBranches(filters) {
@@ -330,8 +335,8 @@ function filterPullRequest(pullRequestElement, pass) {
     const entry = pass.index.pullRequestsById.get(Number(pullRequestElement.dataset.id));
     let isVisible = false;
     if (entry) {
-        // Attention is computed from data before visibility, so the ready filter never
-        // depends on what a previous pass rendered
+        // Attention is computed from data before visibility, so the ready filters never
+        // depend on what a previous pass rendered
         const { visible, attention } = evaluatePullRequest(entry, pass.filters, {
             statusInProgress: pullRequestElement.classList.contains('status-in-progress'),
             statusInReview: pullRequestElement.classList.contains('status-in-review'),
