@@ -1656,11 +1656,13 @@ PR body: the resolution rules (epic itself, epic parent, epic of the parent stor
 
 With the user's `config.js` in place: `PORT=3002 node index.mjs`, then `curl -s http://localhost:3002/api/pull-requests/SECOLLAB > /private/tmp/claude-501/-Users-frej-Sites-pr-tree/fa03c818-2340-4f3b-8fb1-aecd87e2c6a0/scratchpad/secollab-after.json`; stop the server. Parent-only issues (`!fields.status`) now carry `summary`, `issuetype` and, for stories under an epic, `parent`; `buildFilterIndex` on that file yields more entries with a non-empty `epics` set than the 40 counted on 2026-09-09 (up to 56). One request per project only: the real server on port 3000 already polls Atlassian every two minutes.
 
+**Review follow-up (sixth commit, after the code-quality review):** `MultiSelect.escapeHtml()` now escapes quotes too (the option tooltip carries free-text summaries). The option helpers moved to `public/app-filter.js` as an exported, tested `issueOptions(issues)` (with private `compareIssueKeys` / `splitIssueKey`), and `populateEpicFilter` became a generic `populateIssueFilter(elementId, issues, selectedKeys)` in `app.js` that returns the selection restricted to the offered keys: `currentEpics = populateIssueFilter('epicSelect', filterIndex.epics, currentEpics);`. The epic block of `restoreFiltersFromUrl` (a `setSelectedValues` before the options exist) was dropped. Fixtures: the first epic of each project has a fix version; the epic draw is skipped for projects without epics. Task 3 below is written against that code.
+
 ---
 
 ### Task 3: Story filter
 
-A multi-select of the stories delivered by the pull requests: the linked issue itself, or the parent of a linked sub-task. Same wiring as the epic filter.
+A multi-select of the stories delivered by the pull requests: the linked issue itself, or the parent of a linked sub-task. Same wiring as the epic filter, through the generic `populateIssueFilter` and `issueOptions` helpers.
 
 **Files:**
 - Modify: `public/app-filter.js`
@@ -1839,37 +1841,15 @@ c. Add `'storySelect'` to `multiSelectIds` (after `'epicSelect'`) and `'story'` 
 
 d. In `updateUrlWithFilters()`, add `currentStories.forEach(v => url.searchParams.append('story', v));` after the `epic` append.
 
-e. In `restoreFiltersFromUrl()`, add `currentStories = urlParams.getAll('story');` after the `epic` line, and after the `epicMultiSelect` restore block:
-
-```js
-    const storyMultiSelect = getMultiSelect('storySelect');
-    if (storyMultiSelect) {
-        storyMultiSelect.setSelectedValues(currentStories);
-    }
-```
+e. In `restoreFiltersFromUrl()`, add `currentStories = urlParams.getAll('story');` after the `epic` line (nothing else: the selection is applied by `populateIssueFilter` once the options exist).
 
 f. Nothing to change in `handleProjectChange()`.
 
 g. In `readFilterControls()`, add `const storyMultiSelect = getMultiSelect('storySelect');` and `currentStories = storyMultiSelect ? storyMultiSelect.getSelectedValues() : [];` after the epic lines.
 
-h. In `renderEverything()`, add `populateStoryFilter(filterIndex.stories);` right after `populateEpicFilter(filterIndex.epics);`.
+h. In `renderEverything()`, add `currentStories = populateIssueFilter('storySelect', filterIndex.stories, currentStories);` right after the `currentEpics = populateIssueFilter(...)` line.
 
-i. Add after `populateEpicFilter`:
-
-```js
-function populateStoryFilter(stories) {
-    const storyMultiSelect = getMultiSelect('storySelect');
-    if (!storyMultiSelect) return;
-
-    const options = issueOptions(stories);
-    storyMultiSelect.setOptions(options);
-
-    // Keep only the stories that exist in the options (the URL may carry unknown keys)
-    const known = new Set(options.map(option => option.value));
-    currentStories = currentStories.filter(key => known.has(key));
-    storyMultiSelect.setSelectedValues(currentStories);
-}
-```
+i. Nothing to add: `populateIssueFilter` (Task 2) is generic, and `issueOptions` in `app-filter.js` sorts the stories like the epics.
 
 j. Nothing to change in `initializeMultiSelects()`.
 
@@ -1915,7 +1895,7 @@ a. `README.md`:
 b. `CLAUDE.md`:
 
 - Replace `- Advanced filtering (text, sprint, fix version, epic, assignee, reviewer, sync status)` with `- Advanced filtering (text, sprint, fix version, epic, story, assignee, reviewer, sync status)`.
-- In the `**public/app-filter.js**` block: in the `buildFilterIndex` bullet, replace `the epic keys (`epics`), plus `index.epics`, the epics to list in the filter` with `the epic and story keys (`epics`, `stories`), plus `index.epics` and `index.stories`, the values to list in the two filters`; replace `- `issueLevel`, `epicOf` (pure)` with `- `issueLevel`, `epicOf`, `storyOf` (pure)`.
+- In the `**public/app-filter.js**` block: in the `buildFilterIndex` bullet, mention the story keys (`stories`) next to the epic keys and `index.stories` next to `index.epics`; in the bullet that starts with `- `issueLevel`, `epicOf``, insert `, `storyOf`` after ``epicOf``. In the `**public/app.js**` block, the `populateIssueFilter` bullet gains `(epics and stories)`.
 - In "Frontend State Management", add `let currentStories = [];       // story keys` after `currentEpics`, and `&story=PROJ-200` after `&epic=PROJ-100` in the URL example.
 - In "Common Pitfalls" item 11, replace `only `issueLevel`/`epicOf`` with `only `issueLevel`/`epicOf`/`storyOf``.
 - In "Testing Approach", add `storyOf` to the pure functions.

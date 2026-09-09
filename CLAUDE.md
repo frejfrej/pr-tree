@@ -8,7 +8,7 @@
 - Multi-project support with dropdown selection
 - Pull request visualization ordered by most recently updated
 - Jira issue integration with status tracking
-- Advanced filtering (text, sprint, fix version, assignee, reviewer, sync status)
+- Advanced filtering (text, sprint, fix version, epic, assignee, reviewer, sync status)
 - Real-time conflict detection
 - Commit ahead/behind tracking
 - Smart reload (auto-updates every 2 minutes when data changes)
@@ -74,6 +74,7 @@ pr-tree/
 - API endpoint definitions (`/api/projects`, `/api/pull-requests/:project`, `/api/pull-request-conflicts/:repoName/:spec`)
 - Bitbucket API integration (fetch PRs, commit diffs)
 - Jira API integration (fetch issues, sprints, orphaned issues)
+- `fetchJiraIssuesDetails()` fetches the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
 - Response hashing for change detection
 - Comprehensive logging system (access.log, error.log, performance.log)
 - Static file serving for public directory
@@ -123,12 +124,14 @@ pr-tree/
 - Periodic refresh logic (2-minute intervals, tab visibility detection)
 - Loading state management
 - Event handlers for user interactions
+- `populateIssueFilter(elementId, issues, selectedKeys)`: fills an issue multi-select from the index and returns the selection restricted to the offered keys
 
 **public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against; built once per data load by `initializeFilter()`, which returns it
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`); it also returns `index.epics`, the epics to list in the filter; built once per data load by `initializeFilter()`, which returns it
 - `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
 - `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
-- `parseTextQuery`, `matchesText`, `computeAttention`, `countActiveFilters` (pure)
+- `issueLevel`, `epicOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
+- `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/counter-utils.js**
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
@@ -136,6 +139,7 @@ pr-tree/
 **fixtures/generate.mjs** and **fixtures/index.mjs**
 - `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one
 - Volumes and structure follow the real projects (see the constants at the top of generate.mjs), including the 24-deep stack of `products.secollab` under `feat/ai_investigations` that made the old filtering explode
+- Epics per Jira project (`epicSummaries`, keys in numbering block 8): 40% of the standard issues have an epic parent, parents of sub-tasks are standard issues, parent-only entries carry summary, type, fix versions and parent like the server's
 - Seeded PRNG: the same repository always yields the same pull requests, so `dataHash` is stable and the smart reload stays quiet
 - `parseFixtureOptions()` reads `--fixtures`, `--fixture-scale=N`, `--fixture-chain-depth=N` or the `PR_TREE_FIXTURES*` environment variables; `fixtureConfig()` replaces config.js; `createFixtureSource()` is what index.mjs calls instead of Atlassian
 
@@ -285,6 +289,7 @@ let currentProject = null;
 let currentText = '';          // text filter
 let currentSprints = [];        // sprint ids
 let currentFixVersions = [];    // fix version ids
+let currentEpics = [];         // epic keys
 let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
@@ -295,7 +300,7 @@ let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied 
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
+?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&sync=requested&ready=true
 ```
 
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
@@ -481,9 +486,10 @@ Three streams available:
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes
+11. **Jira hierarchy**: only `issueLevel`/`epicOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes

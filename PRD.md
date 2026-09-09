@@ -144,6 +144,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F3.5: Provide direct links to Jira issues
 - F3.6: Detect orphaned issues (In Review status without PRs)
 - F3.7: Support Jira workflow integration with "In Review" and "In Progress" statuses
+- F3.8: Fetch the parent of linked issues, and the summary, type and parent of parent issues, so that sub-tasks reach their story and epic
 
 **Workflow Context:**
 The application integrates with a Jira workflow where:
@@ -178,6 +179,7 @@ The application integrates with a Jira workflow where:
 - F4.8: Maintain filter state in URL parameters
 - F4.9: Hierarchical filtering (preserve parent-child relationships)
 - F4.10: Filter by text: title, source branch name and linked issue keys must contain every word typed
+- F4.11: Filter by epic (the epic above the linked issues, through the parent story for sub-tasks)
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
@@ -477,6 +479,7 @@ The application integrates with a Jira workflow where:
 |  Search        |                                                 |
 |  Sprint        | Repository 1                          [X / Y]   |
 |  Fix version   |   Branch A                            [X / Y]   |
+|  Epic          |                                                 |
 |  Assignee      |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
 |  Reviewer      |       JIRA-123 [In Progress]                    |
 |  Ready         |     PR #2                                       |

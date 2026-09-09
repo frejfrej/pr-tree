@@ -78,6 +78,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ assignees: ['A'], reviewers: ['J'], sprints: ['1'], fixVersions: ['2'], sync: 'OK', ready: true }), 6);
     assert.equal(countActiveFilters({ ...defaults, text: '   ' }), 0);
     assert.equal(countActiveFilters({ ...defaults, text: 'banner' }), 1);
+    assert.equal(countActiveFilters({ ...defaults, epics: ['PROJ-100', 'PROJ-101'] }), 1);
 });
 
 // ------------------------------------------------------------------ index and evaluation
@@ -208,4 +209,102 @@ test('evaluatePullRequest text filter is case-insensitive and needs every word',
     assert.equal(evaluate('restore banner'), true);
     assert.equal(evaluate('banner footer'), false);
     assert.equal(evaluate('Author'), false); // people are not searched
+});
+
+// ------------------------------------------------------------------ epic filter
+
+import { issueLevel, epicOf, issueOptions } from '../public/app-filter.js';
+
+const epicType = { name: 'Epic', subtask: false, hierarchyLevel: 1 };
+const storyType = { name: 'Story', subtask: false, hierarchyLevel: 0 };
+const bugType = { name: 'Bug', subtask: false, hierarchyLevel: 0 };
+const subtaskType = { name: 'Sub-task', subtask: true, hierarchyLevel: -1 };
+
+// Jira returns the parent with a few inline fields (summary, status, priority, issuetype)
+const inlineEpicAi = { id: '1', key: 'PROJ-100', fields: { summary: 'Assistive AI', status: {}, priority: {}, issuetype: epicType } };
+const inlineStoryChat = { id: '2', key: 'PROJ-200', fields: { summary: 'Chat panel', status: {}, priority: {}, issuetype: storyType } };
+
+const epicAi = { key: 'PROJ-100', fields: { summary: 'Assistive AI', issuetype: epicType } };
+const epicUx = { key: 'PROJ-101', fields: { summary: 'UX', issuetype: epicType } };
+const storyInEpic = { key: 'PROJ-200', fields: { summary: 'Chat panel', issuetype: storyType, parent: inlineEpicAi } };
+const storyInUx = { key: 'PROJ-203', fields: { summary: 'Toolbar', issuetype: storyType, parent: { id: '3', key: 'PROJ-101', fields: { summary: 'UX', status: {}, priority: {}, issuetype: epicType } } } };
+const bugWithoutEpic = { key: 'PROJ-201', fields: { summary: 'Crash on save', issuetype: bugType } };
+const subtaskOfStory = { key: 'PROJ-300', fields: { summary: 'Chat panel: API', issuetype: subtaskType, parent: inlineStoryChat } };
+const subtaskOfUnknown = { key: 'PROJ-301', fields: { summary: 'Orphan work', issuetype: subtaskType, parent: { key: 'PROJ-999', fields: { summary: 'Unknown story', issuetype: storyType } } } };
+const parentOnlyStory = { key: 'PROJ-202', fields: { fixVersions: [] } }; // fetched with fix versions only (older server)
+
+test('issueLevel classifies epics, standard issues and sub-tasks, and defaults to standard', () => {
+    assert.equal(issueLevel(epicAi), 'epic');
+    assert.equal(issueLevel({ key: 'X-1', fields: { issuetype: { name: 'Epic' } } }), 'epic'); // no hierarchyLevel
+    assert.equal(issueLevel(storyInEpic), 'standard');
+    assert.equal(issueLevel(bugWithoutEpic), 'standard');
+    assert.equal(issueLevel(subtaskOfStory), 'subtask');
+    assert.equal(issueLevel({ key: 'X-2', fields: { issuetype: { name: 'Sub-task', subtask: true } } }), 'subtask');
+    assert.equal(issueLevel(parentOnlyStory), 'standard');
+});
+
+test('epicOf resolves the epic itself, a direct epic parent and the epic of a sub-task parent', () => {
+    const issuesByKey = new Map([epicAi, storyInEpic, bugWithoutEpic, subtaskOfStory, subtaskOfUnknown].map(issue => [issue.key, issue]));
+    assert.deepEqual(epicOf(epicAi, issuesByKey), { key: 'PROJ-100', summary: 'Assistive AI' });
+    assert.deepEqual(epicOf(storyInEpic, issuesByKey), { key: 'PROJ-100', summary: 'Assistive AI' });
+    assert.deepEqual(epicOf(subtaskOfStory, issuesByKey), { key: 'PROJ-100', summary: 'Assistive AI' });
+    assert.equal(epicOf(bugWithoutEpic, issuesByKey), null);
+    assert.equal(epicOf(subtaskOfUnknown, issuesByKey), null); // the parent is not in the details
+    assert.equal(epicOf(parentOnlyStory, issuesByKey), null);
+    // A sub-task whose direct parent is an epic needs no lookup
+    assert.deepEqual(epicOf({ key: 'PROJ-304', fields: { summary: 'Odd', issuetype: subtaskType, parent: inlineEpicAi } }, new Map()), { key: 'PROJ-100', summary: 'Assistive AI' });
+});
+
+test('epicOf needs the parent of the parent story, which the server now fetches for parent-only stories', () => {
+    const parentOnlyWithEpic = { key: 'PROJ-202', fields: { summary: 'Search page', issuetype: storyType, fixVersions: [], parent: inlineEpicAi } };
+    const subtask = { key: 'PROJ-302', fields: { summary: 'Search page: index', issuetype: subtaskType, parent: { key: 'PROJ-202', fields: { summary: 'Search page', issuetype: storyType } } } };
+    assert.deepEqual(epicOf(subtask, new Map([[parentOnlyWithEpic.key, parentOnlyWithEpic]])), { key: 'PROJ-100', summary: 'Assistive AI' });
+    assert.equal(epicOf(subtask, new Map([[parentOnlyStory.key, parentOnlyStory]])), null); // older server: no parent on the story
+});
+
+const hierarchyApiResult = {
+    pullRequests: [
+        { id: 20, title: 'PROJ-200 chat panel', source: { branch: { name: 'feature/PROJ-200' } }, author, participants: [] },
+        { id: 21, title: 'PROJ-300 chat panel api', source: { branch: { name: 'feature/PROJ-300' } }, author, participants: [] },
+        { id: 22, title: 'PROJ-201 crash on save', source: { branch: { name: 'bugfix/PROJ-201' } }, author, participants: [] },
+        { id: 23, title: 'PROJ-100 epic branch', source: { branch: { name: 'feature/PROJ-100' } }, author, participants: [] },
+        { id: 24, title: 'PROJ-200 PROJ-203 both', source: { branch: { name: 'feature/both' } }, author, participants: [] }
+    ],
+    jiraIssuesMap: { 20: ['PROJ-200'], 21: ['PROJ-300'], 22: ['PROJ-201'], 23: ['PROJ-100'], 24: ['PROJ-200', 'PROJ-203'] },
+    jiraIssuesDetails: [epicAi, epicUx, storyInEpic, storyInUx, bugWithoutEpic, subtaskOfStory],
+    sprintIssues: {}
+};
+
+test('buildFilterIndex collects the epics of every pull request and the list of epics', () => {
+    const { pullRequestsById, epics } = buildFilterIndex(hierarchyApiResult);
+    assert.deepEqual([...pullRequestsById.get(20).epics], ['PROJ-100']);
+    assert.deepEqual([...pullRequestsById.get(21).epics], ['PROJ-100']); // through the parent story
+    assert.deepEqual([...pullRequestsById.get(22).epics], []);
+    assert.deepEqual([...pullRequestsById.get(23).epics], ['PROJ-100']); // linked to the epic itself
+    assert.deepEqual([...pullRequestsById.get(24).epics], ['PROJ-100', 'PROJ-101']); // two issues under two epics
+    assert.deepEqual([...epics.values()], [{ key: 'PROJ-100', summary: 'Assistive AI' }, { key: 'PROJ-101', summary: 'UX' }]);
+    assert.equal(buildFilterIndex({}).epics.size, 0);
+});
+
+test('evaluatePullRequest epic filter matches any selected epic', () => {
+    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, epics) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, epics }, rendered).visible;
+    assert.equal(evaluate(20, ['PROJ-100']), true);
+    assert.equal(evaluate(21, ['PROJ-100']), true);
+    assert.equal(evaluate(22, ['PROJ-100']), false);
+    assert.equal(evaluate(22, []), true);
+    assert.equal(evaluate(20, ['PROJ-999', 'PROJ-100']), true);
+    assert.equal(evaluate(20, ['PROJ-999']), false);
+});
+
+test('issueOptions labels "KEY Summary" and sorts by project then newest issue first', () => {
+    const options = issueOptions([
+        { key: 'PROJ-9', summary: 'Nine' }, { key: 'ALPHA-100', summary: 'Hundred' },
+        { key: 'PROJ-10', summary: 'Ten' }, { key: 'ALPHA-2', summary: 'Two' }
+    ]);
+    assert.deepEqual(options, [
+        { value: 'ALPHA-100', label: 'ALPHA-100 Hundred' }, { value: 'ALPHA-2', label: 'ALPHA-2 Two' },
+        { value: 'PROJ-10', label: 'PROJ-10 Ten' }, { value: 'PROJ-9', label: 'PROJ-9 Nine' }
+    ]);
+    assert.deepEqual(issueOptions(new Map([['X-1', { key: 'X-1', summary: 'One' }]]).values()), [{ value: 'X-1', label: 'X-1 One' }]);
 });

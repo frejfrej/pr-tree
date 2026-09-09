@@ -23,13 +23,14 @@ export function initializeFilter(apiResult) {
  * Counts the filters that are not at their default value.
  * A multi-select with several values counts once.
  */
-export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, sync, ready }) {
+export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, epics = [], sync, ready }) {
     return [
         parseTextQuery(text).length > 0,
         assignees.length > 0,
         reviewers.length > 0,
         sprints.length > 0,
         fixVersions.length > 0,
+        epics.length > 0,
         ready === true,
         sync !== 'Show all'
     ].filter(Boolean).length;
@@ -48,6 +49,80 @@ export function parseTextQuery(text) {
 /** True when every term is a substring of the searchable text. Pure. */
 export function matchesText(searchText, terms) {
     return terms.every(term => searchText.includes(term));
+}
+
+// ---------------------------------------------------------- Jira hierarchy
+// Jira Cloud: epic (hierarchyLevel 1) > standard issue (0) > sub-task (-1).
+// Every issue carries fields.issuetype and, when it has one, fields.parent with
+// the parent's key and inline fields (summary, status, priority, issuetype).
+// This is the only place that interprets these fields.
+
+/**
+ * Level of an issue in the Jira hierarchy: 'epic', 'standard' or 'subtask'.
+ * Issues without a type (parents fetched with fix versions only by an older
+ * server) count as standard. Pure.
+ */
+export function issueLevel(issue) {
+    const type = issue.fields && issue.fields.issuetype;
+    if (!type) return 'standard';
+    if (type.hierarchyLevel > 0 || type.name === 'Epic') return 'epic';
+    if (type.subtask === true || type.hierarchyLevel < 0) return 'subtask';
+    return 'standard';
+}
+
+// Key and summary of an issue or of an inline parent, as listed in the filters
+function issueReference(issue) {
+    return { key: issue.key, summary: (issue.fields && issue.fields.summary) || '' };
+}
+
+/**
+ * The epic above an issue: the issue itself when it is an epic, its parent when
+ * the parent is an epic, or the epic of its parent story when the issue is a
+ * sub-task (the story is looked up in issuesByKey, where the server puts the
+ * parents it fetched). Pure.
+ * @param {object} issue - a linked issue or an inline parent
+ * @param {Map<string, object>} issuesByKey - the issues of jiraIssuesDetails by
+ *   key (required: the sub-task branch reads it)
+ * @returns {{ key: string, summary: string } | null}
+ */
+export function epicOf(issue, issuesByKey) {
+    const level = issueLevel(issue);
+    if (level === 'epic') return issueReference(issue);
+    const parent = issue.fields && issue.fields.parent;
+    if (!parent) return null;
+    if (issueLevel(parent) === 'epic') return issueReference(parent);
+    if (level === 'subtask') {
+        const story = issuesByKey.get(parent.key);
+        const grandParent = story && story.fields && story.fields.parent;
+        if (grandParent && issueLevel(grandParent) === 'epic') return issueReference(grandParent);
+    }
+    return null;
+}
+
+// ---------------------------------------------------- issue filter options
+
+/**
+ * Options of an issue multi-select: "KEY Summary", valued by key, sorted by
+ * Jira project then issue number descending (newest first). Pure.
+ * @param {Iterable<{ key: string, summary: string }>} issues - records, e.g. index.epics.values()
+ * @returns {{ value: string, label: string }[]}
+ */
+export function issueOptions(issues) {
+    return [...issues]
+        .sort((a, b) => compareIssueKeys(a.key, b.key))
+        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}` }));
+}
+
+// Jira project alphabetically, then issue number descending
+function compareIssueKeys(a, b) {
+    const [projectA, numberA] = splitIssueKey(a);
+    const [projectB, numberB] = splitIssueKey(b);
+    return projectA.localeCompare(projectB) || numberB - numberA;
+}
+
+function splitIssueKey(key) {
+    const dash = key.lastIndexOf('-');
+    return [key.slice(0, dash), Number(key.slice(dash + 1))];
 }
 
 // --------------------------------------------------------------- attention
@@ -80,7 +155,7 @@ export function computeAttention(pullRequestData, { statusInProgress, statusInRe
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
  * filters compare against. Pure.
- * @returns {{ pullRequestsById: Map<number, object> }}
+ * @returns {{ pullRequestsById: Map<number, object>, epics: Map<string, { key, summary }> }}
  */
 export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {} }) {
     const issuesByKey = new Map(jiraIssuesDetails.map(issue => [issue.key, issue]));
@@ -96,9 +171,14 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     }
 
     const pullRequestsById = new Map();
+    const epics = new Map();
     for (const pullRequest of pullRequests) {
         const issueKeys = jiraIssuesMap[pullRequest.id] || [];
         const linkedIssues = issueKeys.map(key => issuesByKey.get(key)).filter(issue => issue);
+        const pullRequestEpics = linkedIssues.map(issue => epicOf(issue, issuesByKey)).filter(epic => epic);
+        for (const epic of pullRequestEpics) {
+            epics.set(epic.key, epic);
+        }
         const entry = {
             pullRequest,
             linkedIssues,
@@ -114,12 +194,13 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             sprints: new Set(issueKeys.flatMap(key => [...(sprintsByIssueKey.get(key) || [])])),
             fixVersions: new Set(linkedIssues
                 .flatMap(issue => issue.fields.fixVersions || [])
-                .map(version => String(version.id)))
+                .map(version => String(version.id))),
+            epics: new Set(pullRequestEpics.map(epic => epic.key))
         };
         pullRequestsById.set(pullRequest.id, entry);
     }
 
-    return { pullRequestsById };
+    return { pullRequestsById, epics };
 }
 
 // -------------------------------------------------------------- evaluation
@@ -127,12 +208,12 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 /**
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, sync, ready }
  * @param {object} rendered - what the tree shows for this pull request:
  *   statusInProgress, statusInReview (from the Jira statuses) and hasSyncLabel
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
+export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
     const attention = computeAttention(entry.pullRequest, {
         statusInProgress,
         statusInReview,
@@ -147,6 +228,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
     const reviewerMatch = reviewers.length === 0 || reviewers.some(name => entry.reviewers.has(name));
     const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
     const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
+    const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
     const syncMatch = sync === 'Show all' ||
         (sync === 'requested' && hasSyncLabel) ||
         (sync === 'OK' && !hasSyncLabel);
@@ -154,7 +236,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
     const readyMatch = !ready || attention.reviewer;
 
     return {
-        visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && syncMatch && readyMatch,
+        visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && epicMatch && syncMatch && readyMatch,
         attention
     };
 }
@@ -163,7 +245,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
 
 /**
  * Applies the filters to the rendered tree and refreshes the counters.
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, sync, ready }
  * @returns {number} how many pull requests are left shown and need attention
  */
 export function filterBranches(filters) {

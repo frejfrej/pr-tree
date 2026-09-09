@@ -275,10 +275,11 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         }
     }
 
-    // Fetch missing parent issues to get their fix versions
+    // Fetch missing parent issues: their fix versions (inherited by sub-tasks)
+    // and their summary, type and parent (epic and story filters)
     if (missingParentKeys.length > 0) {
         const parentJql = `key IN (${missingParentKeys.join(',')})`;
-        const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,fixVersions`;
+        const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,summary,issuetype,fixVersions,parent`;
         try {
             const startTime = Date.now();
             const response = await atlassianFetch(parentUrl, {
@@ -299,7 +300,9 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         }
     }
 
-    // Inherit fix versions from parent for subtasks without fix versions
+    // Issues without fix versions inherit their parent's (sub-tasks from their story, stories from
+    // their epic when it was fetched too). One pass in array order, so a version can travel
+    // epic -> story -> sub-task when the story comes first
     for (const issue of jiraIssuesDetails) {
         if (issue.fields.parent &&
             (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {

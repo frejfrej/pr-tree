@@ -5,6 +5,9 @@
 
 const instances = new Map();
 
+// Text and attribute values are both double-quoted here; quotes are escaped too
+const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 export class MultiSelect {
     constructor(elementId, options = {}) {
         this.elementId = elementId;
@@ -164,7 +167,7 @@ export class MultiSelect {
             return `
                 <label class="multi-select-option">
                     <input type="checkbox" value="${this.escapeHtml(opt.value)}" ${isChecked ? 'checked' : ''}>
-                    <span class="multi-select-option-label">${this.escapeHtml(opt.label)}</span>
+                    <span class="multi-select-option-label" title="${this.escapeHtml(opt.label)}">${this.escapeHtml(opt.label)}</span>
                 </label>
             `;
         }).join('');
@@ -244,9 +247,7 @@ export class MultiSelect {
     }
 
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return String(text ?? '').replace(/[&<>"']/g, character => htmlEscapes[character]);
     }
 }
 

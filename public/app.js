@@ -1,4 +1,4 @@
-import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
+import { initializeFilter, filterBranches, countActiveFilters, issueOptions } from './app-filter.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
@@ -7,6 +7,7 @@ let currentProject = null;
 let currentText = '';
 let currentSprints = [];
 let currentFixVersions = [];
+let currentEpics = [];
 let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
@@ -20,9 +21,9 @@ let syncStatusLoading = false;
 let syncLoadFailed = false;
 
 // Multi-select filters, in sidebar order
-const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'assigneeSelect', 'reviewerSelect'];
+const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'assigneeSelect', 'reviewerSelect'];
 // URL parameters written by the filters
-const filterUrlParams = ['q', 'sprint', 'fixVersion', 'assignee', 'reviewer', 'sync', 'ready'];
+const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'assignee', 'reviewer', 'sync', 'ready'];
 
 function currentFilters() {
     return {
@@ -31,6 +32,7 @@ function currentFilters() {
         reviewers: currentReviewers,
         sprints: currentSprints,
         fixVersions: currentFixVersions,
+        epics: currentEpics,
         sync: currentSync,
         ready: currentReadyForReviewer
     };
@@ -89,6 +91,7 @@ function updateUrlWithFilters({ replace = false } = {}) {
     currentReviewers.forEach(v => url.searchParams.append('reviewer', v));
     currentSprints.forEach(v => url.searchParams.append('sprint', v));
     currentFixVersions.forEach(v => url.searchParams.append('fixVersion', v));
+    currentEpics.forEach(v => url.searchParams.append('epic', v));
     if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
     if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
@@ -114,6 +117,7 @@ function restoreFiltersFromUrl() {
     currentReviewers = urlParams.getAll('reviewer');
     currentSprints = urlParams.getAll('sprint');
     currentFixVersions = urlParams.getAll('fixVersion');
+    currentEpics = urlParams.getAll('epic');
     currentText = urlParams.get('q') || '';
 
     if (!currentSyncStatuses) {
@@ -282,12 +286,14 @@ function readFilterControls() {
     const reviewerMultiSelect = getMultiSelect('reviewerSelect');
     const sprintMultiSelect = getMultiSelect('sprintSelect');
     const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
+    const epicMultiSelect = getMultiSelect('epicSelect');
 
     currentText = textFilter ? textFilter.value : '';
     currentAssignees = assigneeMultiSelect ? assigneeMultiSelect.getSelectedValues() : [];
     currentReviewers = reviewerMultiSelect ? reviewerMultiSelect.getSelectedValues() : [];
     currentSprints = sprintMultiSelect ? sprintMultiSelect.getSelectedValues() : [];
     currentFixVersions = fixVersionMultiSelect ? fixVersionMultiSelect.getSelectedValues() : [];
+    currentEpics = epicMultiSelect ? epicMultiSelect.getSelectedValues() : [];
 
     // Get sync and ready values from regular form elements
     const syncSelect = document.getElementById("syncSelect");
@@ -476,7 +482,7 @@ function renderEverything(apiResult) {
     const toggleStates = captureToggleStates();
 
     currentApiResult = apiResult;
-    initializeFilter(currentApiResult);
+    const filterIndex = initializeFilter(currentApiResult);
     const container = document.getElementById('pull-requests');
 
     // Create main content
@@ -503,6 +509,7 @@ function renderEverything(apiResult) {
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
+    currentEpics = populateIssueFilter('epicSelect', filterIndex.epics, currentEpics);
 
     // Every filter is populated and restored from the URL: apply them once
     applyFilters();
@@ -775,6 +782,16 @@ function populateFixVersionFilter(jiraIssuesDetails) {
         currentFixVersions = currentFixVersions.filter(id => validFixVersionIds.includes(id));
         fixVersionMultiSelect.setSelectedValues(currentFixVersions);
     }
+}
+
+// Fills an issue multi-select (epics, stories) and returns the selection
+// restricted to the keys it offers (the URL may carry keys of another project)
+function populateIssueFilter(elementId, issues, selectedKeys) {
+    const multiSelect = getMultiSelect(elementId);
+    if (!multiSelect) return selectedKeys;
+    multiSelect.setOptions(issueOptions(issues.values()));
+    multiSelect.setSelectedValues(selectedKeys);
+    return multiSelect.getSelectedValues();
 }
 
 // Fetches the SYNC status of every pull request of the current project in a
