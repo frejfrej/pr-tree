@@ -3,7 +3,8 @@
  *
  * Volumes, repository names, Jira project keys, branch naming, stacked
  * pull-request chains, sprints and fix versions are modelled on the real
- * SECOLLAB and OSLC projects (September 2026 access logs). People are
+ * SECOLLAB and OSLC projects (September 2026 access logs). Standard issues
+ * belong to epics and sub-tasks to stories, as in Jira Cloud. People are
  * fictional. The same repository always yields the same pull requests, so
  * a repository shared by two projects (products.web.oslc) is consistent.
  *
@@ -297,6 +298,52 @@ function createIssueNumbering(block) {
     };
 }
 
+// Epics per Jira project; about 40% of the standard issues belong to one.
+// Their keys use block 8 of the numbering, which no other generation uses.
+const epicSummaries = {
+    SECOLLAB: [
+        'SECollab AI: assistive capability layer', 'Review workflow overhaul', 'DOORS synchronisation 2.0',
+        'End-to-end tests since 2.7.0', 'Accessibility compliance'
+    ],
+    PRDOSLC: ['OSLC Connect for Windchill 1.5', 'Configuration management support', 'TRS provider'],
+    WEBCMN: ['Design tokens migration', 'Session handling']
+};
+
+function createEpic(project, number, summary) {
+    const key = `${project}-${number}`;
+    return {
+        id: String(10000 + number),
+        key,
+        self: `https://${jiraSiteName}.atlassian.net/rest/api/3/issue/${key}`,
+        fields: {
+            summary,
+            status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+            priority: { name: 'Medium', iconUrl: priorityIconUrl('#e97f33'), id: '3' },
+            fixVersions: [],
+            issuetype: { name: 'Epic', subtask: false, hierarchyLevel: 1 }
+        }
+    };
+}
+
+const epicIssues = Object.fromEntries(Object.entries(epicSummaries).map(([project, summaries]) =>
+    [project, summaries.map((summary, index) => createEpic(project, (issueNumberBase[project] || 100) + 8000 + index + 1, summary))]
+));
+
+// The parent field as Jira returns it: the key and a few inline fields
+function inlineParent(issue) {
+    return {
+        id: issue.id,
+        key: issue.key,
+        self: issue.self,
+        fields: {
+            summary: issue.fields.summary,
+            status: issue.fields.status,
+            priority: issue.fields.priority,
+            issuetype: issue.fields.issuetype
+        }
+    };
+}
+
 function createIssue(random, nextIssueNumber, project, { status, assignee, parent, type } = {}) {
     const key = `${project}-${nextIssueNumber(project)}`;
     const issueType = type || pickWeighted(random, issueTypes);
@@ -305,6 +352,9 @@ function createIssue(random, nextIssueNumber, project, { status, assignee, paren
     // Sub-tasks mostly inherit their fix version from the parent (the server does that too)
     const fixVersions = issueType === 'Sub-task' || random() < 0.25 ? [] : [pick(random, versions)];
     const assigneePerson = assignee === null ? null : (assignee || (random() < 0.85 ? pick(random, team) : null));
+    // Sub-tasks get the parent they were given; standard issues belong to an epic 40% of the time
+    const epics = epicIssues[project] || [];
+    const parentIssue = parent || (issueType !== 'Sub-task' && random() < 0.4 && epics.length > 0 ? pick(random, epics) : null);
     return {
         id: String(10000 + Number(key.split('-')[1])),
         key,
@@ -315,8 +365,8 @@ function createIssue(random, nextIssueNumber, project, { status, assignee, paren
             priority: { name: priorityName, iconUrl: priorityIconUrl(priorityColour), id: String(priorities.findIndex(p => p[0] === priorityName) + 1) },
             fixVersions,
             assignee: assigneePerson ? assigneePerson.jira : null,
-            issuetype: { name: issueType, subtask: issueType === 'Sub-task' },
-            ...(parent ? { parent: { key: parent.key, fields: { summary: parent.fields.summary } } } : {})
+            issuetype: { name: issueType, subtask: issueType === 'Sub-task', hierarchyLevel: issueType === 'Sub-task' ? -1 : 0 },
+            ...(parentIssue ? { parent: inlineParent(parentIssue) } : {})
         }
     };
 }
@@ -434,7 +484,8 @@ export function generateRepository(repoName, { scale = 1, chainDepth = deepChain
             let parent = null;
             if (type === 'Sub-task') {
                 // Half of the parents are only known through the sub-task (fetched separately by the server)
-                parent = random() < 0.5 && issues.length > 0 ? pick(random, issues) : createIssue(random, nextIssueNumber, project, { type: 'Story', status: 'In Progress' });
+                const standardIssues = issues.filter(candidate => !candidate.fields.issuetype.subtask);
+                parent = random() < 0.5 && standardIssues.length > 0 ? pick(random, standardIssues) : createIssue(random, nextIssueNumber, project, { type: 'Story', status: 'In Progress' });
                 if (!issues.includes(parent)) parentIssues.push(parent);
             }
             const issue = createIssue(random, nextIssueNumber, project, { status: j === 0 ? status : (random() < 0.8 ? status : undefined), parent, type });
@@ -544,6 +595,9 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
     const nextIssueNumber = createIssueNumbering(9);
     const pullRequests = [];
     const knownIssues = new Map();
+    for (const epic of Object.values(epicIssues).flat()) {
+        knownIssues.set(epic.key, epic);
+    }
     for (const repoName of projectConfig.repositories) {
         const data = repositoryData(repoName, { scale, chainDepth });
         pullRequests.push(...data.pullRequests);
@@ -569,13 +623,24 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
             jiraIssuesDetails.push(structuredClone(issue));
         }
     }
-    // Parents of sub-tasks are fetched by the server with their fix versions only
+    // Parents (stories of sub-tasks, epics of standard issues) are fetched by the
+    // server with their summary, type, fix versions and parent
     for (const issue of [...jiraIssuesDetails]) {
         const parentKey = issue.fields.parent?.key;
         if (parentKey && !seen.has(parentKey) && knownIssues.has(parentKey)) {
             seen.add(parentKey);
             const parent = knownIssues.get(parentKey);
-            jiraIssuesDetails.push({ id: parent.id, key: parent.key, self: parent.self, fields: { fixVersions: parent.fields.fixVersions } });
+            jiraIssuesDetails.push({
+                id: parent.id,
+                key: parent.key,
+                self: parent.self,
+                fields: {
+                    summary: parent.fields.summary,
+                    issuetype: parent.fields.issuetype,
+                    fixVersions: parent.fields.fixVersions,
+                    ...(parent.fields.parent ? { parent: parent.fields.parent } : {})
+                }
+            });
         }
     }
     // Sub-tasks inherit the fix versions of their parent

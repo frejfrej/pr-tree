@@ -150,3 +150,27 @@ test('the filter index built on the SECOLLAB fixture links every pull request', 
         assert.equal(evaluatePullRequest(entry, noFilter, rendered).visible, true);
     }
 });
+
+test('the SECOLLAB fixture carries epics and parent-only issues with their hierarchy', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const underAnEpic = data.jiraIssuesDetails.filter(issue => issue.fields.parent?.fields?.issuetype?.name === 'Epic');
+    assert.ok(underAnEpic.length > 20, `${underAnEpic.length} issues under an epic`);
+    for (const issue of data.jiraIssuesDetails) {
+        if (issue.fields.issuetype) assert.equal(typeof issue.fields.issuetype.hierarchyLevel, 'number');
+    }
+    // Parent-only entries (no status: fetched as parents) carry summary, type, fix versions and parent
+    const parentOnly = data.jiraIssuesDetails.filter(issue => !issue.fields.status);
+    assert.ok(parentOnly.length > 0);
+    for (const issue of parentOnly) {
+        assert.equal(typeof issue.fields.summary, 'string');
+        assert.ok(issue.fields.issuetype.name);
+        assert.ok(Array.isArray(issue.fields.fixVersions));
+    }
+    assert.ok(parentOnly.some(issue => issue.fields.issuetype.name === 'Epic'), 'epics are fetched as parents');
+    assert.ok(parentOnly.some(issue => issue.fields.parent), 'a parent-only story carries its epic');
+    const { pullRequestsById, epics } = buildFilterIndex(data);
+    assert.ok(epics.size >= 3, `${epics.size} epics`);
+    const linkedToSubtask = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
+    assert.ok(linkedToSubtask.length > 0);
+    assert.ok(linkedToSubtask.some(entry => entry.epics.size > 0), 'a pull request linked to a sub-task reaches its epic');
+});
