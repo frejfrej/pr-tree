@@ -150,9 +150,13 @@ function restoreFiltersFromUrl() {
         readyCheck.disabled = currentReviewers.length === 0;
     }
 
-    // The URL holds the trimmed query: leave a box the user is typing in alone
+    // The URL holds the trimmed query: a box the user is typing in is authoritative
     const textFilter = document.getElementById('textFilter');
-    if (textFilter && document.activeElement !== textFilter) textFilter.value = currentText;
+    if (textFilter && document.activeElement === textFilter) {
+        currentText = textFilter.value;
+    } else if (textFilter) {
+        textFilter.value = currentText;
+    }
     updateTextFilterClearButton();
 }
 
@@ -270,7 +274,8 @@ function showErrorState() {
     showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
 }
 
-// Copies the filter controls into the state variables and refreshes the controls that depend on them (ready checkbox, clear button)
+// Copies the filter controls into the state variables and refreshes the
+// controls that depend on them (ready checkbox, clear button)
 function readFilterControls() {
     const textFilter = document.getElementById('textFilter');
     const assigneeMultiSelect = getMultiSelect('assigneeSelect');
