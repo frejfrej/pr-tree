@@ -970,6 +970,8 @@ gh pr create --base claude/filters --title "feat: text filter (title, branch, is
 
 PR body: what the filter matches, the `/` and Escape behaviour, the `q` parameter written with `replaceState`, the `filterBranches(filters)` signature change, what was verified (tests, browser checks of step 11). End with `Stacked on #<docs PR>` and the generated-with footer.
 
+**Review follow-up (fourth commit, after the code-quality review):** `app.js` gained two module-level lists, `multiSelectIds` (the multi-select ids in sidebar order) and `filterUrlParams` (every URL parameter the filters write), and a `resetFilterControls()` that puts every control back to its default; `clearAllFilters()` is now reset + `handleFilterChange()`, `handleProjectChange()` deletes `filterUrlParams` then calls `resetFilterControls()` and `readFilterControls()`, `initializeMultiSelects()` creates one multi-select per id, and `updateUrlWithFilters()` deletes every parameter of the list before setting the active ones. `restoreFiltersFromUrl()` leaves the search box alone while it has the focus (the URL holds the trimmed query and the function runs on every render). The history update is wrapped in try/catch (Safari caps it at 100 per 30 s). The search box carries `role="search"` and a title with the `/` shortcut. Tasks 2 and 3 below are written against that code.
+
 ---
 
 ### Task 2: Epic filter
@@ -1514,9 +1516,9 @@ a. Add `let currentEpics = [];` after `let currentFixVersions = [];`.
 
 b. In `currentFilters()`, add `epics: currentEpics,` after the `fixVersions` line.
 
-c. In `clearAllFilters()`, the list becomes `['sprintSelect', 'fixVersionSelect', 'epicSelect', 'assigneeSelect', 'reviewerSelect']`.
+c. Add `'epicSelect'` to `multiSelectIds` (after `'fixVersionSelect'`) and `'epic'` to `filterUrlParams` (after `'fixVersion'`): this covers the multi-select creation, "Clear filters" and the project switch.
 
-d. In `updateUrlWithFilters()`, add `url.searchParams.delete('epic');` after `url.searchParams.delete('fixVersion');`, and `currentEpics.forEach(v => url.searchParams.append('epic', v));` after the `fixVersion` append.
+d. In `updateUrlWithFilters()`, add `currentEpics.forEach(v => url.searchParams.append('epic', v));` after the `fixVersion` append.
 
 e. In `restoreFiltersFromUrl()`, add `currentEpics = urlParams.getAll('epic');` after the `fixVersion` line, and after the `fixVersionMultiSelect` restore block:
 
@@ -1527,12 +1529,7 @@ e. In `restoreFiltersFromUrl()`, add `currentEpics = urlParams.getAll('epic');` 
     }
 ```
 
-f. In `handleProjectChange()`, inside `if (!isInitialLoad) {`: add `url.searchParams.delete('epic');`, `currentEpics = [];`, and after the `fixVersionMultiSelect` clear:
-
-```js
-            const epicMultiSelect = getMultiSelect('epicSelect');
-            if (epicMultiSelect) epicMultiSelect.clearAll(false);
-```
+f. Nothing to change in `handleProjectChange()`: it clears the URL through `filterUrlParams` and the controls through `resetFilterControls()` and `readFilterControls()`.
 
 g. In `readFilterControls()`, add `const epicMultiSelect = getMultiSelect('epicSelect');` with the other lookups and `currentEpics = epicMultiSelect ? epicMultiSelect.getSelectedValues() : [];` after `currentFixVersions = ...`.
 
@@ -1574,7 +1571,7 @@ function populateEpicFilter(epics) {
 }
 ```
 
-j. In `initializeMultiSelects()`, add `createMultiSelect('epicSelect', { onChange: handleFilterChange });` after the `fixVersionSelect` line.
+j. Nothing to change in `initializeMultiSelects()`: it creates a multi-select for every id of `multiSelectIds`.
 
 - [ ] **Step 14: Check the app in the browser**
 
@@ -1838,9 +1835,9 @@ a. Add `let currentStories = [];` after `let currentEpics = [];`.
 
 b. In `currentFilters()`, add `stories: currentStories,` after `epics`.
 
-c. In `clearAllFilters()`, the list becomes `['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect']`.
+c. Add `'storySelect'` to `multiSelectIds` (after `'epicSelect'`) and `'story'` to `filterUrlParams` (after `'epic'`).
 
-d. In `updateUrlWithFilters()`, add `url.searchParams.delete('story');` after the `epic` delete, and `currentStories.forEach(v => url.searchParams.append('story', v));` after the `epic` append.
+d. In `updateUrlWithFilters()`, add `currentStories.forEach(v => url.searchParams.append('story', v));` after the `epic` append.
 
 e. In `restoreFiltersFromUrl()`, add `currentStories = urlParams.getAll('story');` after the `epic` line, and after the `epicMultiSelect` restore block:
 
@@ -1851,12 +1848,7 @@ e. In `restoreFiltersFromUrl()`, add `currentStories = urlParams.getAll('story')
     }
 ```
 
-f. In `handleProjectChange()`, inside `if (!isInitialLoad) {`: add `url.searchParams.delete('story');`, `currentStories = [];`, and after the `epicMultiSelect` clear:
-
-```js
-            const storyMultiSelect = getMultiSelect('storySelect');
-            if (storyMultiSelect) storyMultiSelect.clearAll(false);
-```
+f. Nothing to change in `handleProjectChange()`.
 
 g. In `readFilterControls()`, add `const storyMultiSelect = getMultiSelect('storySelect');` and `currentStories = storyMultiSelect ? storyMultiSelect.getSelectedValues() : [];` after the epic lines.
 
@@ -1879,7 +1871,7 @@ function populateStoryFilter(stories) {
 }
 ```
 
-j. In `initializeMultiSelects()`, add `createMultiSelect('storySelect', { onChange: handleFilterChange });` after the `epicSelect` line.
+j. Nothing to change in `initializeMultiSelects()`.
 
 - [ ] **Step 9: Check the app in the browser**
 
