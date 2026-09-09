@@ -99,6 +99,8 @@ export function epicOf(issue, issuesByKey) {
     return null;
 }
 
+// ---------------------------------------------------- issue filter options
+
 /**
  * Options of an issue multi-select: "KEY Summary", valued by key, sorted by
  * Jira project then issue number descending (newest first). Pure.

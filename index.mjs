@@ -300,7 +300,9 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         }
     }
 
-    // Issues without fix versions inherit their parent's, one level: sub-tasks from their story, and stories from their epic when the epic was fetched too
+    // Issues without fix versions inherit their parent's (sub-tasks from their story, stories from
+    // their epic when it was fetched too). One pass in array order, so a version can travel
+    // epic -> story -> sub-task when the story comes first
     for (const issue of jiraIssuesDetails) {
         if (issue.fields.parent &&
             (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
