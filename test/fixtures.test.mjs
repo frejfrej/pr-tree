@@ -174,3 +174,14 @@ test('the SECOLLAB fixture carries epics and parent-only issues with their hiera
     assert.ok(linkedToSubtask.length > 0);
     assert.ok(linkedToSubtask.some(entry => entry.epics.size > 0), 'a pull request linked to a sub-task reaches its epic');
 });
+
+test('the filter index resolves a story for every pull request linked to an issue', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const { pullRequestsById, stories } = buildFilterIndex(data);
+    const linked = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.length > 0);
+    assert.ok(linked.every(entry => entry.stories.size > 0));
+    assert.ok(stories.size > 50, `${stories.size} stories`);
+    const withSubtask = linked.find(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
+    const subtask = withSubtask.linkedIssues.find(issue => issue.fields.issuetype.subtask);
+    assert.ok(withSubtask.stories.has(subtask.fields.parent.key), 'the story of a sub-task is its parent');
+});
