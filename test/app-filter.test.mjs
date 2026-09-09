@@ -76,6 +76,8 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ ...defaults, reviewers: ['Jane', 'Bob'], ready: true }), 2);
     assert.equal(countActiveFilters({ ...defaults, sync: 'requested' }), 1);
     assert.equal(countActiveFilters({ assignees: ['A'], reviewers: ['J'], sprints: ['1'], fixVersions: ['2'], sync: 'OK', ready: true }), 6);
+    assert.equal(countActiveFilters({ ...defaults, text: '   ' }), 0);
+    assert.equal(countActiveFilters({ ...defaults, text: 'banner' }), 1);
 });
 
 // ------------------------------------------------------------------ index and evaluation
@@ -84,8 +86,14 @@ import { buildFilterIndex, evaluatePullRequest } from '../public/app-filter.js';
 
 const sampleApiResult = {
     pullRequests: [
-        { id: 10, author, participants: [{ user: author, approved: false }, { user: jane, approved: false }, { user: bob, approved: true }] },
-        { id: 11, author, participants: [{ user: author, approved: false }] }
+        {
+            id: 10, title: 'fix(PROJ-1): restore the banner', source: { branch: { name: 'JD_260901_PROJ-1_Banner' } },
+            author, participants: [{ user: author, approved: false }, { user: jane, approved: false }, { user: bob, approved: true }]
+        },
+        {
+            id: 11, title: 'chore: bump dependencies', source: { branch: { name: 'chore/bump-deps' } },
+            author, participants: [{ user: author, approved: false }]
+        }
     ],
     jiraIssuesMap: { 10: ['PROJ-1', 'PROJ-2', 'PROJ-404'], 11: [] },
     jiraIssuesDetails: [
@@ -156,4 +164,48 @@ test('evaluatePullRequest ready filter keeps pull requests with reviewer attenti
     const bobApproved = evaluatePullRequest(entry, { ...noFilter, reviewers: ['Bob'], ready: true }, rendered);
     assert.equal(bobApproved.visible, false);
     assert.equal(bobApproved.attention.any, false);
+});
+
+// ------------------------------------------------------------------ text filter
+
+import { parseTextQuery, matchesText } from '../public/app-filter.js';
+
+test('parseTextQuery lower-cases, trims and splits on whitespace', () => {
+    assert.deepEqual(parseTextQuery('  Fix  PROJ-12\tbanner '), ['fix', 'proj-12', 'banner']);
+    assert.deepEqual(parseTextQuery(''), []);
+    assert.deepEqual(parseTextQuery('   '), []);
+    assert.deepEqual(parseTextQuery(undefined), []);
+});
+
+test('matchesText requires every term as a substring', () => {
+    const searchText = 'fix(proj-12): restore banner feature/proj-12-banner proj-12';
+    assert.equal(matchesText(searchText, []), true);
+    assert.equal(matchesText(searchText, ['banner']), true);
+    assert.equal(matchesText(searchText, ['proj-12', 'restore']), true);
+    assert.equal(matchesText(searchText, ['banner', 'footer']), false);
+    assert.equal(matchesText(searchText, ['ann']), true); // substring, not whole word
+    assert.equal(matchesText('', ['x']), false);
+});
+
+test('buildFilterIndex searches the title, the source branch and the issue keys only', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    assert.equal(pullRequestsById.get(10).searchText, 'fix(proj-1): restore the banner jd_260901_proj-1_banner proj-1 proj-2 proj-404');
+    assert.equal(pullRequestsById.get(11).searchText, 'chore: bump dependencies chore/bump-deps');
+    const bare = buildFilterIndex({
+        pullRequests: [{ id: 12, title: 'Hotfix', author, participants: [] }],
+        jiraIssuesMap: {}, jiraIssuesDetails: [], sprintIssues: {}
+    });
+    assert.equal(bare.pullRequestsById.get(12).searchText, 'hotfix'); // no source branch
+});
+
+test('evaluatePullRequest text filter is case-insensitive and needs every word', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const evaluate = text => evaluatePullRequest(pullRequestsById.get(10), { ...noFilter, text }, rendered).visible;
+    assert.equal(evaluate(''), true);
+    assert.equal(evaluate('BANNER'), true);
+    assert.equal(evaluate('proj-404'), true); // a key of jiraIssuesMap without details (the keys are searched even when the title changes)
+    assert.equal(evaluate('jd_260901'), true); // the source branch
+    assert.equal(evaluate('restore banner'), true);
+    assert.equal(evaluate('banner footer'), false);
+    assert.equal(evaluate('Author'), false); // people are not searched
 });

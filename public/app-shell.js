@@ -76,6 +76,13 @@ export function closeSidebarDrawer() {
     }
 }
 
+/** Shows the sidebar if it is hidden: remembered in the wide layout, the drawer just opens. */
+export function showSidebar() {
+    if (isSidebarHidden()) {
+        setSidebarHidden(false);
+    }
+}
+
 function applyLayoutMode() {
     if (wideLayout.matches) {
         setSidebarHidden(readStorage(SIDEBAR_STORAGE_KEY) === 'true', { persist: false });
@@ -175,6 +182,28 @@ function isTypingTarget(target) {
         (target.matches('input, select, textarea') || target.isContentEditable);
 }
 
+// A text box with content keeps Escape for itself: it clears the box
+function isFilledTextBox(target) {
+    return target instanceof HTMLInputElement &&
+        (target.type === 'search' || target.type === 'text') &&
+        target.value !== '';
+}
+
+function isHelpOpen() {
+    const modal = document.getElementById('helpModal');
+    return Boolean(modal) && !modal.hidden;
+}
+
+function focusTextFilter() {
+    const input = document.getElementById('textFilter');
+    if (!input) {
+        return;
+    }
+    showSidebar();
+    input.focus();
+    input.select();
+}
+
 // Registered in the capture phase: an open multi-select is still open here and
 // handles Escape itself, so the shell stays out of its way.
 function handleKeydown(event) {
@@ -183,8 +212,10 @@ function handleKeydown(event) {
     }
 
     if (event.key === 'Escape') {
-        const modal = document.getElementById('helpModal');
-        if (modal && !modal.hidden) {
+        if (isFilledTextBox(event.target)) {
+            return;
+        }
+        if (isHelpOpen()) {
             closeHelp();
         } else {
             closeSidebarDrawer();
@@ -192,11 +223,15 @@ function handleKeydown(event) {
         return;
     }
 
-    if ((event.key === 'f' || event.key === 'F') &&
-        !event.ctrlKey && !event.metaKey && !event.altKey &&
-        !isTypingTarget(event.target)) {
+    if (event.ctrlKey || event.metaKey || event.altKey || isTypingTarget(event.target) || isHelpOpen()) {
+        return;
+    }
+    if (event.key === 'f' || event.key === 'F') {
         event.preventDefault();
         toggleSidebar();
+    } else if (event.key === '/') {
+        event.preventDefault();
+        focusTextFilter();
     }
 }
 

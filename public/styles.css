@@ -330,6 +330,78 @@ html.sidebar-hidden .sidebar {
     gap: 8px;
 }
 
+.text-filter {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.text-filter-icon {
+    position: absolute;
+    left: 11px;
+    color: var(--text-muted);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.text-filter-input {
+    width: 100%;
+    padding: 8px 32px 8px 32px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color 0.2s ease;
+}
+
+/* The native cancel button is replaced by .text-filter-clear */
+.text-filter-input::-webkit-search-cancel-button,
+.text-filter-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.text-filter-input::placeholder {
+    color: var(--text-muted);
+}
+
+.text-filter-input:hover {
+    border-color: var(--primary-color);
+}
+
+.text-filter-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.text-filter-clear {
+    position: absolute;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.text-filter-clear:hover {
+    background-color: var(--surface-muted);
+    color: var(--text-color);
+}
+
 .sidebar-backdrop {
     display: none;
 }

@@ -13,16 +13,19 @@ import { updateCounterDisplay } from './counter-utils.js';
 
 let filterIndex = null;
 
+/** Builds the filter index for a data load and returns it. */
 export function initializeFilter(apiResult) {
     filterIndex = buildFilterIndex(apiResult);
+    return filterIndex;
 }
 
 /**
  * Counts the filters that are not at their default value.
  * A multi-select with several values counts once.
  */
-export function countActiveFilters({ assignees, reviewers, sprints, fixVersions, sync, ready }) {
+export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, sync, ready }) {
     return [
+        parseTextQuery(text).length > 0,
         assignees.length > 0,
         reviewers.length > 0,
         sprints.length > 0,
@@ -31,6 +34,23 @@ export function countActiveFilters({ assignees, reviewers, sprints, fixVersions,
         sync !== 'Show all'
     ].filter(Boolean).length;
 }
+
+// ------------------------------------------------------------- text filter
+
+/**
+ * Splits a text query into lower-cased terms. Pure.
+ * @returns {string[]} no term for a blank query
+ */
+export function parseTextQuery(text) {
+    return String(text || '').toLowerCase().split(/\s+/).filter(term => term !== '');
+}
+
+/** True when every term is a substring of the searchable text. Pure. */
+export function matchesText(searchText, terms) {
+    return terms.every(term => searchText.includes(term));
+}
+
+// --------------------------------------------------------------- attention
 
 /**
  * Decides whether a pull request needs the attention of the people selected
@@ -54,9 +74,12 @@ export function computeAttention(pullRequestData, { statusInProgress, statusInRe
     return { assignee, reviewer, any: assignee || reviewer };
 }
 
+// ------------------------------------------------------------------- index
+
 /**
  * Indexes the API result for the filters: one entry per pull request with its
- * linked issues and the sets the filters compare against. Pure.
+ * linked issues, the text the text filter searches and the sets the other
+ * filters compare against. Pure.
  * @returns {{ pullRequestsById: Map<number, object> }}
  */
 export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {} }) {
@@ -79,6 +102,9 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         const entry = {
             pullRequest,
             linkedIssues,
+            // What the text filter searches: title, source branch and issue keys
+            searchText: [pullRequest.title, pullRequest.source?.branch?.name, ...issueKeys]
+                .filter(Boolean).join(' ').toLowerCase(),
             assignees: new Set(linkedIssues
                 .filter(issue => issue.fields.assignee && issue.fields.assignee.displayName)
                 .map(issue => issue.fields.assignee.displayName)),
@@ -96,15 +122,17 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     return { pullRequestsById };
 }
 
+// -------------------------------------------------------------- evaluation
+
 /**
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
- * @param {object} filters - { assignees, reviewers, sprints, fixVersions, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, sync, ready }
  * @param {object} rendered - what the tree shows for this pull request:
  *   statusInProgress, statusInReview (from the Jira statuses) and hasSyncLabel
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { assignees, reviewers, sprints, fixVersions, sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
+export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
     const attention = computeAttention(entry.pullRequest, {
         statusInProgress,
         statusInReview,
@@ -113,6 +141,7 @@ export function evaluatePullRequest(entry, { assignees, reviewers, sprints, fixV
         reviewers
     });
 
+    const textMatch = matchesText(entry.searchText, parseTextQuery(text));
     // Empty selection = show all; otherwise match ANY selected value
     const assigneeMatch = assignees.length === 0 || assignees.some(name => entry.assignees.has(name));
     const reviewerMatch = reviewers.length === 0 || reviewers.some(name => entry.reviewers.has(name));
@@ -125,17 +154,19 @@ export function evaluatePullRequest(entry, { assignees, reviewers, sprints, fixV
     const readyMatch = !ready || attention.reviewer;
 
     return {
-        visible: assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && syncMatch && readyMatch,
+        visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && syncMatch && readyMatch,
         attention
     };
 }
 
+// ---------------------------------------------------------------- tree pass
+
 /**
  * Applies the filters to the rendered tree and refreshes the counters.
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, sync, ready }
  * @returns {number} how many pull requests are left shown and need attention
  */
-export function filterBranches(assignees, reviewers, sprints, fixVersions, sync, ready) {
-    const filters = { assignees, reviewers, sprints, fixVersions, sync, ready };
+export function filterBranches(filters) {
     const pass = {
         filters,
         index: filterIndex || buildFilterIndex({}),
