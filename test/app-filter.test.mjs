@@ -308,6 +308,7 @@ test('issueOptions labels "KEY Summary" and sorts by project then newest issue f
         { value: 'PROJ-10', label: 'PROJ-10 Ten' }, { value: 'PROJ-9', label: 'PROJ-9 Nine' }
     ]);
     assert.deepEqual(issueOptions(new Map([['X-1', { key: 'X-1', summary: 'One' }]]).values()), [{ value: 'X-1', label: 'X-1 One' }]);
+    assert.deepEqual(issueOptions([{ key: 'X-2', summary: '' }]), [{ value: 'X-2', label: 'X-2' }]); // parent fetched without a summary by an older server
 });
 
 // ----------------------------------------------------------------- story filter
@@ -343,4 +344,19 @@ test('evaluatePullRequest story filter matches any selected story', () => {
     assert.equal(evaluate(22, ['PROJ-200', 'PROJ-201']), true);
     assert.equal(evaluate(23, ['PROJ-200']), false);
     assert.equal(evaluate(23, []), true);
+});
+
+test('epic and story filters combine as AND, and a story linked together with its own sub-task counts once', () => {
+    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, filters) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, ...filters }, rendered).visible;
+    assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-200'] }), true);
+    assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false);
+    assert.equal(evaluate(22, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false); // the story matches, the epic does not
+    const both = buildFilterIndex({
+        ...hierarchyApiResult,
+        pullRequests: [{ id: 30, title: 'PROJ-200 PROJ-300 both', source: { branch: { name: 'feature/both' } }, author, participants: [] }],
+        jiraIssuesMap: { 30: ['PROJ-200', 'PROJ-300'] }
+    });
+    assert.deepEqual([...both.pullRequestsById.get(30).stories], ['PROJ-200']);
+    assert.equal(countActiveFilters({ assignees: [], reviewers: [], sprints: [], fixVersions: [], sync: 'Show all', ready: false, epics: ['PROJ-100'], stories: ['PROJ-200'] }), 2);
 });

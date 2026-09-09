@@ -124,7 +124,7 @@ export function storyOf(issue) {
 export function issueOptions(issues) {
     return [...issues]
         .sort((a, b) => compareIssueKeys(a.key, b.key))
-        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}` }));
+        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}`.trim() }));
 }
 
 // Jira project alphabetically, then issue number descending

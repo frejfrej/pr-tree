@@ -120,6 +120,7 @@ function restoreFiltersFromUrl() {
     currentReviewers = urlParams.getAll('reviewer');
     currentSprints = urlParams.getAll('sprint');
     currentFixVersions = urlParams.getAll('fixVersion');
+    // Epic and story selections are applied by populateIssueFilter once their options exist
     currentEpics = urlParams.getAll('epic');
     currentStories = urlParams.getAll('story');
     currentText = urlParams.get('q') || '';
