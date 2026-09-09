@@ -177,6 +177,7 @@ The application integrates with a Jira workflow where:
 - F4.7: Support simultaneous multiple filters
 - F4.8: Maintain filter state in URL parameters
 - F4.9: Hierarchical filtering (preserve parent-child relationships)
+- F4.10: Filter by text: title, source branch name and linked issue keys must contain every word typed
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
@@ -473,6 +474,7 @@ The application integrates with a Jira workflow where:
 | Banner: ☰ | App name | Project ▾ | Last refresh | ☾ | ? | GitHub | v |
 +----------------+-------------------------------------------------+
 | Filters  Clear | [Collapse all] [Expand all]                     |
+|  Search        |                                                 |
 |  Sprint        | Repository 1                          [X / Y]   |
 |  Fix version   |   Branch A                            [X / Y]   |
 |  Assignee      |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |

@@ -4,7 +4,7 @@
 * Application layout
     * A top banner shows the app name, the project selector, the refresh status, the theme toggle, the help and GitHub links and the version
     * Filters live in a left sidebar that stays in place while the pull-request tree scrolls
-    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser
+    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser; `/` focuses the search box
     * On windows narrower than 900px the sidebar becomes a drawer over the tree
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
@@ -18,6 +18,9 @@
 * Provides initial warnings
     * If the pull request was approved by everyone
     * If the pull request is open but related issues are closed or in review
+* Provides a text filter
+    * Keeps the pull requests whose title, source branch name or linked issue keys contain every word typed (case-insensitive)
+    * `/` focuses the search box, Escape clears it
 * Provides an assignee filter
     * Filters pull requests based on the assignee of associated Jira issues
     * Highlights in red those where an effort is expected
@@ -31,7 +34,7 @@
     * Dynamically populates with all available fixVersions from the project's Jira issues
 * Allows simultaneous filtering by both assignee and reviewer
 * Maintains filter selections in URL
-    * All filter selections (project, sprint, fixVersion, assignee, reviewer) are saved in the URL
+    * All filter selections (project, text, sprint, fixVersion, assignee, reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
 * Displays Ahead (green) and Behind (red) commit counts
@@ -72,6 +75,9 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.4.0
+    * Text filter at the top of the sidebar: matches the pull-request title, the source branch name and the linked issue keys, every word typed must match
+        * `/` focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean
 * Version 2.3.0
     * Filtering is now a single pass over the tree
         * Each pull request is visited once; the previous recursion revisited a stacked pull request once per ancestor, so a 24-deep stack (as in SECOLLAB) cost about 16 million visits and 20 seconds per filter change

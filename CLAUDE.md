@@ -8,7 +8,7 @@
 - Multi-project support with dropdown selection
 - Pull request visualization ordered by most recently updated
 - Jira issue integration with status tracking
-- Advanced filtering (author, reviewer, sprint, sync status)
+- Advanced filtering (text, sprint, fix version, assignee, reviewer, sync status)
 - Real-time conflict detection
 - Commit ahead/behind tracking
 - Smart reload (auto-updates every 2 minutes when data changes)
@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.3.0** (as of 2026-09-05)
+Current version: **2.4.0** (as of 2026-09-09)
 
 ## Technology Stack
 
@@ -125,10 +125,10 @@ pr-tree/
 - Event handlers for user interactions
 
 **public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against; built once per data load by `initializeFilter()`
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against; built once per data load by `initializeFilter()`, which returns it
 - `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
-- `filterBranches(...)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
-- `computeAttention`, `countActiveFilters` (pure)
+- `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
+- `parseTextQuery`, `matchesText`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/counter-utils.js**
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
@@ -141,7 +141,7 @@ pr-tree/
 
 **public/app-shell.js**
 - Banner and sidebar chrome, independent of pull-request data
-- Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed
+- Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed; `/` shows the sidebar and focuses the search box; Escape is left to a text box that has content (it clears itself)
 - Theme toggle, stored under `prTree.theme`; the OS setting is followed until a choice is stored; an inline script in `index.html` applies both before the first paint
 - Help modal, active-filter badge, tree toolbar (collapse all / expand all), document title (`(attention) PROJECT · Bitbucket Pull-Requests Tree`)
 - No DOM access at import time, so its pure helpers are unit-tested
@@ -282,6 +282,7 @@ log(message, logStream);  // Logs to both console and file
 State is managed through module-level variables in app.js:
 ```javascript
 let currentProject = null;
+let currentText = '';          // text filter
 let currentSprints = [];        // sprint ids
 let currentFixVersions = [];    // fix version ids
 let currentAssignees = [];
@@ -294,10 +295,10 @@ let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied 
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&author=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
+?project=PROJ&q=banner&author=John&reviewer=Jane&sprint=Sprint1&sync=requested&ready=true
 ```
 
-Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches()` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL.
+Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
 
 ### Filtering Architecture
 Single pass in app-filter.js:
@@ -479,9 +480,10 @@ Three streams available:
 7. **Ready for reviewer**: computed by `computeAttention()` from the data, never from rendered styles
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
+10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack); no DOM, no extra dependency
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
