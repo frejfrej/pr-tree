@@ -8,6 +8,7 @@ let currentText = '';
 let currentSprints = [];
 let currentFixVersions = [];
 let currentEpics = [];
+let currentStories = [];
 let currentAssignees = [];
 let currentReviewers = [];
 let currentSync = "Show all";
@@ -21,9 +22,9 @@ let syncStatusLoading = false;
 let syncLoadFailed = false;
 
 // Multi-select filters, in sidebar order
-const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'assigneeSelect', 'reviewerSelect'];
+const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect'];
 // URL parameters written by the filters
-const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'assignee', 'reviewer', 'sync', 'ready'];
+const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'assignee', 'reviewer', 'sync', 'ready'];
 
 function currentFilters() {
     return {
@@ -33,6 +34,7 @@ function currentFilters() {
         sprints: currentSprints,
         fixVersions: currentFixVersions,
         epics: currentEpics,
+        stories: currentStories,
         sync: currentSync,
         ready: currentReadyForReviewer
     };
@@ -92,6 +94,7 @@ function updateUrlWithFilters({ replace = false } = {}) {
     currentSprints.forEach(v => url.searchParams.append('sprint', v));
     currentFixVersions.forEach(v => url.searchParams.append('fixVersion', v));
     currentEpics.forEach(v => url.searchParams.append('epic', v));
+    currentStories.forEach(v => url.searchParams.append('story', v));
     if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
     if (currentReadyForReviewer) url.searchParams.set('ready', 'true');
 
@@ -118,6 +121,7 @@ function restoreFiltersFromUrl() {
     currentSprints = urlParams.getAll('sprint');
     currentFixVersions = urlParams.getAll('fixVersion');
     currentEpics = urlParams.getAll('epic');
+    currentStories = urlParams.getAll('story');
     currentText = urlParams.get('q') || '';
 
     if (!currentSyncStatuses) {
@@ -287,6 +291,7 @@ function readFilterControls() {
     const sprintMultiSelect = getMultiSelect('sprintSelect');
     const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
     const epicMultiSelect = getMultiSelect('epicSelect');
+    const storyMultiSelect = getMultiSelect('storySelect');
 
     currentText = textFilter ? textFilter.value : '';
     currentAssignees = assigneeMultiSelect ? assigneeMultiSelect.getSelectedValues() : [];
@@ -294,6 +299,7 @@ function readFilterControls() {
     currentSprints = sprintMultiSelect ? sprintMultiSelect.getSelectedValues() : [];
     currentFixVersions = fixVersionMultiSelect ? fixVersionMultiSelect.getSelectedValues() : [];
     currentEpics = epicMultiSelect ? epicMultiSelect.getSelectedValues() : [];
+    currentStories = storyMultiSelect ? storyMultiSelect.getSelectedValues() : [];
 
     // Get sync and ready values from regular form elements
     const syncSelect = document.getElementById("syncSelect");
@@ -510,6 +516,7 @@ function renderEverything(apiResult) {
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
     currentEpics = populateIssueFilter('epicSelect', filterIndex.epics, currentEpics);
+    currentStories = populateIssueFilter('storySelect', filterIndex.stories, currentStories);
 
     // Every filter is populated and restored from the URL: apply them once
     applyFilters();
