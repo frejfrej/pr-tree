@@ -192,6 +192,12 @@ looks one level up, and the data hash changes once after deployment.
 
 ## 9. Code structure
 
+Superseded in two places during implementation (see the review follow-ups in
+the plan): the option helpers live in `app-filter.js` as the pure, tested
+`issueOptions`, and one generic `populateIssueFilter(elementId, issues,
+selectedKeys)` in `app.js` replaces `populateEpicFilter` and
+`populateStoryFilter`.
+
 | File | PR 1 (text) | PR 2 (epic) | PR 3 (story) |
 |---|---|---|---|
 | `public/index.html` | search box under the sidebar header | Epic multi-select after Fix version | Story multi-select after Epic |

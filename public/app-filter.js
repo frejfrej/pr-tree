@@ -23,7 +23,7 @@ export function initializeFilter(apiResult) {
  * Counts the filters that are not at their default value.
  * A multi-select with several values counts once.
  */
-export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, epics = [], sync, ready }) {
+export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, ready }) {
     return [
         parseTextQuery(text).length > 0,
         assignees.length > 0,
@@ -31,6 +31,7 @@ export function countActiveFilters({ text = '', assignees, reviewers, sprints, f
         sprints.length > 0,
         fixVersions.length > 0,
         epics.length > 0,
+        stories.length > 0,
         ready === true,
         sync !== 'Show all'
     ].filter(Boolean).length;
@@ -99,6 +100,19 @@ export function epicOf(issue, issuesByKey) {
     return null;
 }
 
+/**
+ * The story an issue belongs to: the issue itself when it is a standard issue,
+ * its parent when it is a sub-task (the inline parent carries the key and the
+ * summary), nothing for an epic. Pure.
+ * @returns {{ key: string, summary: string } | null}
+ */
+export function storyOf(issue) {
+    const level = issueLevel(issue);
+    if (level === 'standard') return issueReference(issue);
+    if (level === 'subtask' && issue.fields.parent) return issueReference(issue.fields.parent);
+    return null;
+}
+
 // ---------------------------------------------------- issue filter options
 
 /**
@@ -110,7 +124,7 @@ export function epicOf(issue, issuesByKey) {
 export function issueOptions(issues) {
     return [...issues]
         .sort((a, b) => compareIssueKeys(a.key, b.key))
-        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}` }));
+        .map(issue => ({ value: issue.key, label: `${issue.key} ${issue.summary}`.trim() }));
 }
 
 // Jira project alphabetically, then issue number descending
@@ -155,7 +169,7 @@ export function computeAttention(pullRequestData, { statusInProgress, statusInRe
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
  * filters compare against. Pure.
- * @returns {{ pullRequestsById: Map<number, object>, epics: Map<string, { key, summary }> }}
+ * @returns {{ pullRequestsById: Map<number, object>, epics: Map<string, { key, summary }>, stories: Map<string, { key, summary }> }}
  */
 export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {} }) {
     const issuesByKey = new Map(jiraIssuesDetails.map(issue => [issue.key, issue]));
@@ -172,12 +186,17 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 
     const pullRequestsById = new Map();
     const epics = new Map();
+    const stories = new Map();
     for (const pullRequest of pullRequests) {
         const issueKeys = jiraIssuesMap[pullRequest.id] || [];
         const linkedIssues = issueKeys.map(key => issuesByKey.get(key)).filter(issue => issue);
         const pullRequestEpics = linkedIssues.map(issue => epicOf(issue, issuesByKey)).filter(epic => epic);
         for (const epic of pullRequestEpics) {
             epics.set(epic.key, epic);
+        }
+        const pullRequestStories = linkedIssues.map(issue => storyOf(issue)).filter(story => story);
+        for (const story of pullRequestStories) {
+            stories.set(story.key, story);
         }
         const entry = {
             pullRequest,
@@ -195,12 +214,13 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             fixVersions: new Set(linkedIssues
                 .flatMap(issue => issue.fields.fixVersions || [])
                 .map(version => String(version.id))),
-            epics: new Set(pullRequestEpics.map(epic => epic.key))
+            epics: new Set(pullRequestEpics.map(epic => epic.key)),
+            stories: new Set(pullRequestStories.map(story => story.key))
         };
         pullRequestsById.set(pullRequest.id, entry);
     }
 
-    return { pullRequestsById, epics };
+    return { pullRequestsById, epics, stories };
 }
 
 // -------------------------------------------------------------- evaluation
@@ -208,12 +228,12 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 /**
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, ready }
  * @param {object} rendered - what the tree shows for this pull request:
  *   statusInProgress, statusInReview (from the Jira statuses) and hasSyncLabel
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
+export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, ready }, { statusInProgress, statusInReview, hasSyncLabel }) {
     const attention = computeAttention(entry.pullRequest, {
         statusInProgress,
         statusInReview,
@@ -229,6 +249,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
     const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
     const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
     const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
+    const storyMatch = stories.length === 0 || stories.some(key => entry.stories.has(key));
     const syncMatch = sync === 'Show all' ||
         (sync === 'requested' && hasSyncLabel) ||
         (sync === 'OK' && !hasSyncLabel);
@@ -236,7 +257,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
     const readyMatch = !ready || attention.reviewer;
 
     return {
-        visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && epicMatch && syncMatch && readyMatch,
+        visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch && syncMatch && readyMatch,
         attention
     };
 }
@@ -245,7 +266,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
 
 /**
  * Applies the filters to the rendered tree and refreshes the counters.
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, sync, ready }
+ * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, ready }
  * @returns {number} how many pull requests are left shown and need attention
  */
 export function filterBranches(filters) {

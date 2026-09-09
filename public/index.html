@@ -139,6 +139,29 @@
   </div>
 
   <div class="filter-item">
+    <span class="filter-label">Story
+      <i class="fas fa-info-circle info-icon"
+         title="Issue delivered by the pull request: the linked issue, or the parent of a linked sub-task"></i>
+    </span>
+    <div class="multi-select" id="storySelect" data-filter="story">
+      <div class="multi-select-trigger" tabindex="0">
+        <span class="multi-select-display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow"></i>
+      </div>
+      <div class="multi-select-dropdown">
+        <div class="multi-select-search">
+          <input type="text" placeholder="Search..." class="multi-select-search-input">
+        </div>
+        <div class="multi-select-options"></div>
+        <div class="multi-select-actions">
+          <button type="button" class="multi-select-clear">Clear all</button>
+          <button type="button" class="multi-select-select-all">Select all</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-item">
     <span class="filter-label">Assignee</span>
     <div class="multi-select" id="assigneeSelect" data-filter="assignee">
       <div class="multi-select-trigger" tabindex="0">

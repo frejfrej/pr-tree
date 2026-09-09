@@ -79,6 +79,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ ...defaults, text: '   ' }), 0);
     assert.equal(countActiveFilters({ ...defaults, text: 'banner' }), 1);
     assert.equal(countActiveFilters({ ...defaults, epics: ['PROJ-100', 'PROJ-101'] }), 1);
+    assert.equal(countActiveFilters({ ...defaults, stories: ['PROJ-200'] }), 1);
 });
 
 // ------------------------------------------------------------------ index and evaluation
@@ -307,4 +308,55 @@ test('issueOptions labels "KEY Summary" and sorts by project then newest issue f
         { value: 'PROJ-10', label: 'PROJ-10 Ten' }, { value: 'PROJ-9', label: 'PROJ-9 Nine' }
     ]);
     assert.deepEqual(issueOptions(new Map([['X-1', { key: 'X-1', summary: 'One' }]]).values()), [{ value: 'X-1', label: 'X-1 One' }]);
+    assert.deepEqual(issueOptions([{ key: 'X-2', summary: '' }]), [{ value: 'X-2', label: 'X-2' }]); // parent fetched without a summary by an older server
+});
+
+// ----------------------------------------------------------------- story filter
+
+import { storyOf } from '../public/app-filter.js';
+
+test('storyOf is the issue itself, the parent of a sub-task, and nothing for an epic', () => {
+    assert.deepEqual(storyOf(storyInEpic), { key: 'PROJ-200', summary: 'Chat panel' });
+    assert.deepEqual(storyOf(bugWithoutEpic), { key: 'PROJ-201', summary: 'Crash on save' });
+    assert.deepEqual(storyOf(subtaskOfStory), { key: 'PROJ-200', summary: 'Chat panel' });
+    assert.deepEqual(storyOf(subtaskOfUnknown), { key: 'PROJ-999', summary: 'Unknown story' }); // the inline parent is enough
+    assert.equal(storyOf(epicAi), null);
+    assert.equal(storyOf({ key: 'PROJ-303', fields: { issuetype: subtaskType } }), null); // sub-task without parent
+});
+
+test('buildFilterIndex collects the stories of every pull request and the list of stories', () => {
+    const { pullRequestsById, stories } = buildFilterIndex(hierarchyApiResult);
+    assert.deepEqual([...pullRequestsById.get(20).stories], ['PROJ-200']);
+    assert.deepEqual([...pullRequestsById.get(21).stories], ['PROJ-200']); // the parent of the sub-task
+    assert.deepEqual([...pullRequestsById.get(22).stories], ['PROJ-201']);
+    assert.deepEqual([...pullRequestsById.get(23).stories], []); // an epic is not a story
+    assert.deepEqual([...pullRequestsById.get(24).stories], ['PROJ-200', 'PROJ-203']); // two issues, two stories
+    assert.deepEqual([...stories.keys()], ['PROJ-200', 'PROJ-201', 'PROJ-203']);
+    assert.equal(buildFilterIndex({}).stories.size, 0);
+});
+
+test('evaluatePullRequest story filter matches any selected story', () => {
+    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, stories) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, stories }, rendered).visible;
+    assert.equal(evaluate(20, ['PROJ-200']), true);
+    assert.equal(evaluate(21, ['PROJ-200']), true);
+    assert.equal(evaluate(22, ['PROJ-200']), false);
+    assert.equal(evaluate(22, ['PROJ-200', 'PROJ-201']), true);
+    assert.equal(evaluate(23, ['PROJ-200']), false);
+    assert.equal(evaluate(23, []), true);
+});
+
+test('epic and story filters combine as AND, and a story linked together with its own sub-task counts once', () => {
+    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, filters) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, ...filters }, rendered).visible;
+    assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-200'] }), true);
+    assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false);
+    assert.equal(evaluate(22, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false); // the story matches, the epic does not
+    const both = buildFilterIndex({
+        ...hierarchyApiResult,
+        pullRequests: [{ id: 30, title: 'PROJ-200 PROJ-300 both', source: { branch: { name: 'feature/both' } }, author, participants: [] }],
+        jiraIssuesMap: { 30: ['PROJ-200', 'PROJ-300'] }
+    });
+    assert.deepEqual([...both.pullRequestsById.get(30).stories], ['PROJ-200']);
+    assert.equal(countActiveFilters({ assignees: [], reviewers: [], sprints: [], fixVersions: [], sync: 'Show all', ready: false, epics: ['PROJ-100'], stories: ['PROJ-200'] }), 2);
 });
