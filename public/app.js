@@ -24,6 +24,8 @@ let syncLoadFailed = false;
 
 // Multi-select filters, in sidebar order
 const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect'];
+// The two ready checkboxes, in sidebar order
+const readyCheckboxIds = ['readyForAssigneeCheck', 'readyForReviewerCheck'];
 // URL parameters written by the filters ('ready', the former name of readyReviewer, is only ever removed)
 const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'assignee', 'reviewer', 'sync', 'readyReviewer', 'readyAssignee', 'ready'];
 
@@ -53,7 +55,8 @@ function applyFilters() {
 }
 
 // Puts every filter control back to its default without applying anything:
-// the search box, the multi-selects, the ready checkboxes and the SYNC select
+// the search box, the multi-selects, the ready checkboxes (unchecked; their
+// disabled state follows the selection in readFilterControls) and the SYNC select
 function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
@@ -61,7 +64,7 @@ function resetFilterControls() {
         const multiSelect = getMultiSelect(id);
         if (multiSelect) multiSelect.clearAll(false);
     });
-    ['readyForAssigneeCheck', 'readyForReviewerCheck'].forEach(id => {
+    readyCheckboxIds.forEach(id => {
         const checkbox = document.getElementById(id);
         if (checkbox) checkbox.checked = false;
     });
@@ -143,11 +146,16 @@ function restoreFiltersFromUrl() {
     const sprintMultiSelect = getMultiSelect('sprintSelect');
     const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
 
+    // Assignee and reviewer options already exist here: keep only the names they offer, so a
+    // stale name in the URL cannot leave a ready checkbox enabled over an empty selection
+    // (sprints and fix versions are populated after this and validate their own selection)
     if (assigneeMultiSelect) {
         assigneeMultiSelect.setSelectedValues(currentAssignees);
+        currentAssignees = assigneeMultiSelect.getSelectedValues();
     }
     if (reviewerMultiSelect) {
         reviewerMultiSelect.setSelectedValues(currentReviewers);
+        currentReviewers = reviewerMultiSelect.getSelectedValues();
     }
     if (sprintMultiSelect) {
         sprintMultiSelect.setSelectedValues(currentSprints);
@@ -184,15 +192,17 @@ function initializeSyncControls() {
 }
 
 function initializeReadyFilters() {
-    ['readyForAssigneeCheck', 'readyForReviewerCheck'].forEach(id => {
+    readyCheckboxIds.forEach(id => {
         const checkbox = document.getElementById(id);
         if (checkbox) checkbox.addEventListener('change', handleFilterChange);
     });
     updateReadyCheckboxes();
 }
 
-// The ready checkboxes depend on their multi-select: disabled and unchecked
-// while no assignee (or reviewer) is selected, otherwise they show the state
+// The ready checkboxes depend on their multi-select: while no assignee (or
+// reviewer) is selected the matching state is cleared (so a readyAssignee=true
+// without an assignee in the URL is dropped) and the box is disabled and
+// unchecked; otherwise the box shows the state
 function updateReadyCheckboxes() {
     if (currentAssignees.length === 0) currentReadyForAssignee = false;
     if (currentReviewers.length === 0) currentReadyForReviewer = false;

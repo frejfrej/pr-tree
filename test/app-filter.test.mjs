@@ -82,6 +82,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ ...defaults, stories: ['PROJ-200'] }), 1);
     assert.equal(countActiveFilters({ ...defaults, assignees: ['A'], readyAssignee: true }), 2);
     assert.equal(countActiveFilters({ ...defaults, assignees: ['A'], reviewers: ['J'], readyAssignee: true, readyReviewer: true }), 4);
+    assert.equal(countActiveFilters({ ...defaults, ready: true }), 0); // the former name of readyReviewer is ignored
 });
 
 // ------------------------------------------------------------------ index and evaluation
@@ -178,7 +179,9 @@ test('evaluatePullRequest ready-for-assignee filter keeps pull requests with ass
     assert.equal(jane.visible, true);
     assert.equal(jane.attention.assignee, true);
     const bob = evaluatePullRequest(entry, { ...noFilter, assignees: ['Bob'], readyAssignee: true }, inProgress);
-    assert.equal(bob.visible, false); // no linked issue assigned to Bob
+    assert.equal(bob.attention.assignee, false); // no linked issue assigned to Bob
+    const inReviewUnchecked = evaluatePullRequest(entry, { ...noFilter, assignees: ['Jane'] }, rendered);
+    assert.equal(inReviewUnchecked.visible, true); // same pull request, box unchecked
     const inReview = evaluatePullRequest(entry, { ...noFilter, assignees: ['Jane'], readyAssignee: true }, rendered);
     assert.equal(inReview.visible, false); // in review: no assignee attention
     assert.equal(inReview.attention.assignee, false);
@@ -191,6 +194,8 @@ test('both ready filters checked keep the pull requests needing either attention
     assert.equal(evaluatePullRequest(entry, both, { statusInProgress: true, statusInReview: false, hasSyncLabel: false }).visible, true); // assignee attention
     assert.equal(evaluatePullRequest(entry, both, rendered).visible, true); // reviewer attention: Jane has not approved
     assert.equal(evaluatePullRequest(entry, both, { statusInProgress: false, statusInReview: false, hasSyncLabel: false }).visible, false); // neither
+    const reviewerOnly = { ...noFilter, assignees: ['Jane'], reviewers: ['Jane'], readyReviewer: true };
+    assert.equal(evaluatePullRequest(entry, reviewerOnly, { statusInProgress: true, statusInReview: false, hasSyncLabel: false }).visible, false); // assignee attention does not satisfy the reviewer box
 });
 
 // ------------------------------------------------------------------ text filter

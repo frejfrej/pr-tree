@@ -149,8 +149,9 @@ function splitIssueKey(key) {
  * - assignee: the PR is in progress and a linked issue is assigned to a selected assignee
  * - reviewer: the PR is in review and a selected reviewer (never the author) has not approved
  *
- * The title of a PR with attention is highlighted; the "Ready for reviewer"
- * filter keeps the PRs with reviewer attention.
+ * The title of a PR with attention is highlighted; the "Ready for reviewer" and
+ * "Ready for assignee" filters keep the PRs with, respectively, reviewer and
+ * assignee attention.
  */
 export function computeAttention(pullRequestData, { statusInProgress, statusInReview, linkedIssues, assignees, reviewers }) {
     const assignee = assignees.length > 0 && statusInProgress &&
