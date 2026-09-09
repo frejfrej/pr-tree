@@ -275,10 +275,11 @@ async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         }
     }
 
-    // Fetch missing parent issues to get their fix versions
+    // Fetch missing parent issues: their fix versions (inherited by sub-tasks)
+    // and their summary, type and parent (epic and story filters)
     if (missingParentKeys.length > 0) {
         const parentJql = `key IN (${missingParentKeys.join(',')})`;
-        const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,fixVersions`;
+        const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,summary,issuetype,fixVersions,parent`;
         try {
             const startTime = Date.now();
             const response = await atlassianFetch(parentUrl, {
