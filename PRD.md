@@ -264,7 +264,7 @@ The application integrates with a Jira workflow where:
 - F8.2: Identify issues assigned to each sprint
 - F8.3: Associate PRs with sprints via linked issues
 - F8.4: Provide sprint filter dropdown
-- F8.5: Cache sprint data (10-minute TTL)
+- F8.5: Sprints are fetched and cached with the project data (no separate cache)
 
 **Acceptance Criteria:**
 - Sprint filter populated with all active sprints
@@ -394,10 +394,10 @@ The application integrates with a Jira workflow where:
 
 #### Backend
 - **Runtime:** Node.js (ES Modules)
-- **Framework:** Express.js v4.19.2
-- **HTTP Client:** node-fetch v3.3.2
+- **Framework:** Express.js v5.2.1
+- **HTTP Client:** the `fetch` built into Node.js 20.11 or later
 - **Caching:** node-cache v5.1.2
-- **Configuration:** dotenv v16.4.5
+- **Three-way merge:** node-diff3 v3.2.1 (conflict computation)
 
 #### Frontend
 - **Core:** HTML5, CSS3, Vanilla JavaScript (ES6)
@@ -444,7 +444,6 @@ The application integrates with a Jira workflow where:
 - Project data: 120 seconds
 - Projects list: 300 seconds
 - Conflicts: 300 seconds
-- Sprints: 600 seconds
 
 **Hash-Based Change Detection:**
 - Compute MD5 hash of PR + Jira data
@@ -458,7 +457,7 @@ The application integrates with a Jira workflow where:
 | `/api/version` | GET | None | Application version metadata |
 | `/api/projects` | GET | 300s | List of configured projects |
 | `/api/pull-requests/:project` | GET | 120s | Comprehensive project data |
-| `/api/pull-request-conflicts/:repo/:spec` | GET | 300s | Merge conflict detection |
+| `/api/sync-statuses/:project` | GET | 300s | SYNC (conflict) status of every open pull request, loaded on demand |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
 ### 7.6 Logging Infrastructure
@@ -709,7 +708,7 @@ The following are explicitly **not** part of current requirements:
 | Risk | Impact | Probability | Mitigation |
 |------|--------|-------------|------------|
 | Bitbucket API rate limiting | High | Medium | Implement aggressive caching, hash-based change detection |
-| Jira API performance degradation | Medium | Low | Cache sprint data for 10 minutes, batch issue fetches |
+| Jira API performance degradation | Medium | Low | Cache sprint data with the project data (2 minutes), batch issue fetches |
 | Memory leak in long-running server | High | Low | Monitor memory usage, implement cache size limits |
 | Breaking API changes from Atlassian | High | Low | Version pin APIs, monitor deprecation notices |
 | Large PR volume causing timeout | Medium | Medium | Implement pagination, lazy loading |

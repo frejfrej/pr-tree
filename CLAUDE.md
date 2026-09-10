@@ -16,16 +16,16 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.5.2** (as of 2026-09-10)
+Current version: **2.6.0** (as of 2026-09-10)
 
 ## Technology Stack
 
 ### Backend
 - **Runtime**: Node.js with ES Modules (.mjs)
-- **Framework**: Express.js (v4.19.2)
-- **HTTP Client**: node-fetch (v3.3.2)
+- **Framework**: Express.js (v5.2.1)
+- **HTTP Client**: the `fetch` built into Node.js (20.11 or later)
 - **Caching**: node-cache (v5.1.2)
-- **Configuration**: dotenv (v16.4.5)
+- **Three-way merge**: node-diff3 (v3.2.1), for the conflict computation
 - **Authentication**: Basic Auth (Base64 encoded) for Bitbucket and Jira APIs
 
 ### Frontend
@@ -48,7 +48,6 @@ pr-tree/
 ├── projects.js            # Project definitions & Jira regex patterns
 ├── package.json           # Dependencies & version metadata
 ├── .gitignore             # Excludes config.js, node_modules, logs
-├── start.bat              # Windows startup script
 ├── fixtures/              # Fixture mode: generated data served instead of Atlassian (npm run start:fixtures)
 │   ├── generate.mjs       # Deterministic generator modelled on the real projects
 │   └── index.mjs          # Command-line/env options, config replacement, data source
@@ -74,7 +73,7 @@ pr-tree/
 
 **index.mjs** (506 lines)
 - Main Express application server
-- API endpoint definitions (`/api/projects`, `/api/pull-requests/:project`, `/api/pull-request-conflicts/:repoName/:spec`)
+- API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
 - Bitbucket API integration (fetch PRs, commit diffs)
 - Jira API integration (fetch issues, sprints, orphaned issues)
 - `fetchJiraIssuesDetails()` fetches the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
@@ -89,7 +88,7 @@ pr-tree/
   - Project data: 120 seconds (default)
   - Projects list: 300 seconds (5 minutes)
   - Conflicts: 300 seconds (5 minutes)
-  - Sprints: 600 seconds (10 minutes)
+- The sprints are fetched with the project data and cached with it (no separate cache)
 - Cache statistics endpoint support
 
 **projects.js**
@@ -236,20 +235,6 @@ Main data endpoint. Returns comprehensive project data (cached 2 minutes).
 - If dataHash unchanged from last response, only updates `lastRefreshTime`
 - Only fetches commit counts (ahead/behind) when hash changes
 - This prevents Bitbucket API rate limiting (HTTP 429)
-
-### GET /api/pull-request-conflicts/:repoName/:spec
-Checks for merge conflicts in a PR (cached 5 minutes).
-
-**Parameters:**
-- `repoName`: Repository slug
-- `spec`: Bitbucket diff spec (e.g., "sourceBranch..destBranch")
-
-**Response:**
-```json
-{
-  "conflicts": true
-}
-```
 
 ### GET /api/sync-statuses/:project
 Returns the SYNC (conflicts) status of every open PR of a project in a single response (cached 5 minutes). Only called by the frontend when the user clicks the load button next to the SYNC filter — never automatically.
