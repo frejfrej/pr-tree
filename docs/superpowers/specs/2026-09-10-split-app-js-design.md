@@ -32,9 +32,10 @@ rendering into `public/app-render.js` and the SYNC code into
    and are read through accessors given once to
    `initializeSyncControls({ getProject, getSyncFilter, onFilterChange, onLoadEnd })`,
    the way `initializeAppShell({ onClearFilters })` and
-   `createMultiSelect(id, { onChange })` receive callbacks. The values are read
-   when needed, not captured when a load starts: a Back or Forward during a
-   load can change the SYNC filter before the load ends.
+   `createMultiSelect(id, { onChange })` receive callbacks. The SYNC filter and
+   the button state are read when needed, not captured when a load starts
+   (the project is captured for the fetch URL, as before): a Back or Forward
+   during a load can change the SYNC filter before the load ends.
 4. **The one line of app.js state the SYNC code wrote** (`currentSync =
    "Show all"` after a failed load with no statuses) becomes
    `handleSyncLoadEnd` in app.js: `if (!syncStatusesLoaded()) currentSync =
@@ -52,8 +53,9 @@ rendering into `public/app-render.js` and the SYNC code into
    covers `findRootBranches`, `calculateTotalPullRequests`,
    `calculateDescendants`, `renderRepositories` (structure and counters,
    nesting and order, status classes, issues, participants, commit badges and
-   alerts, the data attributes the popovers and the SYNC badges read, the two
-   fixture projects) and `renderOrphanedIssues`. The SYNC module is DOM code
+   alerts, review states and resolved issues, the Rovo Dev exclusion, a slash
+   in a root branch, a missing commit, the data attributes the popovers and
+   the SYNC badges read, the two fixture projects) and `renderOrphanedIssues`. The SYNC module is DOM code
    and stays without unit tests, like the filter pass.
 8. **No version bump, no changelog entry.** Nothing changes for the user.
 
@@ -70,16 +72,16 @@ rendering into `public/app-render.js` and the SYNC code into
 | File | Lines | Content |
 |---|---|---|
 | `public/app.js` | 627 | state, filters, URL and history, project loading, render orchestration, periodic refresh, filter controls, wiring |
-| `public/app-render.js` | 457 | `renderRepositories` and its helpers, `renderOrphanedIssues`, `initializePopovers` |
-| `public/app-sync.js` | 174 | the SYNC state, `initializeSyncControls`, `loadSyncStatuses`, `applySyncStatuses`, `updateSyncControls`, `syncStatusesLoaded`, `resetSyncStatuses` |
+| `public/app-render.js` | 469 | `renderRepositories` and its helpers, `renderOrphanedIssues`, `initializePopovers` |
+| `public/app-sync.js` | 175 | the SYNC state, `initializeSyncControls`, `loadSyncStatuses`, `applySyncStatuses`, `updateSyncControls`, `syncStatusesLoaded`, `resetSyncStatuses` |
 | `public/app-shell.js` | +21 | `fetchAndDisplayVersion`, called by `initializeAppShell` |
 
 ## 5. Verification
 
-`npm test`: 68 tests, 10 of them new. Old/new HTML comparison on the fixture
+`npm test`: 69 tests, 11 of them new. Old/new HTML comparison on the fixture
 data (one-off script, not committed). In the browser on the fixture server
-(port 3101): SECOLLAB renders 112 pull requests in 3 repositories with 13
-orphaned issues; the version badge and its tooltip; the SYNC load paints the
+(port 3101): SECOLLAB renders 112 pull requests in the 3 repositories that have
+some (4 are configured) and 13 orphaned issues; the version badge and its tooltip; the SYNC load paints the
 badges, the SYNC filter restricts the tree and reaches the URL; a failed
 refresh keeps the previous statuses and the selection and shows the warning; a
 project switch resets the SYNC controls; a failed first load leaves the filter

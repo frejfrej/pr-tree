@@ -13,6 +13,11 @@
  * unit-tested with node:test.
  */
 
+/**
+ * The tree as an HTML string: one block per repository, its root branches and
+ * the pull requests nested under their parents, most recently updated first.
+ * Ends with the hidden no-match message the filter pass shows when needed.
+ */
 export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName) {
     // Group pull requests by repository
     const pullRequestsByRepo = pullRequests.reduce((acc, pr) => {
@@ -58,13 +63,14 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
     return html;
 }
 
+/** The destination branches that are no pull request's source: the roots of the tree */
 export function findRootBranches(pullRequests) {
     const destinationBranches = new Set(pullRequests.map(pullRequest => pullRequest.destination.branch.name));
     const sourceBranches = new Set(pullRequests.map(pullRequest => pullRequest.source.branch.name));
     return Array.from(destinationBranches).filter(branch => !sourceBranches.has(branch));
 }
 
-// Function to calculate total pull requests in a branch including all descendants
+/** Total pull requests in a branch including all descendants */
 export function calculateTotalPullRequests(pullRequests, pullRequestsByDestination) {
     let total = pullRequests.length;
     for (const pullRequest of pullRequests) {
@@ -134,6 +140,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
     return html;
 }
 
+/** How many pull requests are stacked, at any depth, on the given one */
 export function calculateDescendants(pullRequest, pullRequestsByDestination) {
     let count = 0;
     const sourceBranch = pullRequest.source.branch.name;
@@ -329,6 +336,7 @@ function renderParticipant(participant, status) {
     `;
 }
 
+/** The section of issues in review without a pull request; an empty string without issues */
 export function renderOrphanedIssues(issues) {
     if (!issues || issues.length === 0) {
         return '';
@@ -375,6 +383,11 @@ export function renderOrphanedIssues(issues) {
     `;
 }
 
+/**
+ * Hover popovers of the pull-request links (rendered title and description)
+ * and of the issue links (key and summary), read from the data attributes
+ * renderPullRequest writes.
+ */
 export function initializePopovers() {
     let popoverTimeout;
     let currentLink = null;

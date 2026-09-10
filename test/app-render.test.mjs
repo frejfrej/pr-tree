@@ -12,6 +12,8 @@ function count(html, needle) {
 
 const author = { account_id: 'author-id', uuid: 'author-uuid', display_name: 'Author', links: { avatar: { href: 'https://avatars/author.png' } } };
 const jane = { account_id: 'jane-id', uuid: 'jane-uuid', display_name: 'Jane', links: { avatar: { href: 'https://avatars/jane.png' } } };
+const bob = { account_id: 'bob-id', uuid: 'bob-uuid', display_name: 'Bob', links: { avatar: { href: 'https://avatars/bob.png' } } };
+const rovoDev = { account_id: 'rovo-id', uuid: 'rovo-uuid', display_name: 'Rovo Dev', links: { avatar: { href: 'https://avatars/rovo.png' } } };
 
 function pullRequest(id, { repo = 'repo-one', source, destination, participants = [], updated = '2026-09-01T10:00:00.000Z', ahead = 0, behind = null } = {}) {
     return {
@@ -51,9 +53,9 @@ function renderSample() {
     return renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, 'site');
 }
 
-// The opening tag of every pull request, by id: { '1': 'pull-request status-in-progress pull-request-root', ... }
+// The classes of every pull request element, by id: { '1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
 function pullRequestClasses(html) {
-    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request [^"]*)" data-id="(\d+)">/g), match => [match[2], match[1]]));
+    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="(\d+)">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
 }
 
 test('findRootBranches keeps the destination branches that are no pull request source', () => {
@@ -107,10 +109,39 @@ test('renderRepositories nests a stacked pull request under its parent, most rec
 
 test('renderRepositories derives the status class from the linked issues and the reviews', () => {
     const classes = pullRequestClasses(renderSample());
-    assert.equal(classes['1'], 'pull-request status-in-progress pull-request-root');
-    assert.equal(classes['2'], 'pull-request ');
-    assert.equal(classes['3'], 'pull-request status-in-review-all-approved pull-request-root');
-    assert.equal(classes['4'], 'pull-request  pull-request-root');
+    assert.deepEqual(classes['1'], ['pull-request', 'status-in-progress', 'pull-request-root']);
+    assert.deepEqual(classes['2'], ['pull-request']);
+    assert.deepEqual(classes['3'], ['pull-request', 'status-in-review-all-approved', 'pull-request-root']);
+    assert.deepEqual(classes['4'], ['pull-request', 'pull-request-root']);
+});
+
+test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion, a slash in a root branch, a missing commit', () => {
+    // PR 5: issues In Review and Resolved, Jane requested changes, Bob has not reviewed yet
+    const reviewed = pullRequest(5, { source: 'feat/e', destination: 'release/2026.09', participants: [{ user: jane, approved: false, state: 'changes_requested' }, { user: bob, approved: false, state: null }] });
+    // PR 6: issues Resolved and Closed, Rovo Dev is its only other participant, no destination commit
+    const resolved = pullRequest(6, { source: 'feat/f', destination: 'release/2026.09', participants: [{ user: rovoDev, approved: true, state: 'approved' }] });
+    resolved.destination.commit = undefined;
+    const byDest = new Map([['release/2026.09', [reviewed, resolved]]]);
+    const issuesMap = { '5': ['PROJ-5', 'PROJ-6'], '6': ['PROJ-7', 'PROJ-8'] };
+    const details = [
+        { key: 'PROJ-5', fields: { summary: 'Five', status: { name: 'In Review' }, priority: null } },
+        { key: 'PROJ-6', fields: { summary: 'Six', status: { name: 'Resolved' }, priority: null } },
+        { key: 'PROJ-7', fields: { summary: 'Seven', status: { name: 'Resolved' }, priority: null } },
+        { key: 'PROJ-8', fields: { summary: 'Eight', status: { name: 'Closed' }, priority: null } }
+    ];
+    const html = renderRepositories([reviewed, resolved], issuesMap, details, byDest, 'site');
+    const classes = pullRequestClasses(html);
+    assert.deepEqual(classes['5'], ['pull-request', 'status-in-review', 'pull-request-root']);
+    assert.deepEqual(classes['6'], ['pull-request', 'status-resolved', 'pull-request-root']);
+    assert.ok(html.includes('data-author="Jane" data-review-status="requestedChanges"'));
+    assert.ok(html.includes('data-author="Bob" data-review-status="toReview"'));
+    assert.ok(!html.includes('data-author="Rovo Dev"'));
+    // Both pull requests link issues with different statuses; only PR 6 lacks other participants (Rovo Dev does not count)
+    assert.equal(count(html, '<div class="warnings">'), 2);
+    assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses">'), 2);
+    assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants">'), 1);
+    assert.ok(html.includes('href="https://bitbucket.org/ws/repo-one/branch/release%2F2026.09"'));
+    assert.ok(html.includes('data-spec="undefined..s6"'));
 });
 
 test('renderRepositories renders the issues, participants, commit badges and alerts of a pull request', () => {

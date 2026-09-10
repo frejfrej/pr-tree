@@ -31,13 +31,11 @@ let onLoadEnd = () => {};
  * @param {() => void} options.onFilterChange - called when the SYNC select changes
  * @param {() => void} options.onLoadEnd - called once a load ends, successful or not, so the filters use the new statuses
  */
-export function initializeSyncControls({ getProject: project, getSyncFilter: syncFilter, onFilterChange, onLoadEnd: loadEnd }) {
-    getProject = project;
-    getSyncFilter = syncFilter;
-    onLoadEnd = loadEnd;
+export function initializeSyncControls(options) {
+    ({ getProject, getSyncFilter, onLoadEnd } = options);
     const syncSelect = document.getElementById('syncSelect');
     if (syncSelect) {
-        syncSelect.addEventListener('change', onFilterChange);
+        syncSelect.addEventListener('change', options.onFilterChange);
     }
     const loadSyncButton = document.getElementById('loadSyncButton');
     if (loadSyncButton) {
@@ -51,16 +49,20 @@ export function syncStatusesLoaded() {
     return Boolean(currentSyncStatuses);
 }
 
-// Forgets the loaded statuses and a failed load: they belong to the project
-// being left. The caller refreshes the controls once the project changed.
+/**
+ * Forgets the loaded statuses and a failed load: they belong to the project
+ * being left. The caller refreshes the controls once the project changed.
+ */
 export function resetSyncStatuses() {
     currentSyncStatuses = null;
     syncLoadFailed = false;
 }
 
-// Fetches the SYNC status of every pull request of the current project in a
-// single server call. Only triggered by the load button, never automatically.
-export async function loadSyncStatuses() {
+/**
+ * Fetches the SYNC status of every pull request of the current project in a
+ * single server call. Only triggered by the load button, never automatically.
+ */
+async function loadSyncStatuses() {
     const project = getProject();
     if (!project || syncStatusLoading) {
         return;
@@ -94,7 +96,7 @@ export async function loadSyncStatuses() {
     onLoadEnd();
 }
 
-// Renders the stored SYNC statuses onto the conflicts counters
+/** Renders the stored SYNC statuses onto the conflicts counters */
 export function applySyncStatuses() {
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
         const { repoName, spec } = counter.dataset;
@@ -125,7 +127,7 @@ export function applySyncStatuses() {
     });
 }
 
-// Shows the load state on the SYNC select, the load button and the warning icon
+/** Shows the load state on the SYNC select, the load button and the warning icon */
 export function updateSyncControls() {
     const syncSelect = document.getElementById('syncSelect');
     const loadSyncButton = document.getElementById('loadSyncButton');

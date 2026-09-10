@@ -144,7 +144,7 @@ pr-tree/
 - Owns the SYNC state: `currentSyncStatuses` (the last `/api/sync-statuses` response, null until loaded and again after a project switch), `syncStatusLoading`, `syncLoadFailed`; never imports app.js
 - `initializeSyncControls({ getProject, getSyncFilter, onFilterChange, onLoadEnd })`: wires the SYNC select and the load button; the accessors read the selected project and SYNC filter from app.js at call time, `onLoadEnd` runs after every load, successful or not
 - `loadSyncStatuses()`: the load button handler, one `/api/sync-statuses/:project` call with spinners on the badges meanwhile; never called automatically
-- `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements (SYNC badge, `?` for unknown or error, `!` for an invalid spec); called after every render, before the filters
+- `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements (SYNC badge, `?` for unknown or error, `!` for an invalid spec); called after every render (before the filters run) and after every load
 - `updateSyncControls()`: the select (disabled until loaded, options rebuilt, selection put back from `getSyncFilter()`), the load button and the failure/rate-limit warning
 - `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses on a project switch
 
