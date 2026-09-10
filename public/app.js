@@ -1,5 +1,6 @@
 import { initializeFilter, filterBranches, countActiveFilters, issueOptions } from './app-filter.js';
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
+import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
@@ -18,11 +19,6 @@ let currentReadyForReviewer = false;
 let currentReadyForAssignee = false;
 let currentApiResult = null;
 let reloadInterval = 100;
-// SYNC statuses are only fetched when the user clicks the load button; the
-// last response is kept so it can be re-applied after automatic re-renders
-let currentSyncStatuses = null;
-let syncStatusLoading = false;
-let syncLoadFailed = false;
 
 // Multi-select filters, in sidebar order
 const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect'];
@@ -127,7 +123,7 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
 
     const syncSelect = document.getElementById('syncSelect');
     const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === filters.sync);
-    currentSync = (currentSyncStatuses && syncOffered) ? filters.sync : 'Show all';
+    currentSync = (syncStatusesLoaded() && syncOffered) ? filters.sync : 'Show all';
     if (syncSelect) syncSelect.value = currentSync;
 
     currentReadyForReviewer = filters.readyReviewer;
@@ -142,18 +138,6 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
         textFilter.value = currentText;
     }
     updateTextFilterClearButton();
-}
-
-function initializeSyncControls() {
-    const syncSelect = document.getElementById('syncSelect');
-    if (syncSelect) {
-        syncSelect.addEventListener('change', handleFilterChange);
-    }
-    const loadSyncButton = document.getElementById('loadSyncButton');
-    if (loadSyncButton) {
-        loadSyncButton.addEventListener('click', loadSyncStatuses);
-    }
-    updateSyncControls();
 }
 
 function initializeReadyFilters() {
@@ -217,8 +201,7 @@ function projectFromUrl() {
 // `preferTypedText` reaches restoreFiltersFromUrl: Back and Forward pass false so the URL wins over a focused search box.
 async function selectProject(projectName, { fromUrl = false, preferTypedText = true } = {}) {
     // The SYNC statuses belong to the project being left
-    currentSyncStatuses = null;
-    syncLoadFailed = false;
+    resetSyncStatuses();
     // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
     currentApiResult = null;
     currentProject = projectName || null;
@@ -337,6 +320,14 @@ function handleTextFilterInput() {
     readFilterControls();
     applyFilters();
     updateUrlWithFilters({ replace: true });
+}
+
+// After a SYNC load, successful or not: the SYNC filter is only meaningful
+// while statuses are loaded (a first load may have failed), and the filters
+// run again so a selected SYNC filter uses the new statuses
+function handleSyncLoadEnd() {
+    if (!syncStatusesLoaded()) currentSync = 'Show all';
+    applyFilters();
 }
 
 function updateTextFilterClearButton() {
@@ -607,138 +598,6 @@ function populateIssueFilter(elementId, issues) {
     if (multiSelect) multiSelect.setOptions(issueOptions(issues.values()));
 }
 
-// Fetches the SYNC status of every pull request of the current project in a
-// single server call. Only triggered by the load button, never automatically.
-async function loadSyncStatuses() {
-    if (!currentProject || syncStatusLoading) {
-        return;
-    }
-
-    syncStatusLoading = true;
-    updateSyncControls();
-    document.querySelectorAll('.conflicts-counter').forEach(counter => {
-        if (!counter.dataset.spec.includes('undefined')) {
-            counter.innerHTML = '<div class="conflicts-spinner"></div>';
-        }
-    });
-
-    try {
-        const response = await fetch(`/api/sync-statuses/${encodeURIComponent(currentProject)}`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        currentSyncStatuses = await response.json();
-        syncLoadFailed = false;
-    } catch (error) {
-        console.error('Error fetching sync statuses:', error);
-        syncLoadFailed = true;
-        if (!currentSyncStatuses) {
-            currentSync = "Show all";
-        }
-    } finally {
-        syncStatusLoading = false;
-    }
-
-    updateSyncControls();
-    applySyncStatuses();
-    // Re-apply filters so an already selected SYNC filter uses the new statuses
-    applyFilters();
-}
-
-// Renders the stored SYNC statuses onto the conflicts counters
-function applySyncStatuses() {
-    document.querySelectorAll('.conflicts-counter').forEach(counter => {
-        const { repoName, spec } = counter.dataset;
-        if (spec.includes('undefined')) {
-            counter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
-            return;
-        }
-        if (!currentSyncStatuses) {
-            counter.innerHTML = '';
-            return;
-        }
-
-        const status = currentSyncStatuses.statuses[`${repoName}/${spec}`];
-        if (!status) {
-            counter.innerHTML = '<div class="conflicts-error" title="SYNC status unknown - use the SYNC load button to refresh">?</div>';
-        } else if (status.error) {
-            counter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
-        } else if (status.conflicts) {
-            counter.innerHTML = `
-                <div class="conflicts-count" title="Conflicts found">
-                    SYNC
-                </div>
-            `;
-        } else {
-            // display nothing if there are no conflicts
-            counter.innerHTML = ``;
-        }
-    });
-}
-
-function updateSyncControls() {
-    const syncSelect = document.getElementById('syncSelect');
-    const loadSyncButton = document.getElementById('loadSyncButton');
-    const syncWarning = document.getElementById('syncWarning');
-    if (!syncSelect || !loadSyncButton) return;
-
-    const buttonIcon = loadSyncButton.querySelector('i');
-    if (syncStatusLoading) {
-        loadSyncButton.disabled = true;
-        if (buttonIcon) buttonIcon.classList.add('fa-spin');
-        syncSelect.disabled = true;
-        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
-    } else {
-        loadSyncButton.disabled = !currentProject;
-        if (buttonIcon) buttonIcon.classList.remove('fa-spin');
-        if (currentSyncStatuses) {
-            syncSelect.disabled = false;
-            syncSelect.innerHTML = `
-                <option value="Show all">Show all</option>
-                <option value="requested">SYNC required</option>
-                <option value="OK">SYNC ok</option>
-            `;
-            syncSelect.value = currentSync;
-        } else {
-            syncSelect.disabled = true;
-            syncSelect.innerHTML = '<option value="Show all">SYNC status not loaded</option>';
-        }
-    }
-
-    if (syncWarning) {
-        let warningText = '';
-        if (!syncStatusLoading && syncLoadFailed) {
-            warningText = currentSyncStatuses
-                ? 'Failed to refresh SYNC status - showing previously loaded results'
-                : 'Failed to load SYNC status - use the load button to try again';
-        } else if (!syncStatusLoading && currentSyncStatuses && currentSyncStatuses.rateLimited) {
-            const until = currentSyncStatuses.rateLimitedUntil
-                ? new Date(currentSyncStatuses.rateLimitedUntil).toLocaleTimeString()
-                : '';
-            warningText = `Atlassian rate limit reached - SYNC status may be incomplete${until ? `, requests are paused until ${until}` : ''}`;
-        }
-        syncWarning.hidden = !warningText;
-        syncWarning.title = warningText;
-    }
-}
-
-async function fetchAndDisplayVersion() {
-    try {
-        const response = await fetch('/api/version');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        const versionElement = document.getElementById('versionNumber');
-        if (versionElement) {
-            versionElement.textContent = `v${data.version}`;
-            versionElement.title = `Version ${data.version}, released ${data.releaseDate}\nCreated by ${data.author}\n${data.license}`;
-        }
-    } catch (error) {
-        console.error('Error fetching version:', error);
-    }
-}
-
 // Initialize multi-select components
 function initializeMultiSelects() {
     multiSelectIds.forEach(id => createMultiSelect(id, { onChange: handleFilterChange }));
@@ -751,10 +610,14 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeTextFilter();
     showEmptyState();
     loadProjects();
-    fetchAndDisplayVersion();
     initializePopovers();
     initializeReadyFilters();
-    initializeSyncControls();
+    initializeSyncControls({
+        getProject: () => currentProject,
+        getSyncFilter: () => currentSync,
+        onFilterChange: handleFilterChange,
+        onLoadEnd: handleSyncLoadEnd
+    });
     window.addEventListener('popstate', handlePopState);
 });
 

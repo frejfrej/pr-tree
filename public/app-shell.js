@@ -1,6 +1,7 @@
 /**
- * Application shell: banner, sidebar visibility, help modal, keyboard
- * shortcuts and document title. Knows nothing about pull requests.
+ * Application shell: banner and version badge, sidebar visibility, help
+ * modal, keyboard shortcuts and document title. Knows nothing about pull
+ * requests.
  *
  * Nothing here touches the DOM at import time, so the pure helpers can be
  * unit-tested with node:test.
@@ -133,6 +134,25 @@ function initializeTheme() {
             applyTheme(event.matches ? 'dark' : 'light');
         }
     });
+}
+
+// ------------------------------------------------------------------ version
+
+async function fetchAndDisplayVersion() {
+    try {
+        const response = await fetch('/api/version');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        const versionElement = document.getElementById('versionNumber');
+        if (versionElement) {
+            versionElement.textContent = `v${data.version}`;
+            versionElement.title = `Version ${data.version}, released ${data.releaseDate}\nCreated by ${data.author}\n${data.license}`;
+        }
+    } catch (error) {
+        console.error('Error fetching version:', error);
+    }
 }
 
 // -------------------------------------------------------------- help modal
@@ -271,4 +291,5 @@ export function initializeAppShell({ onClearFilters }) {
     initializeToolbar();
     document.getElementById('clearFiltersButton').addEventListener('click', onClearFilters);
     document.addEventListener('keydown', handleKeydown, true);
+    fetchAndDisplayVersion();
 }

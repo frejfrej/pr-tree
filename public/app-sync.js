@@ -1,0 +1,173 @@
+/**
+ * SYNC status of the pull requests: whether a pull request conflicts with its
+ * destination branch. The statuses are fetched on demand with the button next
+ * to the SYNC filter, never automatically (the server computes them, which is
+ * expensive); they are painted onto the conflicts counters of the rendered
+ * tree and kept, so an automatic re-render repaints them without a new fetch.
+ * The SYNC filter (app-filter.js) relies on the painted badges.
+ *
+ * The module owns the loaded statuses and the SYNC controls. The selected
+ * project and the selected SYNC filter belong to app.js and are read through
+ * the accessors given to initializeSyncControls.
+ *
+ * Nothing here touches the DOM at import time.
+ */
+
+// The last /api/sync-statuses response: null until the user loads it, and again after a project switch
+let currentSyncStatuses = null;
+let syncStatusLoading = false;
+let syncLoadFailed = false;
+
+// Given to initializeSyncControls
+let getProject = () => null;
+let getSyncFilter = () => 'Show all';
+let onLoadEnd = () => {};
+
+/**
+ * Wires the SYNC select and the load button, and shows the initial state.
+ * @param {object} options
+ * @param {() => (string|null)} options.getProject - the selected project; the load button is enabled while there is one
+ * @param {() => string} options.getSyncFilter - the selected SYNC filter, put back on the select when its options are rebuilt
+ * @param {() => void} options.onFilterChange - called when the SYNC select changes
+ * @param {() => void} options.onLoadEnd - called once a load ends, successful or not, so the filters use the new statuses
+ */
+export function initializeSyncControls({ getProject: project, getSyncFilter: syncFilter, onFilterChange, onLoadEnd: loadEnd }) {
+    getProject = project;
+    getSyncFilter = syncFilter;
+    onLoadEnd = loadEnd;
+    const syncSelect = document.getElementById('syncSelect');
+    if (syncSelect) {
+        syncSelect.addEventListener('change', onFilterChange);
+    }
+    const loadSyncButton = document.getElementById('loadSyncButton');
+    if (loadSyncButton) {
+        loadSyncButton.addEventListener('click', loadSyncStatuses);
+    }
+    updateSyncControls();
+}
+
+/** Whether statuses are loaded; the SYNC filter is only meaningful then */
+export function syncStatusesLoaded() {
+    return Boolean(currentSyncStatuses);
+}
+
+// Forgets the loaded statuses and a failed load: they belong to the project
+// being left. The caller refreshes the controls once the project changed.
+export function resetSyncStatuses() {
+    currentSyncStatuses = null;
+    syncLoadFailed = false;
+}
+
+// Fetches the SYNC status of every pull request of the current project in a
+// single server call. Only triggered by the load button, never automatically.
+export async function loadSyncStatuses() {
+    const project = getProject();
+    if (!project || syncStatusLoading) {
+        return;
+    }
+
+    syncStatusLoading = true;
+    updateSyncControls();
+    document.querySelectorAll('.conflicts-counter').forEach(counter => {
+        if (!counter.dataset.spec.includes('undefined')) {
+            counter.innerHTML = '<div class="conflicts-spinner"></div>';
+        }
+    });
+
+    try {
+        const response = await fetch(`/api/sync-statuses/${encodeURIComponent(project)}`);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        currentSyncStatuses = await response.json();
+        syncLoadFailed = false;
+    } catch (error) {
+        console.error('Error fetching sync statuses:', error);
+        syncLoadFailed = true;
+    } finally {
+        syncStatusLoading = false;
+    }
+
+    updateSyncControls();
+    applySyncStatuses();
+    // The caller re-applies its filters, so an already selected SYNC filter uses the new statuses
+    onLoadEnd();
+}
+
+// Renders the stored SYNC statuses onto the conflicts counters
+export function applySyncStatuses() {
+    document.querySelectorAll('.conflicts-counter').forEach(counter => {
+        const { repoName, spec } = counter.dataset;
+        if (spec.includes('undefined')) {
+            counter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
+            return;
+        }
+        if (!currentSyncStatuses) {
+            counter.innerHTML = '';
+            return;
+        }
+
+        const status = currentSyncStatuses.statuses[`${repoName}/${spec}`];
+        if (!status) {
+            counter.innerHTML = '<div class="conflicts-error" title="SYNC status unknown - use the SYNC load button to refresh">?</div>';
+        } else if (status.error) {
+            counter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
+        } else if (status.conflicts) {
+            counter.innerHTML = `
+                <div class="conflicts-count" title="Conflicts found">
+                    SYNC
+                </div>
+            `;
+        } else {
+            // display nothing if there are no conflicts
+            counter.innerHTML = ``;
+        }
+    });
+}
+
+// Shows the load state on the SYNC select, the load button and the warning icon
+export function updateSyncControls() {
+    const syncSelect = document.getElementById('syncSelect');
+    const loadSyncButton = document.getElementById('loadSyncButton');
+    const syncWarning = document.getElementById('syncWarning');
+    if (!syncSelect || !loadSyncButton) return;
+
+    const buttonIcon = loadSyncButton.querySelector('i');
+    if (syncStatusLoading) {
+        loadSyncButton.disabled = true;
+        if (buttonIcon) buttonIcon.classList.add('fa-spin');
+        syncSelect.disabled = true;
+        syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
+    } else {
+        loadSyncButton.disabled = !getProject();
+        if (buttonIcon) buttonIcon.classList.remove('fa-spin');
+        if (currentSyncStatuses) {
+            syncSelect.disabled = false;
+            syncSelect.innerHTML = `
+                <option value="Show all">Show all</option>
+                <option value="requested">SYNC required</option>
+                <option value="OK">SYNC ok</option>
+            `;
+            syncSelect.value = getSyncFilter();
+        } else {
+            syncSelect.disabled = true;
+            syncSelect.innerHTML = '<option value="Show all">SYNC status not loaded</option>';
+        }
+    }
+
+    if (syncWarning) {
+        let warningText = '';
+        if (!syncStatusLoading && syncLoadFailed) {
+            warningText = currentSyncStatuses
+                ? 'Failed to refresh SYNC status - showing previously loaded results'
+                : 'Failed to load SYNC status - use the load button to try again';
+        } else if (!syncStatusLoading && currentSyncStatuses && currentSyncStatuses.rateLimited) {
+            const until = currentSyncStatuses.rateLimitedUntil
+                ? new Date(currentSyncStatuses.rateLimitedUntil).toLocaleTimeString()
+                : '';
+            warningText = `Atlassian rate limit reached - SYNC status may be incomplete${until ? `, requests are paused until ${until}` : ''}`;
+        }
+        syncWarning.hidden = !warningText;
+        syncWarning.title = warningText;
+    }
+}
