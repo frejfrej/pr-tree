@@ -28,6 +28,7 @@ before(async () => {
             if (match) resolve(match[1]);
         });
         server.stderr.on('data', chunk => { output += chunk; });
+        server.on('error', reject);
         server.on('exit', code => reject(new Error(`server exited with code ${code}\n${output}`)));
         setTimeout(() => reject(new Error(`server did not start\n${output}`)), 10000).unref();
     });
@@ -45,8 +46,10 @@ test('README.md is served for the help modal', async () => {
 });
 
 test('no other file of the project directory is served', async () => {
+    // A literal `..` is normalised away by fetch itself, so only the encoded forms reach the server
     const files = ['config.js', 'config.js.default', 'index.mjs', 'cache.mjs', 'package.json',
-        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs'];
+        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs',
+        '..%2fconfig.js', 'README.md%2f..%2fconfig.js'];
     for (const file of files) {
         const response = await fetch(`${baseUrl}/${file}`);
         assert.equal(response.status, 404, `${file} must not be served`);
