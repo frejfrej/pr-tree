@@ -12,6 +12,9 @@
   "keywords": [],
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre",
+  "engines": {
+    "node": ">=20.11"
+  },
   "dependencies": {
     "express": "^5.2.1",
     "node-cache": "^5.1.2",

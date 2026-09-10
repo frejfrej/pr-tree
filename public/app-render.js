@@ -99,7 +99,6 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             rootPullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
             const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
 
-            // Get the branch URL using the first pull request's repository information
             const branchUrl = getBranchUrl(rootBranch, rootPullRequests[0]);
 
             html += `

@@ -110,7 +110,16 @@ async function atlassianFetch(url, options) {
         throw new RateLimitError();
     }
 
-    const response = await fetch(url, options);
+    let response;
+    try {
+        response = await fetch(url, options);
+    } catch (error) {
+        // The fetch built into Node reports a network failure as "fetch failed" and
+        // keeps the reason (DNS, TLS, refused connection) in error.cause; the callers
+        // log error.message only, so the reason and the URL go into the message
+        const reason = error.cause ? `: ${error.cause.message}` : '';
+        throw new Error(`${error.message}${reason} (${url})`, { cause: error });
+    }
     if (response.status === 429) {
         await response.arrayBuffer().catch(() => {}); // release the socket
         noteRateLimit(url);
@@ -651,8 +660,8 @@ async function fetchBitbucketJson(url) {
     return response.json();
 }
 
-// Serializes conflict computations: a page load requests conflicts for every PR
-// at once, and each computation makes many Bitbucket calls of its own.
+// Serializes conflict computations: one SYNC load asks for every pull request of
+// a project at once, and each computation makes many Bitbucket calls of its own.
 function createLimiter(maxConcurrent) {
     let active = 0;
     const queue = [];

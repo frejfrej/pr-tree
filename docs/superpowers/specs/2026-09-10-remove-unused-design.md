@@ -21,8 +21,13 @@ the dashboard, except that an endpoint the frontend never called disappears.
    ever loaded a `.env` file that nothing documents, for the single `PORT`
    variable, which `PORT=3100 node index.mjs` sets without it. The README
    states the requirement that replaces them: Node.js 20.11 or later (the
-   server test already uses `import.meta.dirname`). No `engines` field: the
-   README sentence is enough for a tool run from a checkout.
+   server test already uses `import.meta.dirname`). `package.json` declares
+   the requirement in its `engines` field too (added after the code review:
+   without it an older Node fails at the first request with `fetch is not
+   defined`). The built-in `fetch` reports a network failure as "fetch failed"
+   with the reason in `error.cause`; `atlassianFetch` rethrows with the reason
+   and the URL in the message, so `error.log` keeps saying why (found by the
+   code review).
 2. **The per-pull-request conflicts endpoint goes.** `GET
    /api/pull-request-conflicts/:repoName/:spec` has had no caller since the
    SYNC load moved to `/api/sync-statuses/:project` (2.1.0). The route and its
@@ -47,8 +52,10 @@ the dashboard, except that an endpoint the frontend never called disappears.
 5. **Repository files.** `config.js.default` loses `bitbucket.repoName` and
    `jira.issuesRegex` (unread since the project definitions moved to
    `projects.js`); `start.bat` (`node index.mjs`) goes, `npm start` does the
-   same on every platform. `fetchJiraSprints` loses the `jiraAuth` it
-   recomputed identically to the module-level one.
+   same on every platform. Its comments now describe the credentials Atlassian
+   accepts today (account e-mail and scoped API token for Bitbucket, API token
+   for Jira), a finding of the code review. `fetchJiraSprints` loses the
+   `jiraAuth` it recomputed identically to the module-level one.
 6. **Version 2.6.0:** a public endpoint is removed, so a minor bump rather than
    a patch; no feature.
 

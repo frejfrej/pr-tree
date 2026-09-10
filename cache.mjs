@@ -54,10 +54,11 @@ export async function getCachedProjectData(projectName, fetchProjectData) {
 }
 
 /**
- * Get conflicts data from cache or fetch from source
+ * Get the conflicts of one pull request from cache or compute them: the entry
+ * behind /api/sync-statuses/:project, called once per pull request
  * @param {string} repoName - Repository name
- * @param {string} spec - Specification string
- * @param {function} fetchConflicts - Function to fetch conflicts if cache miss
+ * @param {string} spec - Bitbucket diff spec, destHash..sourceHash
+ * @param {function} fetchConflicts - Function computing the conflicts on a cache miss
  * @returns {Promise<Object>} Conflicts data
  */
 export async function getCachedConflicts(repoName, spec, fetchConflicts) {

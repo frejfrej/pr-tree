@@ -74,6 +74,7 @@ pr-tree/
 **index.mjs** (506 lines)
 - Main Express application server
 - API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
+- The per-pull-request conflict computation (`computeConflicts`, `conflictsLimiter`, `getCachedConflicts`) survives only as an internal of `/api/sync-statuses/:project`
 - Bitbucket API integration (fetch PRs, commit diffs)
 - Jira API integration (fetch issues, sprints, orphaned issues)
 - `fetchJiraIssuesDetails()` fetches the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
@@ -341,15 +342,15 @@ Never re-select descendants (`querySelectorAll('.pull-request')`) inside the rec
 2. Run `npm ci` (not `npm install` - uses package-lock.json exactly)
 3. Copy `config.js.default` to `config.js`
 4. Fill in Bitbucket credentials:
-   - Username (e.g., `username_workspace`)
-   - App Password (create at https://bitbucket.org/account/settings/app-passwords/)
+   - Username: the e-mail of the Atlassian account (the Bitbucket username is rejected with an API token)
+   - Password: an API token with scopes (https://id.atlassian.com/manage-profile/security/api-tokens, "Create API token with scopes", app Bitbucket, scopes `read:repository:bitbucket` and `read:pullrequest:bitbucket`); app passwords were removed by Atlassian in July 2026
    - Workspace slug
 5. Fill in Jira credentials:
    - Site name (subdomain of atlassian.net)
    - Username (email)
-   - API token (create at https://id.atlassian.com/manage-profile/security/api-tokens)
+   - API token without scopes, from the same page (a Bitbucket-scoped token is rejected by Jira)
 6. Update `projects.js` with your projects
-7. Run `node index.mjs`
+7. Run `npm start`
 8. Navigate to http://localhost:3000
 
 ### Running Without Atlassian Access (Fixture Mode)
@@ -564,7 +565,7 @@ Version information stored in package.json:
   - Endpoints: board, sprint
 
 ### Authentication
-- Bitbucket: Basic Auth with username and app password
+- Bitbucket: Basic Auth with the account e-mail and a scoped API token
 - Jira: Basic Auth with email and API token
 - Tokens stored in config.js (Base64 encoded in headers)
 

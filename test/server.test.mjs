@@ -66,9 +66,11 @@ test('the app and the API still answer', async () => {
 });
 
 test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoint stays', async () => {
-    const conflicts = await fetch(`${baseUrl}/api/pull-request-conflicts/products.secollab/abc..def`);
+    const conflicts = await fetch(`${baseUrl}/api/pull-request-conflicts/some-repository/abc..def`);
     assert.equal(conflicts.status, 404);
-    const statuses = await fetch(`${baseUrl}/api/sync-statuses/OSLC`);
+    // The projects come from projects.js, which users replace with their own
+    const [project] = await (await fetch(`${baseUrl}/api/projects`)).json();
+    const statuses = await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`);
     assert.equal(statuses.status, 200);
     assert.equal(typeof (await statuses.json()).statuses, 'object');
 });
