@@ -61,6 +61,8 @@ export function resetSyncStatuses() {
 /**
  * Fetches the SYNC status of every pull request of the current project in a
  * single server call. Only triggered by the load button, never automatically.
+ * The response of a project no longer selected when it arrives is dropped,
+ * and so is its failure: the statuses belong to the project left.
  */
 async function loadSyncStatuses() {
     const project = getProject();
@@ -76,18 +78,22 @@ async function loadSyncStatuses() {
         }
     });
 
+    let statuses = null;
     try {
         const response = await fetch(`/api/sync-statuses/${encodeURIComponent(project)}`);
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
-        currentSyncStatuses = await response.json();
-        syncLoadFailed = false;
+        statuses = await response.json();
     } catch (error) {
         console.error('Error fetching sync statuses:', error);
-        syncLoadFailed = true;
     } finally {
         syncStatusLoading = false;
+    }
+    if (getProject() === project) {
+        // A failed refresh keeps the previously loaded statuses
+        if (statuses) currentSyncStatuses = statuses;
+        syncLoadFailed = !statuses;
     }
 
     updateSyncControls();

@@ -1,7 +1,7 @@
 /**
- * The filters as URL parameters: what the address bar shows, what a shared
- * link carries and what Back and Forward put back. Pure: nothing here reads
- * the page. Multi-selects use repeated parameters (?assignee=A&assignee=B).
+ * The project and the filters as URL parameters: what the address bar shows,
+ * what a shared link carries and what Back and Forward put back. Pure: nothing
+ * here reads the page. Multi-selects use repeated parameters (?assignee=A&assignee=B).
  */
 
 // Parameters written by the filters. 'ready' is the former name of
@@ -27,6 +27,19 @@ export function filtersFromUrl(search) {
         readyReviewer: params.get('readyReviewer') === 'true' || params.get('ready') === 'true',
         readyAssignee: params.get('readyAssignee') === 'true'
     };
+}
+
+/**
+ * The project a query string names, when it is one of the given ones (the
+ * projects the dropdown offers); null otherwise, so a stale link and an empty
+ * name open no project.
+ * @param {string} search - window.location.search, with or without the leading "?"
+ * @param {string[]} projects - the project names offered
+ * @returns {string | null}
+ */
+export function projectFromUrl(search, projects) {
+    const project = new URLSearchParams(search).get('project');
+    return project && projects.includes(project) ? project : null;
 }
 
 /**

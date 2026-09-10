@@ -4,8 +4,10 @@ import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, applySyn
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
-import { filtersFromUrl, urlWithFilters } from './app-url.js';
+import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
 
+// The projects the dropdown offers, from /api/projects
+let availableProjects = [];
 let currentProject = null;
 let currentText = '';
 let currentSprints = [];
@@ -66,6 +68,14 @@ function resetFilterControls() {
     });
     const syncSelect = document.getElementById('syncSelect');
     if (syncSelect) syncSelect.value = 'Show all';
+}
+
+// Empties the option lists of the multi-selects, as before the first load
+function clearFilterOptions() {
+    multiSelectIds.forEach(id => {
+        const multiSelect = getMultiSelect(id);
+        if (multiSelect) multiSelect.setOptions([]);
+    });
 }
 
 // Resets every filter and applies the result once.
@@ -170,14 +180,14 @@ function updateReadyCheckboxes() {
 async function loadProjects() {
     try {
         const response = await fetch('/api/projects');
-        const projects = await response.json();
+        availableProjects = await response.json();
         const projectSelect = document.getElementById('projectSelect');
         projectSelect.innerHTML = '<option value="">Select a project</option>' +
-            projects.map(project => `<option value="${project}">${project}</option>`).join('');
+            availableProjects.map(project => `<option value="${project}">${project}</option>`).join('');
         projectSelect.addEventListener('change', event => selectProject(event.target.value));
 
         // Open the project the URL names, with the filters it carries
-        const projectName = projectFromUrl();
+        const projectName = projectFromUrl(window.location.search, availableProjects);
         if (projectName) {
             projectSelect.value = projectName;
             await selectProject(projectName, { fromUrl: true });
@@ -187,19 +197,15 @@ async function loadProjects() {
     }
 }
 
-// The project the URL names, when the dropdown offers it; '' otherwise
-function projectFromUrl() {
-    const projectName = new URLSearchParams(window.location.search).get('project') || '';
-    const options = Array.from(document.getElementById('projectSelect').options);
-    return options.some(option => option.value === projectName) ? projectName : '';
-}
-
 // Switches to a project, or to none with an empty name. From the dropdown the
 // filters start empty and the switch gets one history entry. From the URL
 // (page load, Back and Forward) the URL already describes the state to reach
-// and is left alone: the render restores the filters it carries.
-// `preferTypedText` reaches restoreFiltersFromUrl: Back and Forward pass false so the URL wins over a focused search box.
-async function selectProject(projectName, { fromUrl = false, preferTypedText = true } = {}) {
+// and is left alone: the render restores the filters it carries, and the URL
+// wins over a focused search box (see restoreFiltersFromUrl). Without a
+// project the page is back to its initial state: the filter options and
+// selections are cleared whatever the URL says, there is nothing to restore
+// them against.
+async function selectProject(projectName, { fromUrl = false } = {}) {
     // The SYNC statuses belong to the project being left
     resetSyncStatuses();
     // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
@@ -210,11 +216,14 @@ async function selectProject(projectName, { fromUrl = false, preferTypedText = t
     closeSidebarDrawer();
 
     if (!currentProject) {
+        resetFilterControls();
+        clearFilterOptions();
+        readFilterControls();
         if (!fromUrl) updateUrlWithFilters();
         setToolbarVisible(false);
-        applyFilters(); // no tree to filter: refreshes the badge and the tab title
-        showEmptyState();
         stopPeriodicChecking();
+        showEmptyState();
+        applyFilters(); // no tree to filter: refreshes the badge and the tab title
         return;
     }
 
@@ -224,31 +233,33 @@ async function selectProject(projectName, { fromUrl = false, preferTypedText = t
         updateUrlWithFilters();
     }
     showLoadingState();
-    const apiResult = await fetchData();
+    const apiResult = await fetchData(projectName);
     // Back and Forward make quick switches easy: a late response for a project no longer selected is dropped
     if (currentProject !== projectName) return;
-    renderEverything(apiResult, { preferTypedText });
+    renderEverything(apiResult, { preferTypedText: !fromUrl });
     // The address bar catches up with the filters the render validated, without a new entry
     if (apiResult) updateUrlWithFilters({ replace: true });
     startPeriodicChecking();
 }
 
 // Back and Forward: the page follows the URL, never the other way round.
-// Another project: switch to it, the render restores the filters of that
-// URL. Same project: the filters are restored from the URL and applied.
-// Nothing here pushes a history entry. Browsers no longer fire popstate on
-// page load.
+// Another project (or none): switch to it, the render restores the filters
+// of that URL. Same project: the filters are restored from the URL and
+// applied, then the URL is replaced with what was kept, as after a render (a
+// value the options no longer offer since a refresh is dropped). Nothing here
+// pushes a history entry. Browsers no longer fire popstate on page load.
 function handlePopState() {
-    const projectName = projectFromUrl();
-    if (projectName !== (currentProject || '')) {
-        document.getElementById('projectSelect').value = projectName;
-        selectProject(projectName, { fromUrl: true, preferTypedText: false });
+    const projectName = projectFromUrl(window.location.search, availableProjects);
+    if (projectName !== currentProject) {
+        document.getElementById('projectSelect').value = projectName || '';
+        selectProject(projectName, { fromUrl: true });
         return;
     }
     // Nothing rendered (loading, or the last load failed): the next render restores from the URL
     if (!currentApiResult) return;
     restoreFiltersFromUrl({ preferTypedText: false });
     applyFilters();
+    updateUrlWithFilters({ replace: true });
 }
 
 // Messages shown in the main pane instead of the tree. Built with DOM nodes so
@@ -469,9 +480,9 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     }
 }
 
-async function fetchData() {
+async function fetchData(project) {
     try {
-        const response = await fetch(`/api/pull-requests/${encodeURIComponent(currentProject)}`);
+        const response = await fetch(`/api/pull-requests/${encodeURIComponent(project)}`);
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
@@ -483,7 +494,8 @@ async function fetchData() {
 }
 
 async function checkForUpdates() {
-    if (!currentProject) {
+    const project = currentProject;
+    if (!project) {
         return;
     }
     try {
@@ -496,8 +508,9 @@ async function checkForUpdates() {
             refreshIcon.classList.add('checking');
         }
 
-        const newData = await fetchData();
-        if (!newData) return;
+        const newData = await fetchData(project);
+        // A project switched to during the check has its own load: the late response of the project left is dropped
+        if (currentProject !== project || !newData) return;
 
         // Always update the refresh time
         const lastRefreshElement = document.getElementById('lastRefreshTime');
