@@ -81,7 +81,7 @@ the dashboard, except that an endpoint the frontend never called disappears.
 
 | File | Change |
 |---|---|
-| `package.json`, `package-lock.json` (CRLF) | `fetch`, `node-fetch`, `dotenv` removed (`npm uninstall`), version 2.6.0 |
+| `package.json`, `package-lock.json` (CRLF) | `fetch`, `node-fetch`, `dotenv` removed (`npm uninstall`), version 2.6.0, `engines` |
 | `index.mjs` (CRLF) | the two imports and `dotenv.config()`, the conflicts route, the `getCachedSprints` import, the local `jiraAuth` |
 | `cache.mjs` (CRLF) | `CACHE_KEYS.SPRINTS`, `getCachedSprints`, `clearCache`, `clearAllCache` |
 | `public/multi-select.js` (CRLF) | `getOptions`, `setDisabled`, the `disabled` guard of `toggle` |
@@ -96,7 +96,7 @@ the dashboard, except that an endpoint the frontend never called disappears.
 
 `npm test` (77 tests). `npm ls --depth=0` lists three dependencies. On the
 fixture server (`PORT=3101 node index.mjs --fixtures`): the conflicts route
-answers 404, `/api/sync-statuses/OSLC` answers 200, the page loads and the
+answers 404, the sync-statuses route of the first project answers 200, the page loads and the
 multi-selects open. One real request through the built-in `fetch`: a second
 instance started with the real `config.js` on a spare port answers
 `/api/pull-requests/OSLC` (the smaller project, the same calls the dashboard

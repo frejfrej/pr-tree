@@ -117,7 +117,9 @@ async function atlassianFetch(url, options) {
         // The fetch built into Node reports a network failure as "fetch failed" and
         // keeps the reason (DNS, TLS, refused connection) in error.cause; the callers
         // log error.message only, so the reason and the URL go into the message
-        const reason = error.cause ? `: ${error.cause.message}` : '';
+        // A refused or reset connection on a dual-stack host comes as an AggregateError with an empty message
+        const detail = error.cause && (error.cause.message || error.cause.code);
+        const reason = detail ? `: ${detail}` : '';
         throw new Error(`${error.message}${reason} (${url})`, { cause: error });
     }
     if (response.status === 429) {

@@ -70,6 +70,7 @@ test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoin
     assert.equal(conflicts.status, 404);
     // The projects come from projects.js, which users replace with their own
     const [project] = await (await fetch(`${baseUrl}/api/projects`)).json();
+    assert.ok(project, 'no project configured');
     const statuses = await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`);
     assert.equal(statuses.status, 200);
     assert.equal(typeof (await statuses.json()).statuses, 'object');

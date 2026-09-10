@@ -390,7 +390,7 @@ with
 4. In the `**index.mjs**` bullets, replace `- API endpoint definitions (`/api/projects`, `/api/pull-requests/:project`, `/api/pull-request-conflicts/:repoName/:spec`)` with `- API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)`.
 5. In the `**cache.mjs**` bullets, delete the line `  - Sprints: 600 seconds (10 minutes)` and add after the TTL list: `- The sprints are fetched with the project data and cached with it (no separate cache)`.
 6. In "API Endpoints", delete the whole `### GET /api/pull-request-conflicts/:repoName/:spec` section (heading, parameters, response, up to the line before `### GET /api/sync-statuses/:project`).
-7. In "Initial Setup", step 7 `Run \`node index.mjs\`` stays; in "Development Workflows" nothing else mentions the removed items.
+7. In "Initial Setup", step 7 `Run \`node index.mjs\`` stays (the review round then changed it to `npm start`); in "Development Workflows" nothing else mentions the removed items.
 
 - [ ] **Step 4: PRD.md**
 
