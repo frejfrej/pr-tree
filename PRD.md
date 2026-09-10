@@ -182,6 +182,7 @@ The application integrates with a Jira workflow where:
 - F4.11: Filter by epic (the epic above the linked issues, through the parent story for sub-tasks)
 - F4.12: Filter by story (the linked issue, or the parent of a linked sub-task)
 - F4.13: Filter by "ready for assignee" status: In Progress pull requests with a linked issue assigned to a selected assignee; with both ready filters checked, pull requests needing either attention are kept
+- F4.14: Hide the repositories and branches left without a matching pull request; show a message when no pull request matches
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
