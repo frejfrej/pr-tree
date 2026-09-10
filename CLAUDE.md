@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.5.0** (as of 2026-09-10)
+Current version: **2.5.1** (as of 2026-09-10)
 
 ## Technology Stack
 
@@ -61,7 +61,7 @@ pr-tree/
     ├── app-render.js      # The tree and the orphaned issues as HTML strings (pure), popovers
     ├── app-sync.js        # SYNC statuses: on-demand load, badges, SYNC controls and their state
     ├── app-filter.js      # Filter index, pure evaluation, single-pass tree filtering and counters
-    ├── app-url.js         # The filters as URL parameters, pure (filtersFromUrl, urlWithFilters)
+    ├── app-url.js         # The project and the filters as URL parameters, pure (projectFromUrl, filtersFromUrl, urlWithFilters)
     ├── app-shell.js       # Banner (theme, help, version badge), sidebar, keyboard shortcuts, tab title
     ├── tree-toggle.js     # Collapse/expand helpers and toggle-state capture/restore
     ├── multi-select.js    # Multi-select dropdown component
@@ -128,9 +128,11 @@ pr-tree/
 - Loading state management
 - Event handlers for user interactions; `handleSyncLoadEnd()` runs after every SYNC load: the SYNC filter is only meaningful while statuses are loaded, then the filters run again
 - `populateIssueFilter(elementId, issues)`: fills an issue multi-select (epics and stories) from the index; the selection is restored from the URL afterwards like every other filter
-- `restoreFiltersFromUrl({ preferTypedText })`: the only path from the URL to the state and the controls (each multi-select keeps the values its options offer, SYNC follows the URL only while its statuses are loaded); run after every render once every option list is populated, and on Back/Forward with `preferTypedText: false` so the URL wins over a focused search box
-- `selectProject(projectName, { fromUrl, preferTypedText })`: project switch; from the dropdown the filters are reset and the URL pushed once, from the URL (page load, Back/Forward) the URL is left alone and the render restores its filters; after the render the URL is replaced with the validated filters; a late response for a project no longer selected is dropped
-- `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true, preferTypedText: false })` or restores and applies the filters of the URL
+- `restoreFiltersFromUrl({ preferTypedText })`: the only path from the URL to the state and the controls (each multi-select keeps the values its options offer, SYNC follows the URL only while its statuses are loaded); run after every render once every option list is populated, and on Back/Forward; a switch from the URL (page load, Back/Forward) renders with `preferTypedText: false`: the URL wins over a focused search box unless the box holds the URL's query with extra whitespace (a query typed during a page load keeps its trailing space)
+- `selectProject(projectName, { fromUrl })`: project switch; the refresh time is cleared; from the dropdown the filters are reset and the URL pushed once, from the URL (page load, Back/Forward) the URL is left alone and the render restores its filters (`preferTypedText` is `!fromUrl`); after the render the URL is replaced with the validated filters; a late response for a project no longer selected is dropped; without a project ("Select a project", or Back to a URL without one) the filters and the option lists of the multi-selects are cleared (`clearFilterOptions`) whatever the URL says, so the page is back to its initial state
+- `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true })` or restores and applies the filters of the URL, then replaces the URL with the filters kept (a value the options no longer offer since a refresh is dropped from the entry)
+- `checkForUpdates()`: the periodic refresh; re-renders when the data hash changed; captures the project before its fetch (`fetchData(project)`) and drops a response arriving after a project switch, like `selectProject`; the `checking` class of the refresh icon marks a running check, and a check started meanwhile is skipped before the `try`, so its `finally` does not stop the icon of the running one
+- `availableProjects`: the project names from `/api/projects`, the list the dropdown is built from and `projectFromUrl` validates against
 - `updateReadyCheckboxes()`: the two ready checkboxes are disabled and unchecked while their multi-select is empty; both checked keeps pull requests needing either attention
 
 **public/app-render.js**
@@ -143,10 +145,10 @@ pr-tree/
 **public/app-sync.js**
 - Owns the SYNC state: `currentSyncStatuses` (the last `/api/sync-statuses` response, null until loaded and again after a project switch), `syncStatusLoading`, `syncLoadFailed`; never imports app.js
 - `initializeSyncControls({ getProject, getSyncFilter, onFilterChange, onLoadEnd })`: wires the SYNC select and the load button; the accessors read the selected project and SYNC filter from app.js at call time, `onLoadEnd` runs after every load, successful or not
-- `loadSyncStatuses()`: the load button handler, one `/api/sync-statuses/:project` call with spinners on the badges meanwhile; never called automatically
+- `loadSyncStatuses()`: the load button handler, one `/api/sync-statuses/:project` call with spinners on the badges meanwhile; never called automatically; a project switch during the load (`resetSyncStatuses` bumps `syncLoadGeneration`) drops its response and its failure, and the new project can load right away; a failed refresh keeps the previously loaded statuses
 - `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements (SYNC badge, `?` for unknown or error, `!` for an invalid spec); called after every render (before the filters run) and after every load
 - `updateSyncControls()`: the select (disabled until loaded, options rebuilt, selection put back from `getSyncFilter()`), the load button and the failure/rate-limit warning
-- `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses on a project switch
+- `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses, a failed load and a load in flight on a project switch
 
 **public/app-filter.js**
 - `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
@@ -156,6 +158,7 @@ pr-tree/
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/app-url.js**
+- `projectFromUrl(search, projects)` (pure): the project a query string names when it is one of the given ones (app.js passes `availableProjects`); `null` otherwise, an empty name included
 - `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `ready`, the former name, is read as `readyReviewer`
 - `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only; parameters that are not filters are kept
 
@@ -311,6 +314,7 @@ log(message, logStream);  // Logs to both console and file
 ### Frontend State Management
 State is managed through module-level variables in app.js:
 ```javascript
+let availableProjects = [];    // the project names from /api/projects
 let currentProject = null;
 let currentText = '';          // text filter
 let currentSprints = [];        // sprint ids
@@ -324,7 +328,7 @@ let currentReadyForReviewer = false;
 let currentReadyForAssignee = false;
 let currentApiResult = null;
 ```
-The SYNC statuses and their loading state live in app-sync.js (`currentSyncStatuses`, `syncStatusLoading`, `syncLoadFailed`); app.js asks `syncStatusesLoaded()` to restore the SYNC filter from the URL and calls `resetSyncStatuses()` on a project switch.
+The SYNC statuses and their loading state live in app-sync.js (`currentSyncStatuses`, `syncStatusLoading`, `syncLoadFailed`, `syncLoadGeneration`); app.js asks `syncStatusesLoaded()` to restore the SYNC filter from the URL and calls `resetSyncStatuses()` on a project switch.
 
 State is synchronized with URL query parameters for deep linking:
 ```
@@ -332,7 +336,7 @@ State is synchronized with URL query parameters for deep linking:
 ```
 (`ready`, the former name of `readyReviewer`, is still read from old links but never written.)
 
-The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`) and applies them, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once, and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
+The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`), applies them and replaces the URL with the filters kept, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once (a switch to "Select a project" too: the filters are cleared and the URL is bare), and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
 
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
 
@@ -519,9 +523,10 @@ Three streams available:
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
 11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 12. **Module boundaries**: app-render.js stays free of filter state and of DOM access at import time (its tests import it in node); app-sync.js never imports app.js (it receives accessors), so there is no circular import; anything that needs both the state and a module goes through app.js
+13. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop the response when the project changed meanwhile; `loadSyncStatuses` compares the load generation `resetSyncStatuses` bumps (Back/Forward make quick switches easy); any new fetch that paints something must do the same
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes

@@ -84,6 +84,11 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.5.1
+    * A periodic refresh or a SYNC load that ends after a project switch no longer paints the previous project's data or `?` badges over the new one; the late response is dropped, and the SYNC load button is available for the new project right away
+    * Selecting "Select a project" clears the filters and their option lists like a project switch does, and writes a bare URL; previously the previous project's filters stayed and were written to the URL without a project
+    * Back and Forward inside a project replace the URL with the filters actually kept (a value the options no longer offer is dropped), as a load already did
+    * The "Last refreshed" time is cleared on a project switch, and an update check skipped because one is already running no longer stops the spinning refresh icon
 * Version 2.5.0
     * Repositories left without a matching pull request are hidden by the filters, like their branches already were
     * When nothing matches, a "No pull request matches the filters" message replaces the tree; the orphaned issues stay listed

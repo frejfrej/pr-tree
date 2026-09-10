@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterUrlParams, filtersFromUrl, urlWithFilters } from '../public/app-url.js';
+import { filterUrlParams, filtersFromUrl, projectFromUrl, urlWithFilters } from '../public/app-url.js';
 
 const noFilters = { text: '', assignees: [], reviewers: [], sprints: [], fixVersions: [], epics: [], stories: [], sync: 'Show all', readyReviewer: false, readyAssignee: false };
 
@@ -29,6 +29,29 @@ test('filtersFromUrl reads the former ready parameter as readyReviewer', () => {
     assert.equal(filtersFromUrl('?ready=true').readyReviewer, true);
     assert.equal(filtersFromUrl('?ready=true').readyAssignee, false);
     assert.equal(filtersFromUrl('?readyReviewer=false').readyReviewer, false);
+});
+
+test('projectFromUrl reads the project when it is one of the offered ones', () => {
+    assert.equal(projectFromUrl('?project=PROJ&q=banner', ['OTHER', 'PROJ']), 'PROJ');
+    assert.equal(projectFromUrl('project=PROJ', ['PROJ']), 'PROJ');
+});
+
+test('projectFromUrl is null for a project not offered, an empty name or no parameter', () => {
+    assert.equal(projectFromUrl('?project=GONE', ['PROJ']), null);
+    assert.equal(projectFromUrl('?project=proj', ['PROJ']), null);
+    assert.equal(projectFromUrl('?project=', ['PROJ', '']), null);
+    assert.equal(projectFromUrl('?q=banner', ['PROJ']), null);
+    assert.equal(projectFromUrl('', []), null);
+});
+
+test('projectFromUrl reads the first of repeated project parameters', () => {
+    assert.equal(projectFromUrl('?project=A&project=B', ['A', 'B']), 'A');
+});
+
+test('the project survives a round trip through the URL', () => {
+    const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'PROJ', filters: noFilters });
+    assert.equal(projectFromUrl(url.search, ['PROJ']), 'PROJ');
+    assert.equal(projectFromUrl(urlWithFilters(url, { project: null, filters: noFilters }).search, ['PROJ']), null);
 });
 
 test('urlWithFilters writes the project and the active filters only, and keeps the other parameters', () => {
@@ -64,7 +87,8 @@ test('filterUrlParams covers every parameter urlWithFilters writes, plus the for
 
 test('values with spaces and special characters survive the round trip', () => {
     const filters = { ...noFilters, text: 'a&b+c%d é=f', assignees: ['Jean-Luc Picard'], epics: ['PROJ-1'] };
-    const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters });
+    const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'A & B', filters });
     assert.deepEqual(filtersFromUrl(url.search), filters);
+    assert.equal(projectFromUrl(url.search, ['A & B']), 'A & B');
     assert.equal(urlWithFilters(url, { project: '', filters: noFilters }).search, '');
 });
