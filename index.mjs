@@ -46,11 +46,12 @@ let lastResponse = null;
 // Serve all files in the public folder
 app.use(express.static('public'));
 
-// Serve README.md from the root directory
-app.use(express.static(__dirname, {
-    index: false, // Prevent serving index.html from root
-    extensions: ['md'] // Allow serving .md files without extension
-}));
+// The help modal fetches the README from the root. This route is the only
+// thing served from the project directory: a static middleware mounted on it
+// served config.js (the credentials), the logs and the sources too.
+app.get('/README.md', (req, res) => {
+    res.sendFile(path.join(__dirname, 'README.md'));
+});
 
 // Serve the version details
 app.get('/api/version', (req, res) => {
@@ -793,8 +794,9 @@ async function computeConflicts(repoName, spec) {
     return { conflicts };
 }
 
-app.listen(port, () => {
-    log(`Server is running at http://localhost:${port}`, accessLogStream);
+const server = app.listen(port, () => {
+    // The port actually bound: PORT=0 lets the OS pick one (the server test does that)
+    log(`Server is running at http://localhost:${server.address().port}`, accessLogStream);
     if (fixtureSource) {
         log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
     }
