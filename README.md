@@ -45,6 +45,7 @@
     * All filter selections (project, text, sprint, fixVersion, epic, story, assignee, reviewer, ready for assignee, ready for reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
+    * Back and Forward put the filters, and the project, back as the URL describes
 * Displays Ahead (green) and Behind (red) commit counts
 * Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
@@ -86,6 +87,8 @@
 * Version 2.5.0
     * Repositories left without a matching pull request are hidden by the filters, like their branches already were
     * When nothing matches, a "No pull request matches the filters" message replaces the tree; the orphaned issues stay listed
+    * Back and Forward re-apply the filters and switch the project as the URL describes (#32); a project switch is one history entry and a page load adds none
+    * SYNC follows the URL through Back and Forward while its statuses are loaded
 * Version 2.4.0
     * Text filter at the top of the sidebar: matches the pull-request title, the source branch name and the linked issue keys, every word typed must match
         * `/` focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean
