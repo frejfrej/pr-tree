@@ -57,10 +57,12 @@ pr-tree/
 └── public/                # Frontend assets
     ├── index.html         # App shell: banner, filter sidebar, tree pane, help modal
     ├── styles.css         # Application styles (colour tokens, light and dark themes)
-    ├── app.js             # Data loading, rendering, filter state
+    ├── app.js             # Data loading, filter state, URL and history, wiring of the other modules
+    ├── app-render.js      # The tree and the orphaned issues as HTML strings (pure), popovers
+    ├── app-sync.js        # SYNC statuses: on-demand load, badges, SYNC controls and their state
     ├── app-filter.js      # Filter index, pure evaluation, single-pass tree filtering and counters
     ├── app-url.js         # The filters as URL parameters, pure (filtersFromUrl, urlWithFilters)
-    ├── app-shell.js       # Banner, sidebar, theme, keyboard shortcuts, help modal, tab title
+    ├── app-shell.js       # Banner (theme, help, version badge), sidebar, keyboard shortcuts, tab title
     ├── tree-toggle.js     # Collapse/expand helpers and toggle-state capture/restore
     ├── multi-select.js    # Multi-select dropdown component
     └── counter-utils.js   # Display of a filtered/total counter
@@ -119,17 +121,32 @@ pr-tree/
 #### Frontend Files
 
 **public/app.js**
-- Main application state management
-- Project selection and data loading
+- Main application state management (filters, project, last API result) and the wiring of the other modules (`DOMContentLoaded`)
+- Project selection and data loading; `renderEverything(apiResult)` builds the tree with app-render.js, repaints the SYNC badges (app-sync.js), populates the filter controls, restores the filters from the URL and applies them
 - URL state persistence (filters saved to query params)
 - Periodic refresh logic (2-minute intervals, tab visibility detection)
 - Loading state management
-- Event handlers for user interactions
+- Event handlers for user interactions; `handleSyncLoadEnd()` runs after every SYNC load: the SYNC filter is only meaningful while statuses are loaded, then the filters run again
 - `populateIssueFilter(elementId, issues)`: fills an issue multi-select (epics and stories) from the index; the selection is restored from the URL afterwards like every other filter
 - `restoreFiltersFromUrl({ preferTypedText })`: the only path from the URL to the state and the controls (each multi-select keeps the values its options offer, SYNC follows the URL only while its statuses are loaded); run after every render once every option list is populated, and on Back/Forward with `preferTypedText: false` so the URL wins over a focused search box
 - `selectProject(projectName, { fromUrl, preferTypedText })`: project switch; from the dropdown the filters are reset and the URL pushed once, from the URL (page load, Back/Forward) the URL is left alone and the render restores its filters; after the render the URL is replaced with the validated filters; a late response for a project no longer selected is dropped
 - `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true, preferTypedText: false })` or restores and applies the filters of the URL
 - `updateReadyCheckboxes()`: the two ready checkboxes are disabled and unchecked while their multi-select is empty; both checked keeps pull requests needing either attention
+
+**public/app-render.js**
+- `renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)` (pure): the tree as an HTML string; one `.repository` block per repository, its root branches, the pull requests nested in `.children` containers, most recently updated first; appends the hidden `.tree-no-match` message when there is at least one repository
+- `renderOrphanedIssues(issues)` (pure): the "JIRA Issues In Review without Pull Requests" section, an empty string without issues
+- `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants` (pure, exported for the tests); `renderPullRequests`, `renderPullRequest`, `renderParticipant`, `getBranchUrl` are private
+- `initializePopovers()`: the pull-request and issue popovers; they read the data attributes `renderPullRequest` writes (`data-rendered-title`, `data-rendered-description`, `data-issue-key`, `data-issue-summary`), so the writer and the reader live together
+- Knows nothing about the filter state; the inline `onclick` handlers of the tree call the toggle functions app.js installs on `window`; no DOM access at import time, so the rendering is unit-tested
+
+**public/app-sync.js**
+- Owns the SYNC state: `currentSyncStatuses` (the last `/api/sync-statuses` response, null until loaded and again after a project switch), `syncStatusLoading`, `syncLoadFailed`; never imports app.js
+- `initializeSyncControls({ getProject, getSyncFilter, onFilterChange, onLoadEnd })`: wires the SYNC select and the load button; the accessors read the selected project and SYNC filter from app.js at call time, `onLoadEnd` runs after every load, successful or not
+- `loadSyncStatuses()`: the load button handler, one `/api/sync-statuses/:project` call with spinners on the badges meanwhile; never called automatically
+- `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements (SYNC badge, `?` for unknown or error, `!` for an invalid spec); called after every render, before the filters
+- `updateSyncControls()`: the select (disabled until loaded, options rebuilt, selection put back from `getSyncFilter()`), the load button and the failure/rate-limit warning
+- `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses on a project switch
 
 **public/app-filter.js**
 - `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
@@ -153,7 +170,7 @@ pr-tree/
 - `parseFixtureOptions()` reads `--fixtures`, `--fixture-scale=N`, `--fixture-chain-depth=N` or the `PR_TREE_FIXTURES*` environment variables; `fixtureConfig()` replaces config.js; `createFixtureSource()` is what index.mjs calls instead of Atlassian
 
 **public/app-shell.js**
-- Banner and sidebar chrome, independent of pull-request data
+- Banner and sidebar chrome, independent of pull-request data; the version badge (`fetchAndDisplayVersion`, from `/api/version`) is filled by `initializeAppShell`
 - Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed; `/` shows the sidebar and focuses the search box; Escape is left to a text box that has content (it clears itself)
 - Theme toggle, stored under `prTree.theme`; the OS setting is followed until a choice is stored; an inline script in `index.html` applies both before the first paint
 - Help modal, active-filter badge, tree toolbar (collapse all / expand all), document title (`(attention) PROJECT · Bitbucket Pull-Requests Tree`)
@@ -306,8 +323,8 @@ let currentSync = "Show all";
 let currentReadyForReviewer = false;
 let currentReadyForAssignee = false;
 let currentApiResult = null;
-let currentSyncStatuses = null; // last /api/sync-statuses response, re-applied on re-render
 ```
+The SYNC statuses and their loading state live in app-sync.js (`currentSyncStatuses`, `syncStatusLoading`, `syncLoadFailed`); app.js asks `syncStatusesLoaded()` to restore the SYNC filter from the URL and calls `resetSyncStatuses()` on a project switch.
 
 State is synchronized with URL query parameters for deep linking:
 ```
@@ -391,7 +408,7 @@ When adding/modifying endpoints:
 
 ### Testing Changes
 - **Manual testing**: Use the UI to verify functionality; `npm run start:fixtures` gives realistic data without credentials
-- **Unit tests**: `npm test` (node:test, pure logic and the fixture generator)
+- **Unit tests**: `npm test` (node:test, pure logic, the tree rendering and the fixture generator)
 - **API testing**: Use browser DevTools Network tab or curl
 - **Cache testing**: Check `/api/cache/stats` endpoint
 
@@ -448,7 +465,7 @@ try {
 ### Add New Jira Field
 1. Modify `fetchJiraIssuesDetails()` in index.mjs
 2. Update `fields` parameter in JQL query URL
-3. Update frontend rendering to display new field
+3. Update the frontend rendering to display the new field (`renderPullRequest` in app-render.js)
 4. Include field in hash calculation if it should trigger refresh
 
 ### Debug Performance Issues
@@ -501,9 +518,10 @@ Three streams available:
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
 11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
+12. **Module boundaries**: app-render.js stays free of filter state and of DOM access at import time (its tests import it in node); app-sync.js never imports app.js (it receives accessors), so there is no circular import; anything that needs both the state and a module goes through app.js
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `filtersFromUrl`, `urlWithFilters`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes

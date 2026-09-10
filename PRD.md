@@ -379,7 +379,9 @@ The application integrates with a Jira workflow where:
 
 3. **Frontend** (public/)
    - Single-page application (vanilla JS)
-   - State management in app.js
+   - State management and wiring in app.js
+   - Tree rendering in app-render.js (pure HTML strings, unit-tested)
+   - SYNC status loading and controls in app-sync.js
    - Filtering logic in app-filter.js (index built per data load, single pass over the tree)
    - Counter display in counter-utils.js
 
