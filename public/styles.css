@@ -550,12 +550,6 @@ select:disabled {
     box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-.multi-select.disabled .multi-select-trigger {
-    background-color: var(--surface-muted);
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
 .multi-select-display {
     flex: 1;
     overflow: hidden;
