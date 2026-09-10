@@ -211,7 +211,8 @@ function projectFromUrl() {
 // filters start empty and the switch gets one history entry. From the URL
 // (page load, Back and Forward) the URL already describes the state to reach
 // and is left alone: the render restores the filters it carries.
-async function selectProject(projectName, { fromUrl = false } = {}) {
+// `preferTypedText` reaches restoreFiltersFromUrl: Back and Forward pass false so the URL wins over a focused search box.
+async function selectProject(projectName, { fromUrl = false, preferTypedText = true } = {}) {
     // The SYNC statuses belong to the project being left
     currentSyncStatuses = null;
     syncLoadFailed = false;
@@ -238,7 +239,7 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     const apiResult = await fetchData();
     // Back and Forward make quick switches easy: a late response for a project no longer selected is dropped
     if (currentProject !== projectName) return;
-    renderEverything(apiResult);
+    renderEverything(apiResult, { preferTypedText });
     // The address bar catches up with the filters the render validated, without a new entry
     if (apiResult) updateUrlWithFilters({ replace: true });
     startPeriodicChecking();
@@ -252,7 +253,7 @@ function handlePopState() {
     const projectName = projectFromUrl();
     if (projectName !== (currentProject || '')) {
         document.getElementById('projectSelect').value = projectName;
-        selectProject(projectName, { fromUrl: true });
+        selectProject(projectName, { fromUrl: true, preferTypedText: false });
         return;
     }
     // Nothing rendered (loading, or the last load failed): the next render restores from the URL
@@ -461,7 +462,7 @@ function renderOrphanedIssues(issues) {
 }
 
 
-function renderEverything(apiResult) {
+function renderEverything(apiResult, { preferTypedText = true } = {}) {
     if (!currentProject) {
         return;
     }
@@ -506,8 +507,8 @@ function renderEverything(apiResult) {
     populateIssueFilter('epicSelect', filterIndex.epics);
     populateIssueFilter('storySelect', filterIndex.stories);
 
-    // Every option list is populated: restore the filters from the URL and apply them once
-    restoreFiltersFromUrl();
+    // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
+    restoreFiltersFromUrl({ preferTypedText });
     applyFilters();
     setToolbarVisible(true);
 
