@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.4.0** (as of 2026-09-09)
+Current version: **2.5.0** (as of 2026-09-10)
 
 ## Technology Stack
 
@@ -130,7 +130,7 @@ pr-tree/
 **public/app-filter.js**
 - `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
 - `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
-- `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, returns the attention count
+- `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
 - `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
@@ -313,7 +313,7 @@ Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranc
 Single pass in app-filter.js:
 1. `initializeFilter(apiResult)` builds the index once per data load (Maps and Sets, no array search later)
 2. `filterBranches()` collects the SYNC badges once, then walks repositories → root branches → direct child pull requests → their `.children` container, recursively; every pull request is visited exactly once
-3. Children are evaluated first; a filtered-out parent stays displayed while a descendant is visible
+3. Children are evaluated first; a filtered-out parent stays displayed while a descendant is visible; a root branch or a repository with no visible pull request is hidden, and the `.tree-no-match` message rendered by `renderRepositories` is shown while every repository is hidden
 4. Counters (repository, root branch, child counters shown) are summed on the way back up and written through `updateCounterDisplay`; DOM writes only happen when the value changes
 
 Never re-select descendants (`querySelectorAll('.pull-request')`) inside the recursion: the previous implementation did, and a pull request at depth *d* was visited 2^d times (16 million visits per filter change on SECOLLAB).

@@ -40,6 +40,7 @@
     * Filters pull requests based on the fixVersion field of associated Jira issues
     * Dynamically populates with all available fixVersions from the project's Jira issues
 * Allows simultaneous filtering by both assignee and reviewer
+* Hides the repositories and branches left without a matching pull request; when nothing matches, a message replaces the tree
 * Maintains filter selections in URL
     * All filter selections (project, text, sprint, fixVersion, epic, story, assignee, reviewer, ready for assignee, ready for reviewer) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
@@ -82,6 +83,9 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.5.0
+    * Repositories left without a matching pull request are hidden by the filters, like their branches already were
+    * When nothing matches, a "No pull request matches the filters" message replaces the tree; the orphaned issues stay listed
 * Version 2.4.0
     * Text filter at the top of the sidebar: matches the pull-request title, the source branch name and the linked issue keys, every word typed must match
         * `/` focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean

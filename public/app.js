@@ -655,6 +655,16 @@ function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             </div>
         `;
     }
+
+    // Shown by the filter pass while every repository is hidden
+    if (Object.keys(pullRequestsByRepo).length > 0) {
+        html += `
+            <div class="state-message tree-no-match" hidden>
+                <i class="fas fa-filter"></i>
+                <span>No pull request matches the filters</span>
+            </div>
+        `;
+    }
     return html;
 }
 
