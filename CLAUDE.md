@@ -59,6 +59,7 @@ pr-tree/
     ├── styles.css         # Application styles (colour tokens, light and dark themes)
     ├── app.js             # Data loading, rendering, filter state
     ├── app-filter.js      # Filter index, pure evaluation, single-pass tree filtering and counters
+    ├── app-url.js         # The filters as URL parameters, pure (filtersFromUrl, urlWithFilters)
     ├── app-shell.js       # Banner, sidebar, theme, keyboard shortcuts, help modal, tab title
     ├── tree-toggle.js     # Collapse/expand helpers and toggle-state capture/restore
     ├── multi-select.js    # Multi-select dropdown component
@@ -124,7 +125,10 @@ pr-tree/
 - Periodic refresh logic (2-minute intervals, tab visibility detection)
 - Loading state management
 - Event handlers for user interactions
-- `populateIssueFilter(elementId, issues, selectedKeys)`: fills an issue multi-select (epics and stories) from the index and returns the selection restricted to the offered keys
+- `populateIssueFilter(elementId, issues)`: fills an issue multi-select (epics and stories) from the index; the selection is restored from the URL afterwards like every other filter
+- `restoreFiltersFromUrl({ preferTypedText })`: the only path from the URL to the state and the controls (each multi-select keeps the values its options offer, SYNC follows the URL only while its statuses are loaded); run after every render once every option list is populated, and on Back/Forward with `preferTypedText: false` so the URL wins over a focused search box
+- `selectProject(projectName, { fromUrl, preferTypedText })`: project switch; from the dropdown the filters are reset and the URL pushed once, from the URL (page load, Back/Forward) the URL is left alone and the render restores its filters; after the render the URL is replaced with the validated filters; a late response for a project no longer selected is dropped
+- `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true, preferTypedText: false })` or restores and applies the filters of the URL
 - `updateReadyCheckboxes()`: the two ready checkboxes are disabled and unchecked while their multi-select is empty; both checked keeps pull requests needing either attention
 
 **public/app-filter.js**
@@ -133,6 +137,10 @@ pr-tree/
 - `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
 - `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
+
+**public/app-url.js**
+- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `ready`, the former name, is read as `readyReviewer`
+- `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only; parameters that are not filters are kept
 
 **public/counter-utils.js**
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
@@ -307,6 +315,8 @@ State is synchronized with URL query parameters for deep linking:
 ```
 (`ready`, the former name of `readyReviewer`, is still read from old links but never written.)
 
+The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`) and applies them, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once, and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
+
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
 
 ### Filtering Architecture
@@ -431,7 +441,7 @@ try {
 1. **Backend**: Modify `/api/pull-requests/:project` to include new data
 2. **Frontend HTML**: Add filter UI element in index.html
 3. **Frontend State**: Add state variable in app.js
-4. **URL Sync**: Update `updateUrlWithFilters()` and `restoreFiltersFromUrl()`
+4. **URL Sync**: Update `filtersFromUrl()` and `urlWithFilters()` in app-url.js (with a unit test) and `restoreFiltersFromUrl()` in app.js
 5. **Filter Logic**: Add the precomputed set to `buildFilterIndex()` and the match to `evaluatePullRequest()` in app-filter.js, with a unit test
 6. **Event Handler**: Wire up filter change event
 
@@ -483,17 +493,17 @@ Three streams available:
 1. **Module type mismatch**: Backend uses ES modules (.mjs), config uses CommonJS (module.exports)
 2. **Cache staleness**: Remember that data can be up to 2 minutes old
 3. **API rate limits**: Bitbucket can return HTTP 429 if too many requests
-4. **Filter restoration**: the SYNC filter is NOT restored from the URL (its statuses are loaded on demand); every other filter is, including the two ready checkboxes
+4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the two ready checkboxes; on Back/Forward SYNC follows the URL while its statuses are loaded
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
 6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
 7. **Ready for reviewer / assignee**: computed by `computeAttention()` from the data, never from rendered styles; `evaluatePullRequest` takes `readyReviewer` and `readyAssignee`
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
-10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes
+10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
 11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `filtersFromUrl`, `urlWithFilters`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
