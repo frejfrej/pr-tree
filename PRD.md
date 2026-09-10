@@ -344,6 +344,7 @@ The application integrates with a Jira workflow where:
 - **NFR-SEC2**: Configuration file with credentials must be git-ignored
 - **NFR-SEC3**: Application must use HTTPS when deployed outside localhost
 - **NFR-SEC4**: No sensitive data logged to access/error logs
+- **NFR-SEC5**: Only the `public/` directory and `README.md` are served over HTTP; no other file of the project directory (configuration, logs, sources) is reachable
 
 ### 6.6 Maintainability
 - **NFR-M1**: Code must follow consistent naming conventions (camelCase)

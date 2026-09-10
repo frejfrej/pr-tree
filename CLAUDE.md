@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.5.1** (as of 2026-09-10)
+Current version: **2.5.2** (as of 2026-09-10)
 
 ## Technology Stack
 
@@ -80,7 +80,7 @@ pr-tree/
 - `fetchJiraIssuesDetails()` fetches the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
 - Response hashing for change detection
 - Comprehensive logging system (access.log, error.log, performance.log)
-- Static file serving for public directory
+- Static file serving for the public directory; `README.md` is served through a dedicated route (the help modal fetches it) and nothing else of the project directory is reachable over HTTP
 
 **cache.mjs** (98 lines)
 - Abstraction layer over node-cache
@@ -503,6 +503,7 @@ Three streams available:
 - **No HTTPS enforcement**: Should only run on localhost or behind secure proxy
 - **CORS not configured**: Frontend and backend must be same-origin
 - **No input validation**: Trust that config.js and projects.js are correct
+- **Only public/ and README.md are served**: never mount a static middleware on the project directory, it would serve config.js, the logs and the sources (fixed in 2.5.2); `test/server.test.mjs` checks it
 
 ### Performance Optimization
 - **Minimize API calls**: Use existing cached data when possible
@@ -526,7 +527,7 @@ Three streams available:
 13. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop the response when the project changed meanwhile; `loadSyncStatuses` compares the load generation `resetSyncStatuses` bumps (Back/Forward make quick switches easy); any new fetch that paints something must do the same
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory)
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
