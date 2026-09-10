@@ -97,6 +97,14 @@ function updateUrlWithFilters({ replace = false } = {}) {
     }
 }
 
+// Selects the values a multi-select offers among the given ones, and returns what it kept
+function restoreMultiSelect(id, values) {
+    const multiSelect = getMultiSelect(id);
+    if (!multiSelect) return values;
+    multiSelect.setSelectedValues(values);
+    return multiSelect.getSelectedValues();
+}
+
 // Copies the filters the URL describes into the state and the controls. Runs
 // after every render, once every option list is populated, and on Back and
 // Forward. Each multi-select keeps only the values its options offer, so a
@@ -109,12 +117,6 @@ function updateUrlWithFilters({ replace = false } = {}) {
 function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     const filters = filtersFromUrl(window.location.search);
 
-    const restoreMultiSelect = (id, values) => {
-        const multiSelect = getMultiSelect(id);
-        if (!multiSelect) return values;
-        multiSelect.setSelectedValues(values);
-        return multiSelect.getSelectedValues();
-    };
     currentSprints = restoreMultiSelect('sprintSelect', filters.sprints);
     currentFixVersions = restoreMultiSelect('fixVersionSelect', filters.fixVersions);
     currentEpics = restoreMultiSelect('epicSelect', filters.epics);
@@ -216,6 +218,8 @@ async function selectProject(projectName, { fromUrl = false, preferTypedText = t
     // The SYNC statuses belong to the project being left
     currentSyncStatuses = null;
     syncLoadFailed = false;
+    // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
+    currentApiResult = null;
     currentProject = projectName || null;
     updateSyncControls();
     updateDocumentTitle({ project: currentProject, attentionCount: 0 });
@@ -246,9 +250,10 @@ async function selectProject(projectName, { fromUrl = false, preferTypedText = t
 }
 
 // Back and Forward: the page follows the URL, never the other way round.
-// Another project: switch to it, the render restores the filters of that URL.
-// Same project: the filters are restored from the URL and applied. Nothing
-// here writes the URL. Browsers no longer fire popstate on page load.
+// Another project: switch to it, the render restores the filters of that
+// URL. Same project: the filters are restored from the URL and applied.
+// Nothing here pushes a history entry. Browsers no longer fire popstate on
+// page load.
 function handlePopState() {
     const projectName = projectFromUrl();
     if (projectName !== (currentProject || '')) {
