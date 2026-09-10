@@ -315,7 +315,7 @@ State is synchronized with URL query parameters for deep linking:
 ```
 (`ready`, the former name of `readyReviewer`, is still read from old links but never written.)
 
-The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`) and applies them, or switches the project when the `project` parameter changed; nothing in that path writes the URL. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once, and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
+The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`) and applies them, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once, and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
 
 Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters)` (app-filter.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
 

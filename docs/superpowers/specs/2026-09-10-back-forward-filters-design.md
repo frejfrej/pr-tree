@@ -20,8 +20,8 @@ one history entry.
    project: the filters are copied from the URL into the state and the
    controls, then applied. Other project (or none): the dropdown is set and the
    project is switched and loaded as on a page load; the render restores the
-   filters the URL carries. Nothing in that path writes the URL: the browser
-   already did.
+   filters the URL carries. Nothing in that path pushes a history entry: the browser
+   already moved, and the URL is only replaced after the render (decision 2).
 2. **One entry per action.** A manual project switch pushes one entry (today
    two: one with the filters cleared, one with the new project). A page load
    and a switch coming from the URL push nothing: after the render the URL is
