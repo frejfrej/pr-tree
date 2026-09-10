@@ -64,3 +64,11 @@ test('the app and the API still answer', async () => {
     const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
     assert.equal(version.version, packageJson.version);
 });
+
+test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoint stays', async () => {
+    const conflicts = await fetch(`${baseUrl}/api/pull-request-conflicts/products.secollab/abc..def`);
+    assert.equal(conflicts.status, 404);
+    const statuses = await fetch(`${baseUrl}/api/sync-statuses/OSLC`);
+    assert.equal(statuses.status, 200);
+    assert.equal(typeof (await statuses.json()).statuses, 'object');
+});

@@ -10,7 +10,6 @@ import {
     getCachedProjectData,
     getCachedConflicts,
     getCachedSyncStatuses,
-    getCachedSprints,
     getCacheStats,
     raiseAllCacheTtls
 } from './cache.mjs';
@@ -343,7 +342,6 @@ function calculateHash(data) {
 }
 
 async function fetchJiraSprints(jiraProjects) {
-    const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
     const sprints = new Set();
 
     for (const project of jiraProjects) {
@@ -633,25 +631,6 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
             return;
         }
         log(`Error fetching sync statuses for project ${projectName}: ${error.message}`, errorLogStream);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
-app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
-    const { repoName, spec } = req.params;
-
-    try {
-        const conflictsData = await getCachedConflicts(repoName, spec, () => {
-            return conflictsLimiter(() => computeConflicts(repoName, spec));
-        });
-
-        res.json(conflictsData);
-    } catch (error) {
-        if (error instanceof RateLimitError) {
-            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(rateLimitedUntil).toISOString() });
-            return;
-        }
-        log(`Error fetching conflicts for commits ${spec}: ${error.message}`, errorLogStream);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
