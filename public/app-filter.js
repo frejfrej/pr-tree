@@ -271,7 +271,9 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
 // ---------------------------------------------------------------- tree pass
 
 /**
- * Applies the filters to the rendered tree and refreshes the counters.
+ * Applies the filters to the rendered tree and refreshes the counters. A root
+ * branch or a repository left without a visible pull request is hidden; while
+ * every repository is hidden, the "nothing matches" message is shown instead.
  * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, readyReviewer, readyAssignee }
  * @returns {number} how many pull requests are left shown and need attention
  */
@@ -289,6 +291,7 @@ export function filterBranches(filters) {
         shownAttention: 0
     };
 
+    let shownRepositories = 0;
     for (const repository of document.querySelectorAll('.repository')) {
         let repositoryTotal = 0;
         let repositoryVisible = 0;
@@ -305,7 +308,16 @@ export function filterBranches(filters) {
         }
         const counter = repository.querySelector('.repo-pr-counter');
         if (counter) updateCounterDisplay(counter, repositoryVisible, repositoryTotal);
+
+        // Hide the repository too when no pull request is left, like its branches
+        setDisplay(repository, repositoryVisible > 0 ? '' : 'none');
+        if (repositoryVisible > 0) shownRepositories++;
     }
+
+    // renderRepositories renders the message hidden; it takes the place of the
+    // tree while every repository is hidden
+    const noMatch = document.querySelector('.tree-no-match');
+    if (noMatch) noMatch.hidden = shownRepositories > 0;
 
     return pass.shownAttention;
 }
