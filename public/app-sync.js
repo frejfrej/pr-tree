@@ -17,6 +17,8 @@
 let currentSyncStatuses = null;
 let syncStatusLoading = false;
 let syncLoadFailed = false;
+// Counts the project switches: a load in flight compares it after its fetch
+let syncLoadGeneration = 0;
 
 // Given to initializeSyncControls
 let getProject = () => null;
@@ -50,19 +52,24 @@ export function syncStatusesLoaded() {
 }
 
 /**
- * Forgets the loaded statuses and a failed load: they belong to the project
- * being left. The caller refreshes the controls once the project changed.
+ * Forgets the loaded statuses, a failed load and a load in flight: they belong
+ * to the project being left (the response of the load in flight is dropped
+ * when it arrives, and a load can start for the new project right away). The
+ * caller refreshes the controls once the project changed.
  */
 export function resetSyncStatuses() {
     currentSyncStatuses = null;
     syncLoadFailed = false;
+    syncStatusLoading = false;
+    syncLoadGeneration += 1;
 }
 
 /**
  * Fetches the SYNC status of every pull request of the current project in a
  * single server call. Only triggered by the load button, never automatically.
- * The response of a project no longer selected when it arrives is dropped,
- * and so is its failure: the statuses belong to the project left.
+ * After a project switch during the load the response is dropped, and so is
+ * the failure: the statuses belong to the project left, and the controls
+ * already show the new project's state (resetSyncStatuses).
  */
 async function loadSyncStatuses() {
     const project = getProject();
@@ -70,6 +77,7 @@ async function loadSyncStatuses() {
         return;
     }
 
+    const generation = syncLoadGeneration;
     syncStatusLoading = true;
     updateSyncControls();
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
@@ -87,14 +95,14 @@ async function loadSyncStatuses() {
         statuses = await response.json();
     } catch (error) {
         console.error('Error fetching sync statuses:', error);
-    } finally {
-        syncStatusLoading = false;
     }
-    if (getProject() === project) {
-        // A failed refresh keeps the previously loaded statuses
-        if (statuses) currentSyncStatuses = statuses;
-        syncLoadFailed = !statuses;
+    if (generation !== syncLoadGeneration) {
+        return;
     }
+    syncStatusLoading = false;
+    // A failed refresh keeps the previously loaded statuses
+    if (statuses) currentSyncStatuses = statuses;
+    syncLoadFailed = !statuses;
 
     updateSyncControls();
     applySyncStatuses();

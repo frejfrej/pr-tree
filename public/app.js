@@ -70,11 +70,14 @@ function resetFilterControls() {
     if (syncSelect) syncSelect.value = 'Show all';
 }
 
-// Empties the option lists of the multi-selects, as before the first load
+// Empties the option lists of the multi-selects, and their selections
+// (setOptions keeps them), as before the first load
 function clearFilterOptions() {
     multiSelectIds.forEach(id => {
         const multiSelect = getMultiSelect(id);
-        if (multiSelect) multiSelect.setOptions([]);
+        if (!multiSelect) return;
+        multiSelect.setOptions([]);
+        multiSelect.clearAll(false);
     });
 }
 
@@ -119,8 +122,11 @@ function restoreMultiSelect(id, values) {
 // a ready checkbox enabled over an empty selection). SYNC follows the URL only
 // while its statuses are loaded: they are fetched on demand, so a reload starts
 // at "Show all". The URL holds the trimmed query: while the user is typing the
-// box keeps its own content (a re-render must not eat a trailing space); on
-// Back and Forward (`preferTypedText: false`) the URL wins.
+// box keeps its own content (a re-render must not eat a trailing space); after
+// a switch from the URL (`preferTypedText: false`: page load, Back and
+// Forward) the URL wins, unless the box holds the URL's query with extra
+// whitespace, the same filter: a query typed during a page load keeps its
+// trailing space.
 function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     const filters = filtersFromUrl(window.location.search);
 
@@ -142,7 +148,8 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
 
     currentText = filters.text;
     const textFilter = document.getElementById('textFilter');
-    if (textFilter && preferTypedText && document.activeElement === textFilter) {
+    const typing = textFilter && document.activeElement === textFilter;
+    if (typing && (preferTypedText || textFilter.value.trim() === currentText)) {
         currentText = textFilter.value;
     } else if (textFilter) {
         textFilter.value = currentText;
@@ -214,10 +221,13 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     updateSyncControls();
     updateDocumentTitle({ project: currentProject, attentionCount: 0 });
     closeSidebarDrawer();
+    // The refresh time belongs to the data being left
+    const lastRefreshElement = document.getElementById('lastRefreshTime');
+    if (lastRefreshElement) lastRefreshElement.textContent = '';
 
     if (!currentProject) {
-        resetFilterControls();
         clearFilterOptions();
+        resetFilterControls();
         readFilterControls();
         if (!fromUrl) updateUrlWithFilters();
         setToolbarVisible(false);
@@ -245,9 +255,10 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
 // Back and Forward: the page follows the URL, never the other way round.
 // Another project (or none): switch to it, the render restores the filters
 // of that URL. Same project: the filters are restored from the URL and
-// applied, then the URL is replaced with what was kept, as after a render (a
-// value the options no longer offer since a refresh is dropped). Nothing here
-// pushes a history entry. Browsers no longer fire popstate on page load.
+// applied, then the URL is replaced with what was kept, as a project load
+// does after its render (a value the options no longer offer since a refresh
+// is dropped from the entry). Nothing here pushes a history entry. Browsers
+// no longer fire popstate on page load.
 function handlePopState() {
     const projectName = projectFromUrl(window.location.search, availableProjects);
     if (projectName !== currentProject) {
@@ -498,16 +509,15 @@ async function checkForUpdates() {
     if (!project) {
         return;
     }
+    // The refresh icon spins while a check runs, and marks it: a second check
+    // meanwhile is skipped (before the try, so the finally below does not
+    // stop the icon of the running check)
+    const refreshIcon = document.getElementById('refreshIcon');
+    if (refreshIcon && refreshIcon.classList.contains('checking')) {
+        return;
+    }
+    if (refreshIcon) refreshIcon.classList.add('checking');
     try {
-        // Show the refresh icon
-        const refreshIcon = document.getElementById('refreshIcon');
-        if (refreshIcon) {
-            if (refreshIcon.classList.contains('checking')) {
-                return; // we're already checking
-            }
-            refreshIcon.classList.add('checking');
-        }
-
         const newData = await fetchData(project);
         // A project switched to during the check has its own load: the late response of the project left is dropped
         if (currentProject !== project || !newData) return;
@@ -526,11 +536,7 @@ async function checkForUpdates() {
     } catch (error) {
         console.error('Error checking for updates:', error);
     } finally {
-        // Hide the refresh icon
-        const refreshIcon = document.getElementById('refreshIcon');
-        if (refreshIcon) {
-            refreshIcon.classList.remove('checking');
-        }
+        if (refreshIcon) refreshIcon.classList.remove('checking');
     }
 }
 function startPeriodicChecking(now) {
