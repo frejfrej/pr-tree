@@ -2,6 +2,7 @@ import { initializeFilter, filterBranches, countActiveFilters, issueOptions } fr
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
+import { filtersFromUrl, urlWithFilters } from './app-url.js';
 
 let currentProject = null;
 let currentText = '';
@@ -26,8 +27,6 @@ let syncLoadFailed = false;
 const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect'];
 // The two ready checkboxes, in sidebar order
 const readyCheckboxIds = ['readyForAssigneeCheck', 'readyForReviewerCheck'];
-// URL parameters written by the filters ('ready', the former name of readyReviewer, is only ever removed)
-const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'assignee', 'reviewer', 'sync', 'readyReviewer', 'readyAssignee', 'ready'];
 
 function currentFilters() {
     return {
@@ -79,32 +78,11 @@ function clearAllFilters() {
     handleFilterChange();
 }
 
-// Writes the filters to the URL. `replace` swaps the current history entry
-// instead of pushing one (used while typing in the search box).
+// Writes the project and the filters to the URL. `replace` swaps the current
+// history entry instead of pushing one: while typing in the search box, and
+// when the address bar catches up after a load.
 function updateUrlWithFilters({ replace = false } = {}) {
-    const url = new URL(window.location);
-
-    filterUrlParams.forEach(param => url.searchParams.delete(param));
-
-    // Set project
-    if (currentProject) {
-        url.searchParams.set('project', currentProject);
-    } else {
-        url.searchParams.delete('project');
-    }
-
-    // Set the active filters (multi-selects use the repeated params format)
-    const text = currentText.trim();
-    if (text !== '') url.searchParams.set('q', text);
-    currentAssignees.forEach(v => url.searchParams.append('assignee', v));
-    currentReviewers.forEach(v => url.searchParams.append('reviewer', v));
-    currentSprints.forEach(v => url.searchParams.append('sprint', v));
-    currentFixVersions.forEach(v => url.searchParams.append('fixVersion', v));
-    currentEpics.forEach(v => url.searchParams.append('epic', v));
-    currentStories.forEach(v => url.searchParams.append('story', v));
-    if (currentSync !== "Show all") url.searchParams.set('sync', currentSync);
-    if (currentReadyForReviewer) url.searchParams.set('readyReviewer', 'true');
-    if (currentReadyForAssignee) url.searchParams.set('readyAssignee', 'true');
+    const url = urlWithFilters(new URL(window.location), { project: currentProject, filters: currentFilters() });
 
     // Update URL without reloading the page. Safari throws past 100 updates
     // per 30 seconds: the URL then catches up on the next change
@@ -119,59 +97,43 @@ function updateUrlWithFilters({ replace = false } = {}) {
     }
 }
 
-// Update filter restoration from URL
-function restoreFiltersFromUrl() {
-    const urlParams = new URLSearchParams(window.location.search);
+// Copies the filters the URL describes into the state and the controls. Runs
+// after every render, once every option list is populated, and on Back and
+// Forward. Each multi-select keeps only the values its options offer, so a
+// stale name in a shared link or an ended sprint is dropped (and cannot leave
+// a ready checkbox enabled over an empty selection). SYNC follows the URL only
+// while its statuses are loaded: they are fetched on demand, so a reload starts
+// at "Show all". The URL holds the trimmed query: while the user is typing the
+// box keeps its own content (a re-render must not eat a trailing space); on
+// Back and Forward (`preferTypedText: false`) the URL wins.
+function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
+    const filters = filtersFromUrl(window.location.search);
 
-    // Get all values for multi-select filters (supports repeated params)
-    currentAssignees = urlParams.getAll('assignee');
-    currentReviewers = urlParams.getAll('reviewer');
-    currentSprints = urlParams.getAll('sprint');
-    currentFixVersions = urlParams.getAll('fixVersion');
-    // Epic and story selections are applied by populateIssueFilter once their options exist
-    currentEpics = urlParams.getAll('epic');
-    currentStories = urlParams.getAll('story');
-    currentText = urlParams.get('q') || '';
+    const restoreMultiSelect = (id, values) => {
+        const multiSelect = getMultiSelect(id);
+        if (!multiSelect) return values;
+        multiSelect.setSelectedValues(values);
+        return multiSelect.getSelectedValues();
+    };
+    currentSprints = restoreMultiSelect('sprintSelect', filters.sprints);
+    currentFixVersions = restoreMultiSelect('fixVersionSelect', filters.fixVersions);
+    currentEpics = restoreMultiSelect('epicSelect', filters.epics);
+    currentStories = restoreMultiSelect('storySelect', filters.stories);
+    currentAssignees = restoreMultiSelect('assigneeSelect', filters.assignees);
+    currentReviewers = restoreMultiSelect('reviewerSelect', filters.reviewers);
 
-    if (!currentSyncStatuses) {
-        currentSync = "Show all"; // Not restored from URL because SYNC status is only loaded on demand
-    }
-    // Restored like the other filters; 'ready' is the former name of readyReviewer
-    currentReadyForReviewer = urlParams.get('readyReviewer') === 'true' || urlParams.get('ready') === 'true';
-    currentReadyForAssignee = urlParams.get('readyAssignee') === 'true';
-
-    // Update multi-select components with restored values
-    const assigneeMultiSelect = getMultiSelect('assigneeSelect');
-    const reviewerMultiSelect = getMultiSelect('reviewerSelect');
-    const sprintMultiSelect = getMultiSelect('sprintSelect');
-    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
-
-    // Assignee and reviewer options already exist here: keep only the names they offer, so a
-    // stale name in the URL cannot leave a ready checkbox enabled over an empty selection
-    // (sprints and fix versions are populated after this and validate their own selection)
-    if (assigneeMultiSelect) {
-        assigneeMultiSelect.setSelectedValues(currentAssignees);
-        currentAssignees = assigneeMultiSelect.getSelectedValues();
-    }
-    if (reviewerMultiSelect) {
-        reviewerMultiSelect.setSelectedValues(currentReviewers);
-        currentReviewers = reviewerMultiSelect.getSelectedValues();
-    }
-    if (sprintMultiSelect) {
-        sprintMultiSelect.setSelectedValues(currentSprints);
-    }
-    if (fixVersionMultiSelect) {
-        fixVersionMultiSelect.setSelectedValues(currentFixVersions);
-    }
-
-    // Update the sync select and the ready checkboxes
     const syncSelect = document.getElementById('syncSelect');
+    const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === filters.sync);
+    currentSync = (currentSyncStatuses && syncOffered) ? filters.sync : 'Show all';
     if (syncSelect) syncSelect.value = currentSync;
+
+    currentReadyForReviewer = filters.readyReviewer;
+    currentReadyForAssignee = filters.readyAssignee;
     updateReadyCheckboxes();
 
-    // The URL holds the trimmed query: a box the user is typing in is authoritative
+    currentText = filters.text;
     const textFilter = document.getElementById('textFilter');
-    if (textFilter && document.activeElement === textFilter) {
+    if (textFilter && preferTypedText && document.activeElement === textFilter) {
         currentText = textFilter.value;
     } else if (textFilter) {
         textFilter.value = currentText;
@@ -225,64 +187,78 @@ async function loadProjects() {
         const projectSelect = document.getElementById('projectSelect');
         projectSelect.innerHTML = '<option value="">Select a project</option>' +
             projects.map(project => `<option value="${project}">${project}</option>`).join('');
-        projectSelect.addEventListener('change', handleProjectChange);
+        projectSelect.addEventListener('change', event => selectProject(event.target.value));
 
-        // Check for project query parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        const projectParam = urlParams.get('project');
-        if (projectParam) {
-            const projectOption = projectSelect.querySelector(`option[value="${projectParam}"]`);
-            if (projectOption) {
-                projectSelect.value = projectParam;
-                // Pass true to indicate this is initial page load, not a manual switch
-                await handleProjectChange({ target: { value: projectParam } }, true);
-            }
+        // Open the project the URL names, with the filters it carries
+        const projectName = projectFromUrl();
+        if (projectName) {
+            projectSelect.value = projectName;
+            await selectProject(projectName, { fromUrl: true });
         }
     } catch (error) {
         console.error('Error loading projects:', error);
     }
 }
 
-async function handleProjectChange(event, isInitialLoad = false) {
-    const projectName = event.target.value;
-    if (projectName) {
-        currentProject = projectName;
-        updateDocumentTitle({ project: currentProject, attentionCount: 0 });
-        closeSidebarDrawer();
+// The project the URL names, when the dropdown offers it; '' otherwise
+function projectFromUrl() {
+    const projectName = new URLSearchParams(window.location.search).get('project') || '';
+    const options = Array.from(document.getElementById('projectSelect').options);
+    return options.some(option => option.value === projectName) ? projectName : '';
+}
 
-        // Only clear filters from URL when manually switching projects, not during initial page load
-        if (!isInitialLoad) {
-            const url = new URL(window.location);
-            filterUrlParams.forEach(param => url.searchParams.delete(param));
-            window.history.pushState({}, '', url);
+// Switches to a project, or to none with an empty name. From the dropdown the
+// filters start empty and the switch gets one history entry. From the URL
+// (page load, Back and Forward) the URL already describes the state to reach
+// and is left alone: the render restores the filters it carries.
+async function selectProject(projectName, { fromUrl = false } = {}) {
+    // The SYNC statuses belong to the project being left
+    currentSyncStatuses = null;
+    syncLoadFailed = false;
+    currentProject = projectName || null;
+    updateSyncControls();
+    updateDocumentTitle({ project: currentProject, attentionCount: 0 });
+    closeSidebarDrawer();
 
-            // SYNC data belongs to the previous project; then reset the controls and read them into the state
-            currentSyncStatuses = null;
-            syncLoadFailed = false;
-            updateSyncControls();
-            resetFilterControls();
-            readFilterControls();
-        }
-
-        showLoadingState();
-        renderEverything(await fetchData());
-        updateUrlWithFilters();
-
-        // Start periodic checking
-        startPeriodicChecking();
-    } else {
-        currentProject = null;
-        currentSyncStatuses = null;
-        syncLoadFailed = false;
-        updateSyncControls();
-        updateUrlWithFilters();
+    if (!currentProject) {
+        if (!fromUrl) updateUrlWithFilters();
         setToolbarVisible(false);
         applyFilters(); // no tree to filter: refreshes the badge and the tab title
         showEmptyState();
-
-        // Stop periodic checking
         stopPeriodicChecking();
+        return;
     }
+
+    if (!fromUrl) {
+        resetFilterControls();
+        readFilterControls();
+        updateUrlWithFilters();
+    }
+    showLoadingState();
+    const apiResult = await fetchData();
+    // Back and Forward make quick switches easy: a late response for a project no longer selected is dropped
+    if (currentProject !== projectName) return;
+    renderEverything(apiResult);
+    // The address bar catches up with the filters the render validated, without a new entry
+    if (apiResult) updateUrlWithFilters({ replace: true });
+    startPeriodicChecking();
+}
+
+// Back and Forward: the page follows the URL, never the other way round.
+// Another project: switch to it, the render restores the filters of that URL.
+// Same project: the filters are restored from the URL and applied. Nothing
+// here writes the URL. Browsers no longer fire popstate on page load.
+function handlePopState() {
+    const projectName = projectFromUrl();
+    if (projectName !== (currentProject || '')) {
+        document.getElementById('projectSelect').value = projectName;
+        selectProject(projectName, { fromUrl: true });
+        return;
+    }
+    // Nothing rendered (loading, or the last load failed): the next render restores from the URL
+    if (!currentApiResult) return;
+    restoreFiltersFromUrl({ preferTypedText: false });
+    applyFilters();
 }
 
 // Messages shown in the main pane instead of the tree. Built with DOM nodes so
@@ -421,9 +397,6 @@ function populateFilters(pullRequests) {
 
     // Reflect the current SYNC load state (statuses are only fetched on demand)
     updateSyncControls();
-
-    // Restore filter values; renderEverything applies them once every filter is populated
-    restoreFiltersFromUrl();
 }
 
 // Function to format the refresh time
@@ -530,10 +503,11 @@ function renderEverything(apiResult) {
     populateFilters(currentApiResult.pullRequests);
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
-    currentEpics = populateIssueFilter('epicSelect', filterIndex.epics, currentEpics);
-    currentStories = populateIssueFilter('storySelect', filterIndex.stories, currentStories);
+    populateIssueFilter('epicSelect', filterIndex.epics);
+    populateIssueFilter('storySelect', filterIndex.stories);
 
-    // Every filter is populated and restored from the URL: apply them once
+    // Every option list is populated: restore the filters from the URL and apply them once
+    restoreFiltersFromUrl();
     applyFilters();
     setToolbarVisible(true);
 
@@ -769,14 +743,6 @@ function populateSprintFilter(sprints) {
         label: sprint.name
     }));
     sprintMultiSelect.setOptions(sprintOptions);
-
-    // Restore sprint values from URL after populating options
-    if (currentSprints.length > 0) {
-        // Filter out any sprint IDs that don't exist in the options
-        const validSprintIds = sprintOptions.map(opt => opt.value);
-        currentSprints = currentSprints.filter(id => validSprintIds.includes(id));
-        sprintMultiSelect.setSelectedValues(currentSprints);
-    }
 }
 
 function populateFixVersionFilter(jiraIssuesDetails) {
@@ -806,24 +772,13 @@ function populateFixVersionFilter(jiraIssuesDetails) {
         label: `${version.name} (${version.project})`
     }));
     fixVersionMultiSelect.setOptions(fixVersionOptions);
-
-    // Restore fixVersion values from URL after populating options
-    if (currentFixVersions.length > 0) {
-        // Filter out any fixVersion IDs that don't exist in the options
-        const validFixVersionIds = fixVersionOptions.map(opt => opt.value);
-        currentFixVersions = currentFixVersions.filter(id => validFixVersionIds.includes(id));
-        fixVersionMultiSelect.setSelectedValues(currentFixVersions);
-    }
 }
 
-// Fills an issue multi-select (epics, stories) and returns the selection
-// restricted to the keys it offers (the URL may carry keys of another project)
-function populateIssueFilter(elementId, issues, selectedKeys) {
+// Fills an issue multi-select (epics or stories) from the index; the selection
+// is restored from the URL afterwards, like every other filter
+function populateIssueFilter(elementId, issues) {
     const multiSelect = getMultiSelect(elementId);
-    if (!multiSelect) return selectedKeys;
-    multiSelect.setOptions(issueOptions(issues.values()));
-    multiSelect.setSelectedValues(selectedKeys);
-    return multiSelect.getSelectedValues();
+    if (multiSelect) multiSelect.setOptions(issueOptions(issues.values()));
 }
 
 // Fetches the SYNC status of every pull request of the current project in a
@@ -1236,6 +1191,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializePopovers();
     initializeReadyFilters();
     initializeSyncControls();
+    window.addEventListener('popstate', handlePopState);
 });
 
 // Export functions that need to be accessible globally
