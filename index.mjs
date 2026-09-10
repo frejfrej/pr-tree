@@ -1,7 +1,5 @@
 import express from 'express';
-import fetch from 'node-fetch';
 import { diff3Merge } from 'node-diff3';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -17,8 +15,6 @@ import {
     raiseAllCacheTtls
 } from './cache.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
-
-dotenv.config();
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
