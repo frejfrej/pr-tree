@@ -11,6 +11,7 @@ export const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'a
 /**
  * The filters a query string describes, in the shape of currentFilters().
  * @param {string} search - window.location.search, with or without the leading "?"
+ * @returns {{ text: string, assignees: string[], reviewers: string[], sprints: string[], fixVersions: string[], epics: string[], stories: string[], sync: string, readyReviewer: boolean, readyAssignee: boolean }}
  */
 export function filtersFromUrl(search) {
     const params = new URLSearchParams(search);

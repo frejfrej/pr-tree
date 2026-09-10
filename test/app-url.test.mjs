@@ -61,3 +61,10 @@ test('filterUrlParams covers every parameter urlWithFilters writes, plus the for
     const written = [...urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters }).searchParams.keys()].filter(key => key !== 'project');
     assert.deepEqual(new Set([...written, 'ready']), new Set(filterUrlParams));
 });
+
+test('values with spaces and special characters survive the round trip', () => {
+    const filters = { ...noFilters, text: 'a&b+c%d é=f', assignees: ['Jean-Luc Picard'], epics: ['PROJ-1'] };
+    const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters });
+    assert.deepEqual(filtersFromUrl(url.search), filters);
+    assert.equal(urlWithFilters(url, { project: '', filters: noFilters }).search, '');
+});
