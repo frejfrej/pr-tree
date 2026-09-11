@@ -84,6 +84,10 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.5.2
+    * `README.md` is served by a dedicated route; the static middleware that served it from the project directory also served `config.js` (the Bitbucket and Jira credentials), the logs and the sources to anyone who could reach the port (#40)
+    * The startup log shows the port actually bound, so `PORT=0` reports the port the OS picked
+    * `npm test` starts the server in fixture mode and checks what it serves from the project directory
 * Version 2.5.1
     * A periodic refresh or a SYNC load that ends after a project switch no longer paints the previous project's data or `?` badges over the new one; the late response is dropped, and the SYNC load button is available for the new project right away
     * Selecting "Select a project" clears the filters and their option lists like a project switch does, and writes a bare URL; previously the previous project's filters stayed and were written to the URL without a project
