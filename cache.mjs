@@ -13,7 +13,6 @@ const CACHE_KEYS = {
     PROJECT_DATA: (projectName) => `project_${projectName}`,
     CONFLICTS: (repoName, spec) => `conflicts_${repoName}_${spec}`,
     SYNC_STATUSES: (projectName) => `sync_statuses_${projectName}`,
-    SPRINTS: (projectName) => `sprints_${projectName}`,
     PROJECTS_LIST: 'projects_list'
 };
 
@@ -55,10 +54,11 @@ export async function getCachedProjectData(projectName, fetchProjectData) {
 }
 
 /**
- * Get conflicts data from cache or fetch from source
+ * Get the conflicts of one pull request from cache or compute them: the entry
+ * behind /api/sync-statuses/:project, called once per pull request
  * @param {string} repoName - Repository name
- * @param {string} spec - Specification string
- * @param {function} fetchConflicts - Function to fetch conflicts if cache miss
+ * @param {string} spec - Bitbucket diff spec, destHash..sourceHash
+ * @param {function} fetchConflicts - Function computing the conflicts on a cache miss
  * @returns {Promise<Object>} Conflicts data
  */
 export async function getCachedConflicts(repoName, spec, fetchConflicts) {
@@ -86,16 +86,6 @@ export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
 }
 
 /**
- * Get sprints data from cache or fetch from source
- * @param {string} projectName - Project identifier
- * @param {function} fetchSprints - Function to fetch sprints if cache miss
- * @returns {Promise<Array>} Sprints data
- */
-export async function getCachedSprints(projectName, fetchSprints) {
-    return getOrSetCache(CACHE_KEYS.SPRINTS(projectName), fetchSprints, 600); // 10 minutes TTL
-}
-
-/**
  * Raise the TTL of every cached entry so that nothing expires before the given
  * number of seconds from now. Entries expiring later are left untouched.
  * Used to keep serving cached data while Atlassian requests are paused after an HTTP 429.
@@ -109,21 +99,6 @@ export function raiseAllCacheTtls(seconds) {
             cache.ttl(key, seconds);
         }
     }
-}
-
-/**
- * Clear specific cache entry
- * @param {string} key - Cache key to clear
- */
-export function clearCache(key) {
-    cache.del(key);
-}
-
-/**
- * Clear all cache entries
- */
-export function clearAllCache() {
-    cache.flushAll();
 }
 
 /**

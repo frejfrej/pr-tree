@@ -93,10 +93,6 @@ export class MultiSelect {
     }
 
     toggle() {
-        if (this.element.classList.contains('disabled')) {
-            return;
-        }
-
         if (this.element.classList.contains('open')) {
             this.close();
         } else {
@@ -132,10 +128,6 @@ export class MultiSelect {
         this.options = options;
         this.renderOptions();
         this.updateDisplay();
-    }
-
-    getOptions() {
-        return this.options;
     }
 
     setSelectedValues(values) {
@@ -229,15 +221,6 @@ export class MultiSelect {
         this.renderOptions();
         this.updateDisplay();
         this.notifyChange();
-    }
-
-    setDisabled(disabled) {
-        if (disabled) {
-            this.element.classList.add('disabled');
-            this.close();
-        } else {
-            this.element.classList.remove('disabled');
-        }
     }
 
     notifyChange() {

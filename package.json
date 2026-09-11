@@ -1,6 +1,6 @@
 {
   "name": "version",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "releaseDate": "2026-09-10",
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
@@ -12,13 +12,12 @@
   "keywords": [],
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre",
+  "engines": {
+    "node": ">=20.11"
+  },
   "dependencies": {
-    "node-cache": "^5.1.2",
-    "node-diff3": "^3.2.1",
-    "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "fetch": "^1.1.0",
-    "node-fetch": "^3.3.2"
+    "node-cache": "^5.1.2",
+    "node-diff3": "^3.2.1"
   }
 }
-

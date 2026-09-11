@@ -70,11 +70,11 @@
 ## Installation
 * Clone this repository
 * Copy config.js.default to config.js
-* Fill in the required configuration values in config.js
+* Fill in the configuration values in config.js: the comments say which Atlassian tokens to create and where
 * Update projects.js to include your own projects if needed, and remove those you might not need
-* Open a terminal (we are assuming here you have `nodejs` and `npm` installed)
+* Open a terminal (Node.js 20.11 or later and `npm` are assumed to be installed; the server uses the `fetch` built into Node)
 * Run `npm ci`
-* Run `node index.mjs`
+* Run `npm start`
 * Go to http://localhost:3000
 
 ## Running without Atlassian access (fixture mode)
@@ -84,6 +84,12 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.6.0
+    * Removed what nothing used (#41)
+        * The `/api/pull-request-conflicts/:repoName/:spec` endpoint: the SYNC load has used `/api/sync-statuses/:project` since 2.1.0
+        * The `node-fetch`, `dotenv` and `fetch` dependencies: the server uses the `fetch` built into Node (20.11 or later, declared in `package.json`), `PORT` is read from the environment as before but a private `.env` file is no longer loaded; a network failure now reaches `error.log` with its reason and the URL (the built-in `fetch` only says "fetch failed")
+        * The sprint cache that was never wired (the sprints are fetched with the project data), the `clearCache` and `clearAllCache` exports, two multi-select methods, the `repoName` and `issuesRegex` fields of `config.js.default`, `start.bat` (`npm start` does the same)
+        * The comments of `config.js.default` describe the credentials Atlassian accepts today: the account e-mail and a scoped API token for Bitbucket (app passwords were removed in July 2026), an API token for Jira
 * Version 2.5.2
     * `README.md` is served by a dedicated route; the static middleware that served it from the project directory also served `config.js` (the Bitbucket and Jira credentials), the logs and the sources to anyone who could reach the port (#40)
     * The startup log shows the port actually bound, so `PORT=0` reports the port the OS picked

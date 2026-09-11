@@ -64,3 +64,14 @@ test('the app and the API still answer', async () => {
     const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
     assert.equal(version.version, packageJson.version);
 });
+
+test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoint stays', async () => {
+    const conflicts = await fetch(`${baseUrl}/api/pull-request-conflicts/some-repository/abc..def`);
+    assert.equal(conflicts.status, 404);
+    // The projects come from projects.js, which users replace with their own
+    const [project] = await (await fetch(`${baseUrl}/api/projects`)).json();
+    assert.ok(project, 'no project configured');
+    const statuses = await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`);
+    assert.equal(statuses.status, 200);
+    assert.equal(typeof (await statuses.json()).statuses, 'object');
+});

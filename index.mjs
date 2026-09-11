@@ -1,7 +1,5 @@
 import express from 'express';
-import fetch from 'node-fetch';
 import { diff3Merge } from 'node-diff3';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -12,13 +10,10 @@ import {
     getCachedProjectData,
     getCachedConflicts,
     getCachedSyncStatuses,
-    getCachedSprints,
     getCacheStats,
     raiseAllCacheTtls
 } from './cache.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
-
-dotenv.config();
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
@@ -115,7 +110,18 @@ async function atlassianFetch(url, options) {
         throw new RateLimitError();
     }
 
-    const response = await fetch(url, options);
+    let response;
+    try {
+        response = await fetch(url, options);
+    } catch (error) {
+        // The fetch built into Node reports a network failure as "fetch failed" and
+        // keeps the reason (DNS, TLS, refused connection) in error.cause; the callers
+        // log error.message only, so the reason and the URL go into the message
+        // A refused or reset connection on a dual-stack host comes as an AggregateError with an empty message
+        const detail = error.cause && (error.cause.message || error.cause.code);
+        const reason = detail ? `: ${detail}` : '';
+        throw new Error(`${error.message}${reason} (${url})`, { cause: error });
+    }
     if (response.status === 429) {
         await response.arrayBuffer().catch(() => {}); // release the socket
         noteRateLimit(url);
@@ -347,7 +353,6 @@ function calculateHash(data) {
 }
 
 async function fetchJiraSprints(jiraProjects) {
-    const jiraAuth = Buffer.from(`${config.jira.username}:${config.jira.apiKey}`).toString('base64');
     const sprints = new Set();
 
     for (const project of jiraProjects) {
@@ -641,25 +646,6 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     }
 });
 
-app.get('/api/pull-request-conflicts/:repoName/:spec', async (req, res) => {
-    const { repoName, spec } = req.params;
-
-    try {
-        const conflictsData = await getCachedConflicts(repoName, spec, () => {
-            return conflictsLimiter(() => computeConflicts(repoName, spec));
-        });
-
-        res.json(conflictsData);
-    } catch (error) {
-        if (error instanceof RateLimitError) {
-            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(rateLimitedUntil).toISOString() });
-            return;
-        }
-        log(`Error fetching conflicts for commits ${spec}: ${error.message}`, errorLogStream);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
 async function fetchBitbucketJson(url) {
     const response = await atlassianFetch(url, {
         method: 'GET',
@@ -676,8 +662,8 @@ async function fetchBitbucketJson(url) {
     return response.json();
 }
 
-// Serializes conflict computations: a page load requests conflicts for every PR
-// at once, and each computation makes many Bitbucket calls of its own.
+// Serializes conflict computations: one SYNC load asks for every pull request of
+// a project at once, and each computation makes many Bitbucket calls of its own.
 function createLimiter(maxConcurrent) {
     let active = 0;
     const queue = [];

@@ -82,9 +82,8 @@ export function calculateTotalPullRequests(pullRequests, pullRequestsByDestinati
     return total;
 }
 
-// Helper function to get branch URL from Bitbucket
-function getBranchUrl(repoName, branchName, pullRequest) {
-    // Use the repository links from any pull request to get the base URL
+// The Bitbucket URL of a branch, from the repository links of one of its pull requests
+function getBranchUrl(branchName, pullRequest) {
     const baseUrl = pullRequest.source.repository.links.html.href;
     return `${baseUrl}/branch/${encodeURIComponent(branchName)}`;
 }
@@ -100,8 +99,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             rootPullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
             const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
 
-            // Get the branch URL using the first pull request's repository information
-            const branchUrl = getBranchUrl(rootPullRequests[0].source.repository.name, rootBranch, rootPullRequests[0]);
+            const branchUrl = getBranchUrl(rootBranch, rootPullRequests[0]);
 
             html += `
                 <div class="root-branch">
@@ -203,8 +201,6 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         let sameStatusIcon = uniqueJiraIssuesStatuses.size > 1 ?
             `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
-        let resolvedIssuesAlert = '';
-
         jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
             const priority = issueDetails.fields.priority;
             const priorityHtml = priority ?
@@ -218,13 +214,12 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                     </a></li>`;
         }).join('');
 
-        if (sameStatusIcon || noOtherParticipantsAlert || resolvedIssuesAlert) {
+        if (sameStatusIcon || noOtherParticipantsAlert) {
             alertsHtml = `
                 <div class="warnings">
                     <ul>
                         ${sameStatusIcon}
                         ${noOtherParticipantsAlert}
-                        ${resolvedIssuesAlert}
                     </ul>
                 </div>
             `;

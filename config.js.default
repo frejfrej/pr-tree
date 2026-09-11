@@ -2,16 +2,14 @@ const projects = require('./projects');
 
 module.exports = {
     bitbucket: {
-        username: 'xxx', // for me was frjaunatre_sodius
-        password: 'xxx', // you can create an app password at https://bitbucket.org/account/settings/app-passwords/
-        workspace: 'xxx', // should be sodius
-        repoName: 'xxx' // for us was products.secollab
+        username: 'xxx', // the e-mail of your Atlassian account (the Bitbucket username is rejected with an API token)
+        password: 'xxx', // an API token with scopes: https://id.atlassian.com/manage-profile/security/api-tokens, "Create API token with scopes", app Bitbucket, scopes read:repository:bitbucket and read:pullrequest:bitbucket (app passwords were removed by Atlassian in July 2026)
+        workspace: 'xxx', // the workspace slug, as in https://bitbucket.org/<workspace>/
     },
     jira: {
-        siteName: 'xxx', // should be sodiuswillert
-        username: 'xxx', // for me was frjaunatre@sodiuswillert.com
-        apiKey: 'xxx', // you can create an API key at https://id.atlassian.com/manage-profile/security/api-tokens
-        issuesRegex: /(XXX-\d+)/g // for us was replacing XXX with SECOLLAB
+        siteName: 'xxx', // the subdomain of your Jira site: <siteName>.atlassian.net
+        username: 'xxx', // the e-mail of your Atlassian account
+        apiKey: 'xxx', // an API token without scopes, from the same page (a Bitbucket-scoped token is rejected by Jira)
     },
     projects: projects,
 };
