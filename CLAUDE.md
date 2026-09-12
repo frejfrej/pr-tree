@@ -72,7 +72,7 @@ pr-tree/
 
 #### Backend Files
 
-**index.mjs** (506 lines)
+**index.mjs** (835 lines)
 - Main Express application server
 - API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
 - The per-pull-request conflict computation survives only as an internal of `/api/sync-statuses/:project`: `computeConflicts` fetches the diffstats of both sides (with their line counts), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request, the paths of one file in the same request so a rename is seen whole), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches, and a failed request or a `checkPatch` mismatch is caught, so when the diffstats already proved a conflict the limit or a later failure gives a partial SYNC (`{ conflicts: true, files, reason }`: the known files, and the reason the rest was not checked) instead of a full failure, and a partial result is never stored; results are looked up in and added to `sync-cache.json` (`sync-cache.mjs`) under `<conflictRuleVersion>:<repo>/<dest>..<source>` before any request; the reasons sent to the client are short (`atlassianFetch`'s `shortMessage`, without the URL; the full message goes to error.log); each load logs how many pull requests it computed, could not check, and could only partly check
@@ -83,7 +83,7 @@ pr-tree/
 - Comprehensive logging system (access.log, error.log, performance.log)
 - Static file serving for the public directory; `README.md` is served through a dedicated route (the help modal fetches it) and nothing else of the project directory is reachable over HTTP
 
-**cache.mjs** (98 lines)
+**cache.mjs** (108 lines)
 - Abstraction layer over node-cache
 - Provides typed caching functions for different data types
 - TTL configuration:
@@ -96,14 +96,14 @@ pr-tree/
 
 **conflicts.mjs**
 - Pure: `parseUnifiedDiff(text)` turns a git unified diff into files keyed by base path (the `a/` path of the `diff --git` header, or the `rename from` path for a renamed file; C-quoted paths are decoded, and a `diff --git` header is split correctly even when a path contains ` b/`) with change regions `{ start, end, lines }` in merge-base line coordinates, `newHash` (the post-image blob of the `index` line) and `linesAdded`/`linesRemoved`; content lines keep their CR and a missing final newline marks the line; it throws on a malformed or truncated patch (a hunk longer or shorter than its header, hunks out of order or overlapping, a foreign line, a file header without a hunk, a file listed twice) rather than let it pass for a clean merge
-- `conflictingFiles(sideA, sideB)` applies git's rule: deleted on both sides is clean, deleted on one side conflicts, the same post-image blob on both sides is clean, a binary whose content changed on both sides conflicts, otherwise overlapping or touching regions conflict unless they are the same change (a linear sweep; an added file is an insertion into an empty base)
+- `conflictingFiles(sideA, sideB)` applies git's rule, in order: deleted on both sides is clean, deleted on one side conflicts, added on both sides with different modes conflicts (git's add/add, or distinct types for a symlink), the same post-image blob on both sides is clean, a binary whose content changed on both sides conflicts (an added file always counts as changed, even an empty one, so it conflicts against a changed binary), otherwise overlapping or touching regions conflict unless they are the same change (a linear sweep; an added file is an insertion into an empty base)
 - `decideFromDiffstat(sourceFiles, destFiles)` decides from the diffstat statuses: removed on both sides is nothing, removed on one side is a conflict, renamed to different paths on both sides is a conflict, two different files ending at one path (rename/add, two renames onto one path) are a conflict, and so is a path that is a file on one side and a directory on the other (file/directory: only an added or renamed file counts, so a file renamed away before its old path became a directory merges cleanly); the other files touched on both sides need the patches
 - `conflictRuleVersion` (exported): bumped whenever a change to `parseUnifiedDiff`, `conflictingFiles` or `decideFromDiffstat` can change a decision; the server prefixes its cache keys with it, so results computed under an older rule are never reused
 - Known approximations: git merges with the histogram diff, so patches made with another diff algorithm can place hunks differently on repetitive files; a directory renamed on one side while the other adds a file in the old directory is not detected; `.gitattributes` merge drivers are ignored (a `merge=binary` driver makes git conflict even on changes that do not touch); a change of file type is reported not checked
 - Unit-tested with synthetic patches (`test/conflicts.test.mjs`); when the rule changes, check it against `git merge-file` or `git merge-tree` on generated cases (the fuzzers used while 2.7.0 was written are not in the repository) and bump `conflictRuleVersion`
 
 **sync-cache.mjs**
-- `openSyncCache(filePath, { maxAgeDays, now, onError })`: `size`, `get(key)`, `set(key, result)`, `save()`; the file is `{ version: 1, entries: { "repo/dest..source": { conflicts, files, computedAt } } }`, read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned of entries older than 90 days at save
+- `openSyncCache(filePath, { maxAgeDays, now, onError })`: `size`, `get(key)`, `set(key, result)`, `save()`; the file is `{ version: 1, entries: { "2:repo-name/destHash..sourceHash": { conflicts, files, computedAt } } }` (the module treats keys as opaque strings; the `2:` prefix is the conflict rule version the server puts in front of `repo/dest..source`), read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned of entries older than 90 days at save
 - `save()` serializes at call time and queues its write after the writes in flight; it resolves to whether it wrote and only ever rejects (a failed write leaves the entries pending for the next save)
 - Only successful results are stored (the route stores nothing for `{ error: true }`), so failures are retried at the next load; fixture mode reads the file but never writes it
 
@@ -182,7 +182,7 @@ pr-tree/
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
 
 **fixtures/generate.mjs** and **fixtures/index.mjs**
-- `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one
+- `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one: OK statuses, conflicts (about one in ten of them partial, with a reason), and failures (about 4%, with a reason), each seeded by the pull request's key (repository and commits) so a pull request shared by two projects gets the same status
 - Volumes and structure follow the real projects (see the constants at the top of generate.mjs), including the 24-deep stack of `products.secollab` under `feat/ai_investigations` that made the old filtering explode
 - Epics per Jira project (`epicSummaries`, keys in numbering block 8): 40% of the standard issues have an epic parent, parents of sub-tasks are standard issues, parent-only entries carry summary, type, fix versions and parent like the server's
 - Seeded PRNG: the same repository always yields the same pull requests, so `dataHash` is stable and the smart reload stays quiet
@@ -211,8 +211,8 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "1.11.1",
-  "releaseDate": "2025-01-22",
+  "version": "2.7.0",
+  "releaseDate": "2026-09-12",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
 }
