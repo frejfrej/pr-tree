@@ -736,19 +736,53 @@ function calculateHash(data) {
     return hash.digest('hex');
 }
 
+const conflictFiles = [
+    'src/com.sodius.oslc.web/package-lock.json',
+    'src/com.sodius.oslc.web/projects/ng-sodius-oslc/core/src/i18n/messages_en.ts',
+    'src/com.sodius.oslc.web/projects/ng-sodius-oslc/core/src/lib/oslc-query.service.ts',
+    'pom.xml',
+    'src/main/java/com/sodius/secollab/review/ReviewService.java',
+    'src/main/java/com/sodius/secollab/review/ReviewController.java',
+    'src/main/resources/messages.properties',
+    'src/main/resources/application.properties',
+    'CHANGELOG.md',
+    'README.md'
+];
+const failureReasons = [
+    'The operation was aborted due to timeout',
+    'Request failed with status code 502',
+    'too many files to check (140)'
+];
+
 /**
  * Builds the /api/sync-statuses/:project response: about a fifth of the pull
- * requests have conflicts, a few could not be computed.
+ * requests have conflicts (with the files), one in ten of those is partial
+ * (other files could not be checked, with the reason), a few pull requests
+ * could not be computed at all (with the reason), the rest are OK.
  */
 export function generateSyncStatuses(projectData) {
-    const random = createRandom(`sync-${projectData.pullRequests.length}`);
     const statuses = {};
     for (const pullRequest of projectData.pullRequests) {
         const spec = `${pullRequest.destination.commit?.hash}..${pullRequest.source.commit?.hash}`;
         if (spec.includes('undefined')) continue;
+        const key = `${pullRequest.source.repository.name}/${spec}`;
+        // Seeded by the pull request: its status only depends on its commits, as on the real server
+        const random = createRandom(`sync-${key}`);
         const roll = random();
-        statuses[`${pullRequest.source.repository.name}/${spec}`] =
-            roll < 0.04 ? { error: true } : { conflicts: roll < 0.24 };
+        if (roll < 0.04) {
+            statuses[key] = { error: true, reason: pick(random, failureReasons) };
+        } else if (roll < 0.24) {
+            // One conflict in five lists more files than the tooltip shows (the first five)
+            const count = random() < 0.2 ? integer(random, 6, 8) : integer(random, 1, 3);
+            const start = integer(random, 0, conflictFiles.length - 1);
+            const files = Array.from({ length: count }, (_, i) => conflictFiles[(start + i) % conflictFiles.length]);
+            const status = { conflicts: true, files: files.sort() };
+            // One conflict in ten is partial: other files could not be checked
+            if (random() < 0.1) status.reason = pick(random, failureReasons);
+            statuses[key] = status;
+        } else {
+            statuses[key] = { conflicts: false };
+        }
     }
     return {
         lastRefreshTime: new Date().toISOString(),

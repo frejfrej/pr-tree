@@ -57,3 +57,6 @@ sync/
 
 # files to avoid commiting
 Bitbucket-pr-tree*.gif
+
+# Conflict results kept across restarts (and the temporary file of a write)
+sync-cache.json*

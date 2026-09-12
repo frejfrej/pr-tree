@@ -232,10 +232,10 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
  * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, readyReviewer, readyAssignee }
  * @param {object} rendered - what the tree shows for this pull request:
- *   statusInProgress, statusInReview (from the Jira statuses) and hasSyncLabel
+ *   statusInProgress, statusInReview (from the Jira statuses), hasSyncLabel and hasOkBadge (the painted SYNC badges)
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, readyReviewer = false, readyAssignee = false }, { statusInProgress, statusInReview, hasSyncLabel }) {
+export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, readyReviewer = false, readyAssignee = false }, { statusInProgress, statusInReview, hasSyncLabel, hasOkBadge }) {
     const attention = computeAttention(entry.pullRequest, {
         statusInProgress,
         statusInReview,
@@ -252,9 +252,11 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
     const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
     const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
     const storyMatch = stories.length === 0 || stories.some(key => entry.stories.has(key));
+    // 'OK' means computed without conflict; 'unchecked' is a pull request with neither badge
     const syncMatch = sync === 'Show all' ||
         (sync === 'requested' && hasSyncLabel) ||
-        (sync === 'OK' && !hasSyncLabel);
+        (sync === 'OK' && hasOkBadge) ||
+        (sync === 'unchecked' && !hasSyncLabel && !hasOkBadge);
     // Ready filters: with one or both checked, keep the pull requests that need the
     // attention of the selected reviewers or assignees. A pull request is never in
     // review and in progress at once, so the two boxes combine as OR
@@ -284,6 +286,12 @@ export function filterBranches(filters) {
         // The SYNC filter relies on the rendered badges: collect them once
         pullRequestsWithSyncLabel: new Set(
             Array.from(document.querySelectorAll('.pull-request .conflicts-count'))
+                .map(badge => badge.closest('.pull-request'))
+                .filter(pullRequest => pullRequest)
+                .map(pullRequest => pullRequest.dataset.id)
+        ),
+        pullRequestsWithOkBadge: new Set(
+            Array.from(document.querySelectorAll('.pull-request .conflicts-ok'))
                 .map(badge => badge.closest('.pull-request'))
                 .filter(pullRequest => pullRequest)
                 .map(pullRequest => pullRequest.dataset.id)
@@ -353,7 +361,8 @@ function filterPullRequest(pullRequestElement, pass) {
         const { visible, attention } = evaluatePullRequest(entry, pass.filters, {
             statusInProgress: pullRequestElement.classList.contains('status-in-progress'),
             statusInReview: pullRequestElement.classList.contains('status-in-review'),
-            hasSyncLabel: pass.pullRequestsWithSyncLabel.has(pullRequestElement.dataset.id)
+            hasSyncLabel: pass.pullRequestsWithSyncLabel.has(pullRequestElement.dataset.id),
+            hasOkBadge: pass.pullRequestsWithOkBadge.has(pullRequestElement.dataset.id)
         });
         isVisible = visible;
         pullRequestElement.classList.toggle('needs-attention', attention.any);

@@ -110,33 +110,47 @@ async function loadSyncStatuses() {
     onLoadEnd();
 }
 
-/** Renders the stored SYNC statuses onto the conflicts counters */
+// One badge of the conflicts counter, built as DOM so file names and reasons need no escaping
+function badge(className, title, text) {
+    const element = document.createElement('div');
+    element.className = className;
+    element.title = title;
+    element.textContent = text;
+    return element;
+}
+
+// Tooltip of a SYNC conflict badge: the files, one per line, capped at five; a
+// partial result (the other files could not be checked) ends with the reason
+export function conflictsTitle(files, reason) {
+    const listed = Array.isArray(files) && files.length > 0;
+    const lines = listed ? ['Conflicts in:', ...files.slice(0, 5)] : ['Conflicts found'];
+    if (listed && files.length > 5) lines.push(`and ${files.length - 5} more`);
+    if (reason) lines.push(`Other files not checked: ${reason}`);
+    return lines.join('\n');
+}
+
+/** Renders the stored SYNC statuses onto the conflicts counters: OK, SYNC, or ? with the reason */
 export function applySyncStatuses() {
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
         const { repoName, spec } = counter.dataset;
         if (spec.includes('undefined')) {
-            counter.innerHTML = `<div class="conflicts-error" title="Invalid spec provided ${spec}">!</div>`;
+            counter.replaceChildren(badge('conflicts-error', `Invalid spec provided ${spec}`, '!'));
             return;
         }
         if (!currentSyncStatuses) {
-            counter.innerHTML = '';
+            counter.replaceChildren();
             return;
         }
 
         const status = currentSyncStatuses.statuses[`${repoName}/${spec}`];
         if (!status) {
-            counter.innerHTML = '<div class="conflicts-error" title="SYNC status unknown - use the SYNC load button to refresh">?</div>';
+            counter.replaceChildren(badge('conflicts-error', 'SYNC status unknown - use the SYNC load button to refresh', '?'));
         } else if (status.error) {
-            counter.innerHTML = '<div class="conflicts-error" title="Error fetching conflicts">?</div>';
+            counter.replaceChildren(badge('conflicts-error', `Could not check: ${status.reason || 'unknown error'}`, '?'));
         } else if (status.conflicts) {
-            counter.innerHTML = `
-                <div class="conflicts-count" title="Conflicts found">
-                    SYNC
-                </div>
-            `;
+            counter.replaceChildren(badge('conflicts-count', conflictsTitle(status.files, status.reason), 'SYNC'));
         } else {
-            // display nothing if there are no conflicts
-            counter.innerHTML = ``;
+            counter.replaceChildren(badge('conflicts-ok', 'No conflict with the destination branch', 'OK'));
         }
     });
 }
@@ -163,6 +177,7 @@ export function updateSyncControls() {
                 <option value="Show all">Show all</option>
                 <option value="requested">SYNC required</option>
                 <option value="OK">SYNC ok</option>
+                <option value="unchecked">Not checked</option>
             `;
             syncSelect.value = getSyncFilter();
         } else {

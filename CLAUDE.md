@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.6.0** (as of 2026-09-10)
+Current version: **2.7.0** (as of 2026-09-12)
 
 ## Technology Stack
 
@@ -25,7 +25,6 @@ Current version: **2.6.0** (as of 2026-09-10)
 - **Framework**: Express.js (v5.2.1)
 - **HTTP Client**: the `fetch` built into Node.js (20.11 or later)
 - **Caching**: node-cache (v5.1.2)
-- **Three-way merge**: node-diff3 (v3.2.1), for the conflict computation
 - **Authentication**: Basic Auth (Base64 encoded) for Bitbucket and Jira APIs
 
 ### Frontend
@@ -43,6 +42,8 @@ Current version: **2.6.0** (as of 2026-09-10)
 pr-tree/
 ├── index.mjs              # Main Express server & API endpoints
 ├── cache.mjs              # Server-side caching logic (NodeCache wrapper)
+├── conflicts.mjs          # Conflicts decided from the patches of both sides (pure)
+├── sync-cache.mjs         # Conflict results kept in sync-cache.json across restarts
 ├── config.js              # Configuration file (git-ignored, user-specific)
 ├── config.js.default      # Configuration template
 ├── projects.js            # Project definitions & Jira regex patterns
@@ -71,10 +72,12 @@ pr-tree/
 
 #### Backend Files
 
-**index.mjs** (506 lines)
+**index.mjs** (835 lines)
 - Main Express application server
 - API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
-- The per-pull-request conflict computation (`computeConflicts`, `conflictsLimiter`, `getCachedConflicts`) survives only as an internal of `/api/sync-statuses/:project`
+- The per-pull-request conflict computation survives only as an internal of `/api/sync-statuses/:project`: `computeConflicts` fetches the diffstats of both sides (with their line counts), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request, the paths of one file in the same request so a rename is seen whole), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches
+- A failed request or a `checkPatch` mismatch is caught: when the diffstats already proved a conflict, the limit or a later failure gives a partial SYNC (`{ conflicts: true, files, reason }`: the known files, and the reason the rest was not checked) instead of a full failure, and a partial result is never stored; results are looked up in and added to `sync-cache.json` (`sync-cache.mjs`) under `<conflictRuleVersion>:<repo>/<dest>..<source>` before any request
+- The reasons sent to the client are short (`atlassianFetch`'s `shortMessage`, without the URL; the full message goes to error.log); each load logs how many pull requests it computed, could not check, and could only partly check
 - Bitbucket API integration (fetch PRs, commit diffs)
 - Jira API integration (fetch issues, sprints, orphaned issues)
 - `fetchJiraIssuesDetails()` fetches the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
@@ -82,15 +85,29 @@ pr-tree/
 - Comprehensive logging system (access.log, error.log, performance.log)
 - Static file serving for the public directory; `README.md` is served through a dedicated route (the help modal fetches it) and nothing else of the project directory is reachable over HTTP
 
-**cache.mjs** (98 lines)
+**cache.mjs** (108 lines)
 - Abstraction layer over node-cache
 - Provides typed caching functions for different data types
 - TTL configuration:
   - Project data: 120 seconds (default)
   - Projects list: 300 seconds (5 minutes)
-  - Conflicts: 300 seconds (5 minutes)
+- The per-pull-request conflict results are not in node-cache: they live in `sync-cache.json` (`sync-cache.mjs`), for good (pruned 90 days after they were computed)
+- `getCachedSyncStatuses` shares a computation in progress per project (two loads of one project at once compute once; a failure is not cached)
 - The sprints are fetched with the project data and cached with it (no separate cache)
 - Cache statistics endpoint support
+
+**conflicts.mjs**
+- Pure: `parseUnifiedDiff(text)` turns a git unified diff into files keyed by base path (the `a/` path of the `diff --git` header, or the `rename from` path for a renamed file; C-quoted paths are decoded, and a `diff --git` header is split correctly even when a path contains ` b/`) with change regions `{ start, end, lines }` in merge-base line coordinates, `newHash` (the post-image blob of the `index` line) and `linesAdded`/`linesRemoved`; content lines keep their CR and a missing final newline marks the line; it throws on a malformed or truncated patch (a hunk longer or shorter than its header, hunks out of order or overlapping, a foreign line, a file header without a hunk, a file listed twice) rather than let it pass for a clean merge
+- `conflictingFiles(sideA, sideB)` applies git's rule, in order: deleted on both sides is clean, deleted on one side conflicts, added on both sides with different modes conflicts (git's add/add, or distinct types for a symlink), the same post-image blob on both sides is clean, a binary whose content changed on both sides conflicts (an added file always counts as changed, even an empty one, so it conflicts against a changed binary), otherwise overlapping or touching regions conflict unless they are the same change (a linear sweep; an added file is an insertion into an empty base)
+- `decideFromDiffstat(sourceFiles, destFiles)` decides from the diffstat statuses: removed on both sides is nothing, removed on one side is a conflict, renamed to different paths on both sides is a conflict, two different files ending at one path (rename/add, two renames onto one path) are a conflict, and so is a path that is a file on one side and a directory on the other (file/directory: only an added or renamed file counts, so a file renamed away before its old path became a directory merges cleanly); the other files touched on both sides need the patches
+- `conflictRuleVersion` (exported): bumped whenever a change to `parseUnifiedDiff`, `conflictingFiles` or `decideFromDiffstat` here, or to `computeConflicts`, `checkPatch` or the diffstat mapping in index.mjs, can change a decision; the server prefixes its cache keys with it, so results computed under an older rule are never reused
+- Known approximations: git merges with the histogram diff, so patches made with another diff algorithm can place hunks differently on repetitive files; a directory renamed on one side while the other adds a file in the old directory is not detected; `.gitattributes` merge drivers are ignored (a `merge=binary` driver makes git conflict even on changes that do not touch); a change of file type is reported not checked
+- Unit-tested with synthetic patches (`test/conflicts.test.mjs`); when the rule changes, check it against `git merge-file` or `git merge-tree` on generated cases (the fuzzers used while 2.7.0 was written are not in the repository) and bump `conflictRuleVersion`
+
+**sync-cache.mjs**
+- `openSyncCache(filePath, { maxAgeDays, now, onError })`: `size`, `get(key)`, `set(key, result)`, `save()`; the file is `{ version: 1, entries: { "2:repo-name/destHash..sourceHash": { conflicts, files, computedAt } } }` (the module treats keys as opaque strings; the `2:` prefix is the conflict rule version the server puts in front of `repo/dest..source`), read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned of entries older than 90 days at save
+- `save()` serializes at call time and queues its write after the writes in flight; it resolves to whether it wrote and only ever rejects (a failed write leaves the entries pending for the next save)
+- Only successful results are stored (the route stores nothing for `{ error: true }` or a partial result with a `reason`), so failures are retried at the next load; fixture mode reads the file but never writes it
 
 **projects.js**
 - Module.exports object containing project configurations
@@ -146,14 +163,15 @@ pr-tree/
 - Owns the SYNC state: `currentSyncStatuses` (the last `/api/sync-statuses` response, null until loaded and again after a project switch), `syncStatusLoading`, `syncLoadFailed`; never imports app.js
 - `initializeSyncControls({ getProject, getSyncFilter, onFilterChange, onLoadEnd })`: wires the SYNC select and the load button; the accessors read the selected project and SYNC filter from app.js at call time, `onLoadEnd` runs after every load, successful or not
 - `loadSyncStatuses()`: the load button handler, one `/api/sync-statuses/:project` call with spinners on the badges meanwhile; never called automatically; a project switch during the load (`resetSyncStatuses` bumps `syncLoadGeneration`) drops its response and its failure, and the new project can load right away; a failed refresh keeps the previously loaded statuses
-- `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements (SYNC badge, `?` for unknown or error, `!` for an invalid spec); called after every render (before the filters run) and after every load
+- `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements as DOM badges: green `OK` (`.conflicts-ok`), red `SYNC` (`.conflicts-count`, tooltip from `conflictsTitle`), grey `?` (`.conflicts-error`, the reason, or "unknown" when the key is absent), grey `!` for an invalid spec; nothing while statuses are not loaded; called after every render (before the filters run) and after every load
+- `conflictsTitle(files, reason)` (pure, exported for `test/app-sync.test.mjs`): the SYNC tooltip, the conflicting files one per line, the first five then "and N more"; a missing or malformed list gives "Conflicts found"; with a reason, a last line `Other files not checked: <reason>`
 - `updateSyncControls()`: the select (disabled until loaded, options rebuilt, selection put back from `getSyncFilter()`), the load button and the failure/rate-limit warning
 - `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses, a failed load and a load in flight on a project switch
 
 **public/app-filter.js**
 - `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
-- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request
-- `filterBranches(filters)`: one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
+- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
+- `filterBranches(filters)`: collects the SYNC and OK badges once, then one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
 - `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
@@ -166,7 +184,7 @@ pr-tree/
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
 
 **fixtures/generate.mjs** and **fixtures/index.mjs**
-- `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one
+- `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one: OK statuses, conflicts (about one in ten of them partial, with a reason), and failures (about 4%, with a reason), each seeded by the pull request's key (repository and commits) so a pull request shared by two projects gets the same status
 - Volumes and structure follow the real projects (see the constants at the top of generate.mjs), including the 24-deep stack of `products.secollab` under `feat/ai_investigations` that made the old filtering explode
 - Epics per Jira project (`epicSummaries`, keys in numbering block 8): 40% of the standard issues have an epic parent, parents of sub-tasks are standard issues, parent-only entries carry summary, type, fix versions and parent like the server's
 - Seeded PRNG: the same repository always yields the same pull requests, so `dataHash` is stable and the smart reload stays quiet
@@ -195,8 +213,8 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "1.11.1",
-  "releaseDate": "2025-01-22",
+  "version": "2.7.0",
+  "releaseDate": "2026-09-12",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
 }
@@ -238,7 +256,7 @@ Main data endpoint. Returns comprehensive project data (cached 2 minutes).
 - This prevents Bitbucket API rate limiting (HTTP 429)
 
 ### GET /api/sync-statuses/:project
-Returns the SYNC (conflicts) status of every open PR of a project in a single response (cached 5 minutes). Only called by the frontend when the user clicks the load button next to the SYNC filter — never automatically.
+Returns the SYNC (conflicts) status of every open PR of a project in a single response (cached 5 minutes; each pull request's result is read from `sync-cache.json` first, so only the pull requests whose commits moved cost Bitbucket requests). Only called by the frontend when the user clicks the load button next to the SYNC filter, never automatically.
 
 **Response:**
 ```json
@@ -247,11 +265,15 @@ Returns the SYNC (conflicts) status of every open PR of a project in a single re
   "rateLimited": false,
   "rateLimitedUntil": null,
   "statuses": {
-    "repo-name/destHash..sourceHash": { "conflicts": true },
-    "repo-name/otherDest..otherSource": { "error": true }
+    "repo-name/destHash..sourceHash": { "conflicts": true, "files": ["src/package-lock.json"] },
+    "repo-name/otherDest..otherSource": { "conflicts": false },
+    "repo-name/thirdDest..thirdSource": { "error": true, "reason": "The operation was aborted due to timeout" },
+    "repo-name/fourthDest..fourthSource": { "conflicts": true, "files": ["pom.xml"], "reason": "Request failed with status code 502" }
   }
 }
 ```
+
+A SYNC entry with a `reason` is partial: the listed files conflict for sure, the other files could not be checked; it is not stored and is computed again at the next load.
 
 **Rate-limit behavior (applies to all endpoints):** every Atlassian request goes through `atlassianFetch()` in index.mjs. After any HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429; all cache TTLs are raised to cover that window (`raiseAllCacheTtls` in cache.mjs) so cached data keeps being served. Responses built during the pause carry `rateLimited: true` and are cached until the window closes; uncached endpoints return 503 with `rateLimitedUntil`.
 
@@ -490,6 +512,7 @@ Three streams available:
 - **CORS not configured**: Frontend and backend must be same-origin
 - **No input validation**: Trust that config.js and projects.js are correct
 - **Only public/ and README.md are served**: never mount a static middleware on the project directory, it would serve config.js, the logs and the sources (fixed in 2.5.2); `test/server.test.mjs` checks it
+- **sync-cache.json** holds commit hashes and file paths only, no content and no credential; it is git-ignored
 
 ### Performance Optimization
 - **Minimize API calls**: Use existing cached data when possible
@@ -511,9 +534,10 @@ Three streams available:
 11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 12. **Module boundaries**: app-render.js stays free of filter state and of DOM access at import time (its tests import it in node); app-sync.js never imports app.js (it receives accessors), so there is no circular import; anything that needs both the state and a module goes through app.js
 13. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop the response when the project changed meanwhile; `loadSyncStatuses` compares the load generation `resetSyncStatuses` bumps (Back/Forward make quick switches easy); any new fetch that paints something must do the same
+14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (index.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under the older version are simply never looked up again and age out with the rest after 90 days
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory)
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory)
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
@@ -546,6 +570,7 @@ Version information stored in package.json:
 - `*.log`: All log files (access, error, performance)
 - `sync/`: Temporary folder
 - `Bitbucket-pr-tree*.gif`: Demo/screenshot files
+- `sync-cache.json*`: conflict results kept across restarts (and the temporary file of a write)
 
 ### Commit Messages
 - No specific convention enforced
@@ -600,6 +625,6 @@ Version information stored in package.json:
 
 ---
 
-**Last Updated**: 2025-11-14
+**Last Updated**: 2026-09-12
 **For**: AI Assistant usage (Claude, GPT, etc.)
 **Maintained by**: Project contributors
