@@ -75,3 +75,19 @@ test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoin
     assert.equal(statuses.status, 200);
     assert.equal(typeof (await statuses.json()).statuses, 'object');
 });
+
+test('the sync statuses of the fixtures have the documented shapes', async () => {
+    const [project] = await (await fetch(`${baseUrl}/api/projects`)).json();
+    const { statuses } = await (await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`)).json();
+    const values = Object.values(statuses);
+    assert.ok(values.length > 0);
+    for (const status of values) {
+        if (status.error) {
+            assert.equal(typeof status.reason, 'string');
+        } else if (status.conflicts) {
+            assert.ok(Array.isArray(status.files) && status.files.length > 0);
+        } else {
+            assert.deepEqual(status, { conflicts: false });
+        }
+    }
+});

@@ -736,9 +736,24 @@ function calculateHash(data) {
     return hash.digest('hex');
 }
 
+const conflictFiles = [
+    'src/com.sodius.oslc.web/package-lock.json',
+    'src/com.sodius.oslc.web/projects/ng-sodius-oslc/core/src/i18n/messages_en.ts',
+    'pom.xml',
+    'src/main/java/com/sodius/secollab/review/ReviewService.java',
+    'src/main/resources/messages.properties',
+    'README.md'
+];
+const failureReasons = [
+    'The operation was aborted due to timeout (https://api.bitbucket.org/2.0/repositories/sodius/products.secollab/diffstat/...)',
+    'Request failed with status code 502',
+    'too many overlapping files (140)'
+];
+
 /**
  * Builds the /api/sync-statuses/:project response: about a fifth of the pull
- * requests have conflicts, a few could not be computed.
+ * requests have conflicts (with the files), a few could not be computed (with
+ * the reason), the rest are OK.
  */
 export function generateSyncStatuses(projectData) {
     const random = createRandom(`sync-${projectData.pullRequests.length}`);
@@ -746,9 +761,18 @@ export function generateSyncStatuses(projectData) {
     for (const pullRequest of projectData.pullRequests) {
         const spec = `${pullRequest.destination.commit?.hash}..${pullRequest.source.commit?.hash}`;
         if (spec.includes('undefined')) continue;
+        const key = `${pullRequest.source.repository.name}/${spec}`;
         const roll = random();
-        statuses[`${pullRequest.source.repository.name}/${spec}`] =
-            roll < 0.04 ? { error: true } : { conflicts: roll < 0.24 };
+        if (roll < 0.04) {
+            statuses[key] = { error: true, reason: pick(random, failureReasons) };
+        } else if (roll < 0.24) {
+            const count = integer(random, 1, 3);
+            const files = new Set();
+            for (let i = 0; i < count; i++) files.add(pick(random, conflictFiles));
+            statuses[key] = { conflicts: true, files: [...files].sort() };
+        } else {
+            statuses[key] = { conflicts: false };
+        }
     }
     return {
         lastRefreshTime: new Date().toISOString(),

@@ -105,14 +105,26 @@ test('the scale factor multiplies the volumes', () => {
     assert.equal(data.orphanedIssues.length, 39);
 });
 
-test('sync statuses cover every pull request with a conflicts or error flag', () => {
+test('sync statuses cover every pull request: OK, conflicting files or a reason', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     const sync = generateSyncStatuses(data);
     assert.equal(Object.keys(sync.statuses).length, data.pullRequests.length);
     assert.equal(sync.rateLimited, false);
+    const kinds = { ok: 0, conflicts: 0, errors: 0 };
     for (const status of Object.values(sync.statuses)) {
-        assert.ok(status.error === true || typeof status.conflicts === 'boolean');
+        if (status.error === true) {
+            assert.equal(typeof status.reason, 'string');
+            kinds.errors++;
+        } else if (status.conflicts === true) {
+            assert.ok(Array.isArray(status.files) && status.files.length > 0 && status.files.every(file => typeof file === 'string'));
+            kinds.conflicts++;
+        } else {
+            assert.deepEqual(status, { conflicts: false });
+            kinds.ok++;
+        }
     }
+    assert.ok(kinds.ok > 0 && kinds.conflicts > 0 && kinds.errors > 0, JSON.stringify(kinds));
+    assert.deepEqual(generateSyncStatuses(data).statuses, sync.statuses); // deterministic
 });
 
 test('fixture options come from the command line or the environment', () => {
