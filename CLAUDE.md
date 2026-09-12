@@ -265,7 +265,7 @@ Returns the SYNC (conflicts) status of every open PR of a project in a single re
   "statuses": {
     "repo-name/destHash..sourceHash": { "conflicts": true, "files": ["src/package-lock.json"] },
     "repo-name/otherDest..otherSource": { "conflicts": false },
-    "repo-name/thirdDest..thirdSource": { "error": true, "reason": "The operation was aborted due to timeout (https://...)" },
+    "repo-name/thirdDest..thirdSource": { "error": true, "reason": "The operation was aborted due to timeout" },
     "repo-name/fourthDest..fourthSource": { "conflicts": true, "files": ["pom.xml"], "reason": "Request failed with status code 502" }
   }
 }
