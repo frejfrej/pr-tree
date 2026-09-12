@@ -10,12 +10,15 @@
  * conflicts, and two changes of a text file conflict when their base ranges
  * overlap or touch, unless they replace the same range with the same lines; a
  * file added on both sides is an insertion into an empty base and follows the
- * same rule. A file renamed to different paths on both sides conflicts
- * (rename/rename), decided from the diffstats. Line endings are part of the
- * lines, as in git: a line ending with a CR, or missing its final newline,
- * differs from the same text ending with a newline. A malformed or truncated
- * patch, or a file listed twice (a type change), throws instead of passing for
- * fewer changes.
+ * same rule. The diffstats decide the renames: a file renamed to different
+ * paths on both sides conflicts (rename/rename), and so do two different files
+ * that end at the same path on the two sides (rename/add, rename/rename onto
+ * one path). Line endings are part of the lines, as in git: a line ending with
+ * a CR, or missing its final newline, differs from the same text ending with a
+ * newline. A malformed or truncated patch, or a file listed twice (a type
+ * change), throws instead of passing for fewer changes; a patch cut right
+ * after a complete hunk is left to the caller, which compares the "+" and "-"
+ * lines counted per file with the diffstat.
  * Known approximations: git merges with the histogram diff, so patches made
  * with another diff algorithm can place the hunks of a repetitive file
  * differently; paths git quotes (non-ASCII ones) keep their quoted form, so
@@ -38,9 +41,11 @@ function patchError(file, problem) {
  * `start`) and `lines` is what the side puts there, as the patch has them (a
  * CR kept, "\n" appended to a last line without its final newline). `newHash`
  * is the post-image blob of the "index" line, null without that line (a 100%
- * rename). Text without a "diff --git" line yields no file.
+ * rename). `linesAdded` and `linesRemoved` count the "+" and "-" lines of the
+ * file, context lines and "\" markers aside: the numbers of the diffstat.
+ * Text without a "diff --git" line yields no file.
  * @param {string} text - a git unified diff, LF-delimited (a CR before the LF belongs to the line)
- * @returns {Map<string, { oldPath: string, newPath: string, added: boolean, deleted: boolean, binary: boolean, newHash: string|null, regions: { start: number, end: number, lines: string[] }[] }>}
+ * @returns {Map<string, { oldPath: string, newPath: string, added: boolean, deleted: boolean, binary: boolean, newHash: string|null, linesAdded: number, linesRemoved: number, regions: { start: number, end: number, lines: string[] }[] }>}
  * @throws {Error} with the file in its message: a hunk longer than its header announces, or cut by the end of the text; an unreadable hunk header; a line that is not a hunk line inside or after a hunk; "---"/"+++" lines without a hunk; a file listed twice
  */
 export function parseUnifiedDiff(text) {
@@ -92,11 +97,13 @@ export function parseUnifiedDiff(text) {
                 if (!run) run = { start: baseLine, end: baseLine, lines: [] };
                 run.end = ++baseLine;
                 baseLeft--;
+                file.linesRemoved++;
             } else if (kind === '+') {
                 if (sideLeft === 0) throw patchError(file, 'hunk longer than announced');
                 if (!run) run = { start: baseLine, end: baseLine, lines: [] };
                 run.lines.push(rawLine.slice(1));
                 sideLeft--;
+                file.linesAdded++;
             } else {
                 throw patchError(file, 'unexpected line in a hunk');
             }
@@ -115,6 +122,8 @@ export function parseUnifiedDiff(text) {
                 deleted: false,
                 binary: false,
                 newHash: null,
+                linesAdded: 0,
+                linesRemoved: 0,
                 regions: []
             };
             // git lists a type change as a deletion and an addition of the same path
@@ -217,17 +226,28 @@ export function conflictingFiles(sideA, sideB) {
     return conflicts.sort();
 }
 
+// For one side, the base path of the file found at each side path (a removed file is found nowhere)
+function basePathsBySidePath(files) {
+    const basePaths = new Map();
+    for (const [basePath, file] of files) {
+        if (file.status !== 'removed') basePaths.set(file.sidePath, basePath);
+    }
+    return basePaths;
+}
+
 /**
  * What the diffstats of both sides decide without a patch: a file removed on
  * both sides is no conflict, a file removed on one side and touched on the
  * other is one, and so is a file renamed to different paths on both sides
- * (git's rename/rename); every other overlapping file needs the patches.
+ * (git's rename/rename); every other file touched on both sides needs the
+ * patches. Two different files that end at the same path on the two sides
+ * (rename/add, rename/rename onto one path) conflict too, under that path.
  * @param {Map<string, { status: string, sidePath: string }>} sourceFiles - diffstat of the source side, keyed by base path
  * @param {Map<string, { status: string, sidePath: string }>} destFiles - diffstat of the destination side
- * @returns {{ conflicting: string[], toCheck: string[] }}
+ * @returns {{ conflicting: string[], toCheck: string[] }} `conflicting` holds base paths and the paths two different files end at, each once
  */
 export function decideFromDiffstat(sourceFiles, destFiles) {
-    const conflicting = [];
+    const conflicting = new Set();
     const toCheck = [];
     for (const [basePath, source] of sourceFiles) {
         const dest = destFiles.get(basePath);
@@ -236,8 +256,12 @@ export function decideFromDiffstat(sourceFiles, destFiles) {
         const destRemoved = dest.status === 'removed';
         const renamedApart = source.sidePath !== basePath && dest.sidePath !== basePath && source.sidePath !== dest.sidePath;
         if (sourceRemoved && destRemoved) continue;
-        if (sourceRemoved || destRemoved || renamedApart) conflicting.push(basePath);
+        if (sourceRemoved || destRemoved || renamedApart) conflicting.add(basePath);
         else toCheck.push(basePath);
     }
-    return { conflicting, toCheck };
+    const destBasePaths = basePathsBySidePath(destFiles);
+    for (const [sidePath, basePath] of basePathsBySidePath(sourceFiles)) {
+        if (destBasePaths.has(sidePath) && destBasePaths.get(sidePath) !== basePath) conflicting.add(sidePath);
+    }
+    return { conflicting: [...conflicting], toCheck };
 }

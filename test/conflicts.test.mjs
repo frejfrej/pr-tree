@@ -72,6 +72,21 @@ test('parseUnifiedDiff: added, deleted, binary and renamed files', () => {
     assert.deepEqual(regions(renamed, 'old.txt'), []);
 });
 
+test('parseUnifiedDiff: the "+" and "-" lines of each file are counted, for the check against the diffstat', () => {
+    const counts = file => ({ linesAdded: file.linesAdded, linesRemoved: file.linesRemoved });
+    // Several hunks, then another file; context lines and "no newline" markers do not count
+    const several = parseUnifiedDiff('diff --git a/f.txt b/f.txt\nindex 1111111..2222222 100644\n--- a/f.txt\n+++ b/f.txt\n' +
+        '@@ -1,2 +1,5 @@\n l1\n+A\n+B\n+C\n l2\n@@ -10,3 +13,2 @@\n l10\n-l11\n-l12\n+L12\n\\ No newline at end of file\n' + modify('g.txt', 3, 'X'));
+    assert.deepEqual(counts(several.get('f.txt')), { linesAdded: 4, linesRemoved: 2 });
+    assert.deepEqual(counts(several.get('g.txt')), { linesAdded: 1, linesRemoved: 1 });
+    const added = parseUnifiedDiff('diff --git a/n.txt b/n.txt\nnew file mode 100644\nindex 0000000..2222222\n--- /dev/null\n+++ b/n.txt\n@@ -0,0 +1,2 @@\n+a\n+b\n');
+    assert.deepEqual(counts(added.get('n.txt')), { linesAdded: 2, linesRemoved: 0 });
+    const deleted = parseUnifiedDiff('diff --git a/d.txt b/d.txt\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/d.txt\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-a\n-b\n');
+    assert.deepEqual(counts(deleted.get('d.txt')), { linesAdded: 0, linesRemoved: 2 });
+    const binary = parseUnifiedDiff('diff --git a/img.png b/img.png\nindex 1111111..2222222 100644\nBinary files a/img.png and b/img.png differ\n');
+    assert.deepEqual(counts(binary.get('img.png')), { linesAdded: 0, linesRemoved: 0 });
+});
+
 test('parseUnifiedDiff: the paths come from the "diff --git" line (git appends a tab to "---"/"+++" paths with spaces)', () => {
     const files = parseUnifiedDiff('diff --git a/my file.txt b/my file.txt\nindex 4286f42..331bae0 100644\n--- a/my file.txt\t\n+++ b/my file.txt\t\n@@ -1 +1 @@\n-r\n+R\n');
     assert.deepEqual([...files.keys()], ['my file.txt']);
@@ -261,4 +276,22 @@ test('decideFromDiffstat: a file renamed to different paths on both sides confli
     const renamedTo = sidePath => new Map([['old.txt', { status: 'renamed', sidePath }]]);
     assert.deepEqual(decideFromDiffstat(renamedTo('a-name.txt'), renamedTo('b-name.txt')), { conflicting: ['old.txt'], toCheck: [] });
     assert.deepEqual(decideFromDiffstat(renamedTo('new.txt'), renamedTo('new.txt')), { conflicting: [], toCheck: ['old.txt'] });
+});
+
+test('decideFromDiffstat: two different files that end at the same path on the two sides conflict, under that path', () => {
+    const renamed = new Map([['f.txt', { status: 'renamed', sidePath: 'g.txt' }]]);
+    const added = new Map([['g.txt', { status: 'added', sidePath: 'g.txt' }]]);
+    const otherRenamed = new Map([['h.txt', { status: 'renamed', sidePath: 'g.txt' }]]);
+    // rename/add, either way round
+    assert.deepEqual(decideFromDiffstat(renamed, added), { conflicting: ['g.txt'], toCheck: [] });
+    assert.deepEqual(decideFromDiffstat(added, renamed), { conflicting: ['g.txt'], toCheck: [] });
+    // rename/rename onto one path
+    assert.deepEqual(decideFromDiffstat(renamed, otherRenamed), { conflicting: ['g.txt'], toCheck: [] });
+    // The same rename on both sides, the same path added on both sides: the patches decide, as before
+    assert.deepEqual(decideFromDiffstat(renamed, renamed), { conflicting: [], toCheck: ['f.txt'] });
+    assert.deepEqual(decideFromDiffstat(added, added), { conflicting: [], toCheck: ['g.txt'] });
+    // A path already decided under its base path is reported once
+    const removedAndReplaced = new Map([['x.txt', { status: 'removed', sidePath: 'x.txt' }], ['f.txt', { status: 'renamed', sidePath: 'x.txt' }]]);
+    const modified = new Map([['x.txt', { status: 'modified', sidePath: 'x.txt' }]]);
+    assert.deepEqual(decideFromDiffstat(removedAndReplaced, modified), { conflicting: ['x.txt'], toCheck: [] });
 });
