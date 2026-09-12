@@ -1,12 +1,24 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openSyncCache, syncCacheVersion } from '../sync-cache.mjs';
 
+const tempDirectories = [];
+
+after(() => {
+    for (const directory of tempDirectories) rmSync(directory, { recursive: true, force: true });
+});
+
+function tempDir() {
+    const directory = mkdtempSync(path.join(tmpdir(), 'sync-cache-'));
+    tempDirectories.push(directory);
+    return directory;
+}
+
 function tempFile() {
-    return path.join(mkdtempSync(path.join(tmpdir(), 'sync-cache-')), 'sync-cache.json');
+    return path.join(tempDir(), 'sync-cache.json');
 }
 
 test('a missing file opens an empty cache without an error', () => {
@@ -57,6 +69,25 @@ test('a corrupt file or another version opens empty and is reported', () => {
     assert.equal(errors.length, 2);
 });
 
+test('a stored entry that is not an object is dropped, and the file heals at the next save', async () => {
+    const file = tempFile();
+    writeFileSync(file, JSON.stringify({
+        version: syncCacheVersion,
+        entries: {
+            'repo/n..n': null,
+            'repo/o..o': { conflicts: false, computedAt: new Date().toISOString() }
+        }
+    }));
+    const cache = openSyncCache(file);
+    assert.equal(cache.size, 1);
+    assert.deepEqual(cache.get('repo/o..o'), { conflicts: false });
+    cache.set('repo/p..p', { conflicts: false });
+    assert.equal(await cache.save(), true);
+    const reopened = openSyncCache(file);
+    assert.equal(reopened.size, 2);
+    assert.equal(reopened.get('repo/n..n'), null);
+});
+
 test('two saves in a row write once each, in order', async () => {
     const file = tempFile();
     const cache = openSyncCache(file);
@@ -81,7 +112,7 @@ test('an entry set while a write is in flight is written by the next save', asyn
 });
 
 test('a failed write leaves the entries to the next save', async () => {
-    const file = path.join(mkdtempSync(path.join(tmpdir(), 'sync-cache-')), 'missing', 'sync-cache.json');
+    const file = path.join(tempDir(), 'missing', 'sync-cache.json');
     const cache = openSyncCache(file);
     cache.set('repo/a..b', { conflicts: false });
     await assert.rejects(cache.save()); // the directory does not exist

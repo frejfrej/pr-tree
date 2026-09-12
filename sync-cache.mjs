@@ -31,7 +31,7 @@ export function openSyncCache(filePath, { maxAgeDays = 90, now = () => Date.now(
         const stored = JSON.parse(readFileSync(filePath, 'utf8'));
         if (stored && stored.version === syncCacheVersion && stored.entries && typeof stored.entries === 'object') {
             for (const [key, entry] of Object.entries(stored.entries)) {
-                entries.set(key, entry);
+                if (entry && typeof entry === 'object' && !Array.isArray(entry)) entries.set(key, entry);
             }
         } else {
             onError(new Error(`unexpected content in ${filePath}`));
@@ -78,9 +78,10 @@ export function openSyncCache(filePath, { maxAgeDays = 90, now = () => Date.now(
         /**
          * Writes the entries as they are now when something changed, after the
          * writes already queued (one at a time: they share the temporary file);
-         * resolves to whether it wrote.
+         * resolves to whether it wrote. Rejects when the write fails; the
+         * entries then stay pending for the next save.
          */
-        save() {
+        async save() {
             if (!dirty) return saving.then(() => false, () => false);
             prune();
             const content = JSON.stringify({ version: syncCacheVersion, entries: Object.fromEntries(entries) });
