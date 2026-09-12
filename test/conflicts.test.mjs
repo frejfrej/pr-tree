@@ -94,6 +94,31 @@ test('parseUnifiedDiff: the paths come from the "diff --git" line (git appends a
     assert.equal(files.get('my file.txt').newPath, 'my file.txt');
 });
 
+test('parseUnifiedDiff: a path holding " b/" keeps its key, renamed or not', () => {
+    const modified = parseUnifiedDiff('diff --git a/x b/y.txt b/x b/y.txt\nindex 1111111..2222222 100644\n--- a/x b/y.txt\t\n+++ b/x b/y.txt\t\n@@ -1 +1 @@\n-a\n+b\n');
+    assert.deepEqual([...modified.keys()], ['x b/y.txt']);
+    assert.equal(modified.get('x b/y.txt').newPath, 'x b/y.txt');
+    // A renamed file: the paths of the "rename from" and "rename to" lines, read before the hunks
+    const renamed = parseUnifiedDiff('diff --git a/x b/old.txt b/x b/new.txt\nsimilarity index 80%\nrename from x b/old.txt\nrename to x b/new.txt\nindex 1111111..2222222 100644\n--- a/x b/old.txt\t\n+++ b/x b/new.txt\t\n@@ -1 +1 @@\n-a\n+b\n');
+    assert.deepEqual([...renamed.keys()], ['x b/old.txt']);
+    assert.equal(renamed.get('x b/old.txt').newPath, 'x b/new.txt');
+    assert.deepEqual(regions(renamed, 'x b/old.txt'), [{ start: 1, end: 2, lines: ['b'] }]);
+});
+
+test('parseUnifiedDiff: paths git quotes are decoded, renamed or not', () => {
+    const accented = parseUnifiedDiff('diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\nindex 4ae8ef0..765140b 100644\n--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n@@ -1 +1 @@\n-u\n+U\n');
+    assert.deepEqual([...accented.keys()], ['café.txt']);
+    assert.equal(accented.get('café.txt').newPath, 'café.txt');
+    assert.deepEqual(regions(accented, 'café.txt'), [{ start: 1, end: 2, lines: ['U'] }]);
+    // A space and double quotes: quoted, with the tab git appends to "---"/"+++" paths with spaces
+    const quote = parseUnifiedDiff('diff --git "a/my \\"quoted\\" file.txt" "b/my \\"quoted\\" file.txt"\nindex 7898192..6178079 100644\n--- "a/my \\"quoted\\" file.txt"\t\n+++ "b/my \\"quoted\\" file.txt"\t\n@@ -1 +1 @@\n-a\n+b\n');
+    assert.deepEqual([...quote.keys()], ['my "quoted" file.txt']);
+    // Renamed between a quoted and a plain path, both ways
+    const paths = files => [...files.entries()].map(([key, file]) => [key, file.newPath]);
+    assert.deepEqual(paths(parseUnifiedDiff('diff --git "a/caf\\303\\2512.txt" b/plain.txt\nsimilarity index 100%\nrename from "caf\\303\\2512.txt"\nrename to plain.txt\n')), [['café2.txt', 'plain.txt']]);
+    assert.deepEqual(paths(parseUnifiedDiff('diff --git a/plain2.txt "b/na\\303\\257ve.txt"\nsimilarity index 100%\nrename from plain2.txt\nrename to "na\\303\\257ve.txt"\n')), [['plain2.txt', 'naïve.txt']]);
+});
+
 test('parseUnifiedDiff: several files, several hunks, an empty context line, "no newline" markers', () => {
     // The first hunk of b.txt has an empty context line (its leading space stripped): it still counts as a base line
     const text = patch('a.txt', '-1,6 +1,6', [' l1', ' l2', '-l3', '+A3', ' l4', ' l5', ' l6']) +
@@ -112,6 +137,30 @@ test('parseUnifiedDiff: content lines keep their CR, the other lines are read wi
     assert.deepEqual([...files.keys()], ['f.txt']);
     assert.equal(files.get('f.txt').newHash, '2222222');
     assert.deepEqual(regions(files, 'f.txt'), [{ start: 2, end: 3, lines: ['c\r'] }]);
+    // A lone CR in a hunk: a context line of a CRLF file whose leading space was stripped
+    assert.deepEqual(regions(parseUnifiedDiff(patch('f.txt', '-1,3 +1,3', [' a\r', '\r', '-b\r', '+B\r'])), 'f.txt'), [{ start: 3, end: 4, lines: ['B\r'] }]);
+});
+
+test('parseUnifiedDiff: an empty line may follow a hunk, before the next hunk or file', () => {
+    const files = parseUnifiedDiff(modify('f.txt', 3, 'X') + '\n' + modify('g.txt', 4, 'Y') + '\n');
+    assert.deepEqual([...files.keys()], ['f.txt', 'g.txt']);
+    assert.deepEqual(regions(files, 'g.txt'), [{ start: 4, end: 5, lines: ['Y'] }]);
+    const hunks = parseUnifiedDiff('diff --git a/h.txt b/h.txt\nindex 1111111..2222222 100644\n--- a/h.txt\n+++ b/h.txt\n@@ -1 +1 @@\n-a\n+b\n\n@@ -3 +3 @@\n-c\n+d\n');
+    assert.deepEqual(regions(hunks, 'h.txt'), [{ start: 1, end: 2, lines: ['b'] }, { start: 3, end: 4, lines: ['d'] }]);
+});
+
+test('parseUnifiedDiff: hunks that overlap, touch or come out of order throw (git leaves an unchanged line between two hunks)', () => {
+    const hunks = (...texts) => `diff --git a/f.txt b/f.txt\nindex 1111111..2222222 100644\n--- a/f.txt\n+++ b/f.txt\n${texts.join('')}`;
+    const order = { message: 'patch of f.txt: overlapping or unordered hunks' };
+    assert.throws(() => parseUnifiedDiff(hunks('@@ -10 +10 @@\n-l10\n+X\n', '@@ -3 +3 @@\n-l3\n+Y\n')), order);
+    assert.throws(() => parseUnifiedDiff(hunks('@@ -3,2 +3,2 @@\n-l3\n+Y\n l4\n', '@@ -4 +4 @@\n-l4\n+Z\n')), order);
+    assert.throws(() => parseUnifiedDiff(hunks('@@ -3 +3 @@\n-l3\n+Y\n', '@@ -4 +4 @@\n-l4\n+Z\n')), order);
+    assert.throws(() => parseUnifiedDiff(hunks('@@ -3,0 +4 @@\n+X\n', '@@ -4 +5 @@\n-l4\n+Y\n')), order);
+    // One unchanged line between two hunks
+    assert.deepEqual(regions(parseUnifiedDiff(hunks('@@ -3 +3 @@\n-l3\n+Y\n', '@@ -5 +5 @@\n-l5\n+Z\n')), 'f.txt'), [
+        { start: 3, end: 4, lines: ['Y'] },
+        { start: 5, end: 6, lines: ['Z'] }
+    ]);
 });
 
 test('parseUnifiedDiff: a truncated or malformed patch throws, naming the file', () => {
@@ -125,6 +174,11 @@ test('parseUnifiedDiff: a truncated or malformed patch throws, naming the file',
     const longer = { message: 'patch of f.txt: hunk longer than announced' };
     assert.throws(() => parseUnifiedDiff(patch('f.txt', '-1,2 +1,3', [' l1', '-l2', '-l3', '+X'])), longer);
     assert.throws(() => parseUnifiedDiff(patch('f.txt', '-1,2 +1,2', [' l1', '-l2', '+X', ' l3'])), longer);
+    // A context line once the base count is spent, a "+" line once the side count is spent
+    assert.throws(() => parseUnifiedDiff(patch('f.txt', '-1 +1,2', ['-a', '+b', ' c'])), longer);
+    assert.throws(() => parseUnifiedDiff(patch('f.txt', '-1,2 +1', ['-a', '+b', '+c', '-d'])), longer);
+    // A hunk header that does not parse
+    assert.throws(() => parseUnifiedDiff(patch('f.txt', '-1,x +1', ['-a', '+b'])), { message: 'patch of f.txt: unreadable hunk header' });
     // A file header without a hunk, at the end of the text and before the next file
     const header = 'diff --git a/f.txt b/f.txt\nindex 1111111..2222222 100644\n--- a/f.txt\n+++ b/f.txt\n';
     const noHunk = { message: 'patch of f.txt: file header without a hunk' };
@@ -133,7 +187,7 @@ test('parseUnifiedDiff: a truncated or malformed patch throws, naming the file',
     // A type change: git lists the path twice, a deletion then an addition
     const typeChange = 'diff --git a/f b/f\ndeleted file mode 100644\nindex 422c2b7..0000000\n--- a/f\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-a\n-b\n' +
         'diff --git a/f b/f\nnew file mode 120000\nindex 0000000..1de5659\n--- /dev/null\n+++ b/f\n@@ -0,0 +1 @@\n+target\n\\ No newline at end of file\n';
-    assert.throws(() => parseUnifiedDiff(typeChange), { message: 'patch of f: file listed twice' });
+    assert.throws(() => parseUnifiedDiff(typeChange), { message: 'patch of f: listed twice (a change of file type?)' });
 });
 
 test('parseUnifiedDiff: text without a "diff --git" line yields no file', () => {
@@ -147,6 +201,8 @@ test('conflictingFiles: overlapping or touching changes conflict, separated ones
     assert.deepEqual(conflictingFiles(a, parseUnifiedDiff(modify('f.txt', 4, 'B4'))), ['f.txt']); // adjacent line
     assert.deepEqual(conflictingFiles(a, parseUnifiedDiff(modify('f.txt', 2, 'B2'))), ['f.txt']); // adjacent line, other side
     assert.deepEqual(conflictingFiles(a, parseUnifiedDiff(modify('f.txt', 5, 'B5'))), []); // one unchanged line between
+    // Line 3 replaced by X on one side, lines 3 and 4 by X on the other: the same start and lines, another change
+    assert.deepEqual(conflictingFiles(parseUnifiedDiff(patch('f.txt', '-3 +3', ['-l3', '+X'])), parseUnifiedDiff(patch('f.txt', '-3,2 +3', ['-l3', '-l4', '+X']))), ['f.txt']);
 });
 
 test('conflictingFiles: an insertion conflicts with a change of the lines around it', () => {
@@ -162,6 +218,10 @@ test('conflictingFiles: the same change on both sides merges cleanly', () => {
     const a = parseUnifiedDiff(modify('f.txt', 3, 'X3'));
     const b = parseUnifiedDiff(modify('f.txt', 3, 'X3'));
     assert.deepEqual(conflictingFiles(a, b), []);
+    // Without the "index" lines the regions decide, not the post-image hashes
+    const withoutIndex = text => parseUnifiedDiff(text.replace(/^index .*\n/m, ''));
+    assert.deepEqual(conflictingFiles(withoutIndex(modify('f.txt', 3, 'X3')), withoutIndex(modify('f.txt', 3, 'X3'))), []);
+    assert.deepEqual(conflictingFiles(withoutIndex(insertAfter('f.txt', 3, 'X')), withoutIndex(insertAfter('f.txt', 3, 'X'))), []);
 });
 
 test('conflictingFiles: added on both sides, deleted on one side, binaries', () => {
@@ -230,9 +290,22 @@ test('conflictingFiles: a binary file changed on both sides without an "index" l
     assert.deepEqual(conflictingFiles(binary, binary), ['img.png']);
 });
 
+test('conflictingFiles: a binary file conflicts only when both sides change its content', () => {
+    // A text file made binary on one side, edited on the other
+    const madeBinary = parseUnifiedDiff('diff --git a/f.txt b/f.txt\nindex 1111111..2222222 100644\nBinary files a/f.txt and b/f.txt differ\n');
+    assert.deepEqual(conflictingFiles(madeBinary, parseUnifiedDiff(modify('f.txt', 5, 'B5'))), ['f.txt']);
+    // A binary file only renamed, or only given another mode, on one side and modified on the other
+    const modified = parseUnifiedDiff('diff --git a/img.bin b/img.bin\nindex 1a41d47..49ca21b 100644\nBinary files a/img.bin and b/img.bin differ\n');
+    const renamedOnly = parseUnifiedDiff('diff --git a/img.bin b/assets/img.bin\nsimilarity index 100%\nrename from img.bin\nrename to assets/img.bin\n');
+    const modeOnly = parseUnifiedDiff('diff --git a/img.bin b/img.bin\nold mode 100644\nnew mode 100755\n');
+    assert.deepEqual(conflictingFiles(renamedOnly, modified), []);
+    assert.deepEqual(conflictingFiles(modified, modeOnly), []);
+});
+
 test('conflictingFiles: a file added empty on both sides, or on one side only, merges cleanly', () => {
     const empty = parseUnifiedDiff('diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..e69de29\n');
     const content = parseUnifiedDiff('diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..d95f3ad\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+content\n');
+    assert.equal(empty.get('new.txt').added, true); // "new file mode" without "---"/"+++" lines
     assert.deepEqual(regions(empty, 'new.txt'), []);
     assert.deepEqual(conflictingFiles(empty, empty), []);
     assert.deepEqual(conflictingFiles(empty, content), []);
@@ -294,4 +367,23 @@ test('decideFromDiffstat: two different files that end at the same path on the t
     const removedAndReplaced = new Map([['x.txt', { status: 'removed', sidePath: 'x.txt' }], ['f.txt', { status: 'renamed', sidePath: 'x.txt' }]]);
     const modified = new Map([['x.txt', { status: 'modified', sidePath: 'x.txt' }]]);
     assert.deepEqual(decideFromDiffstat(removedAndReplaced, modified), { conflicting: ['x.txt'], toCheck: [] });
+    // A removed file is found nowhere: it does not meet a file renamed to its path on the other side
+    assert.deepEqual(decideFromDiffstat(new Map([['g.txt', { status: 'removed', sidePath: 'g.txt' }]]), renamed), { conflicting: [], toCheck: [] });
+});
+
+test('decideFromDiffstat: a path where one side puts a file and the other puts files below it conflicts, under that path (file/directory)', () => {
+    const diffstat = entries => new Map(entries.map(([basePath, status, sidePath = basePath]) => [basePath, { status, sidePath }]));
+    const conflictAt = path => ({ conflicting: [path], toCheck: [] });
+    assert.deepEqual(decideFromDiffstat(diffstat([['docs/x', 'added']]), diffstat([['docs', 'added']])), conflictAt('docs'));
+    assert.deepEqual(decideFromDiffstat(diffstat([['f', 'renamed', 'docs']]), diffstat([['docs/x', 'added']])), conflictAt('docs'));
+    assert.deepEqual(decideFromDiffstat(diffstat([['lib', 'added']]), diffstat([['lib/x', 'added']])), conflictAt('lib')); // lib a symlink
+    assert.deepEqual(decideFromDiffstat(diffstat([['deep/b/c/x', 'added']]), diffstat([['deep/b', 'added']])), conflictAt('deep/b'));
+    assert.deepEqual(decideFromDiffstat(diffstat([['docs/x', 'added'], ['docs/y', 'added']]), diffstat([['docs', 'added']])), conflictAt('docs'));
+    // A directory added under an unrelated name, under a name that only starts the same, the same directory on both sides
+    const clean = { conflicting: [], toCheck: [] };
+    assert.deepEqual(decideFromDiffstat(diffstat([['docs/x', 'added']]), diffstat([['guide', 'added']])), clean);
+    assert.deepEqual(decideFromDiffstat(diffstat([['docs/x', 'added']]), diffstat([['doc', 'added']])), clean);
+    assert.deepEqual(decideFromDiffstat(diffstat([['docs/x', 'added']]), diffstat([['docs/y', 'added']])), clean);
+    // f renamed away before f/x was added, f modified on the other side: git merges cleanly
+    assert.deepEqual(decideFromDiffstat(diffstat([['f', 'renamed', 'g'], ['f/x', 'added']]), diffstat([['f', 'modified']])), { conflicting: [], toCheck: ['f'] });
 });
