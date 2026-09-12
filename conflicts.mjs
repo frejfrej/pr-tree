@@ -4,24 +4,26 @@
  * merge base (diff/{side}..{other}?topic=true) have their hunks in the line
  * coordinates of the same merge-base version, so git's rule is decidable from
  * the two patches. A file deleted on both sides merges cleanly; deleted on one
- * side and changed on the other, it conflicts. A file with the same resulting
- * content on both sides (the same post-image blob on the "index" lines) merges
- * cleanly, binary or not. Otherwise a binary file whose content changes on
- * both sides conflicts (a rename or a mode change alone leaves the content as
- * it is), and two changes of a text file conflict when their base ranges
- * overlap or touch, unless they replace the same range with the same lines; a
- * file added on both sides is an insertion into an empty base and follows the
- * same rule. The diffstats decide the paths: a file renamed to different paths
- * on both sides conflicts (rename/rename), and so do two different files that
- * end at the same path on the two sides (rename/add, rename/rename onto one
- * path) and a path where one side puts a new file while the other puts new
- * files below it (file/directory). Line endings are part of the lines, as in
- * git: a line ending with a CR, or missing its final newline, differs from the
- * same text ending with a newline. A malformed or truncated patch (hunks out
- * of order included), or a file listed twice (a type change), throws instead
- * of passing for fewer changes; a patch cut right after a complete hunk is
- * left to the caller, which compares the "+" and "-" lines counted per file
- * with the diffstat.
+ * side and changed on the other, it conflicts. A file added on both sides with
+ * different modes conflicts (git's add/add, or distinct types for a symlink).
+ * A file with the same resulting content on both sides (the same post-image
+ * blob on the "index" lines) merges cleanly, binary or not. Otherwise a binary
+ * file whose content changes on both sides conflicts (a file added on both
+ * sides always changes it, a rename or a mode change alone leaves it as it
+ * is), and two changes of a text file conflict when their base ranges overlap
+ * or touch, unless they replace the same range with the same lines; a file
+ * added on both sides is an insertion into an empty base and follows the same
+ * rule. The diffstats decide the paths: a file renamed to different paths on
+ * both sides conflicts (rename/rename), and so do two different files that end
+ * at the same path on the two sides (rename/add, rename/rename onto one path)
+ * and a path where one side puts a new file while the other puts new files
+ * below it (file/directory). Line endings are part of the lines, as in git: a
+ * line ending with a CR, or missing its final newline, differs from the same
+ * text ending with a newline. A malformed or truncated patch (hunks out of
+ * order included), or a file listed twice (a type change), throws instead of
+ * passing for fewer changes; a patch cut right after a complete hunk is left
+ * to the caller, which compares the "+" and "-" lines counted per file with
+ * the diffstat.
  * Known approximations: git merges with the histogram diff, so patches made
  * with another diff algorithm can place the hunks of a repetitive file
  * differently; a directory renamed on one side while the other adds a file in
@@ -31,8 +33,12 @@
  * Pure: nothing here talks to Bitbucket.
  */
 
-// Bumped whenever a change of parseUnifiedDiff, conflictingFiles or decideFromDiffstat can change a decision, so that results stored under an older rule are not reused
-export const conflictRuleVersion = 1;
+// The version of the conflict rule, part of every key of sync-cache.json: bump
+// it whenever a change here, or in the server's computeConflicts, checkPatch or
+// diffstat mapping, can give another result for the same pair of commits
+// (conflict or not, or other files listed), so that results stored under an
+// older rule are not reused
+export const conflictRuleVersion = 2;
 
 const hunkHeader = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 const indexLine = /^index [0-9a-f]+\.\.([0-9a-f]+)(?: \d+)?$/;
@@ -56,7 +62,7 @@ function readQuoted(text, start) {
         bytes.push(...utf8Encoder.encode(text.slice(literal, i)));
         if (text[i] === '"') return { path: utf8Decoder.decode(Uint8Array.from(bytes)), end: i + 1 };
         const octal = text.slice(i + 1, i + 4);
-        if (/^[0-7]{3}$/.test(octal)) {
+        if (/^[0-3][0-7]{2}$/.test(octal)) {
             bytes.push(parseInt(octal, 8));
             i += 3;
         } else if (escapes.has(text[i + 1])) {
@@ -104,11 +110,8 @@ function quotedHeaderPaths(rest) {
 // header git would not print is kept whole as both paths.
 function headerPaths(rest) {
     if (rest.includes('"')) return quotedHeaderPaths(rest) ?? [rest, rest];
-    const length = (rest.length - 5) / 2;
-    if (length > 0 && Number.isInteger(length) && rest.startsWith('a/') &&
-        rest.slice(2 + length, 5 + length) === ' b/' && rest.slice(2, 2 + length) === rest.slice(5 + length)) {
-        return [rest.slice(2, 2 + length), rest.slice(5 + length)];
-    }
+    const path = rest.slice(2, 2 + (rest.length - 5) / 2);
+    if (rest === `a/${path} b/${path}`) return [path, path];
     const split = rest.match(/^a\/(.*) b\/(.*)$/);
     return split ? [split[1], split[2]] : [rest, rest];
 }
@@ -122,11 +125,12 @@ function headerPaths(rest) {
  * `start`) and `lines` is what the side puts there, as the patch has them (a
  * CR kept, "\n" appended to a last line without its final newline). `newHash`
  * is the post-image blob of the "index" line, null without that line (a 100%
- * rename). `linesAdded` and `linesRemoved` count the "+" and "-" lines of the
- * file, context lines and "\" markers aside: the numbers of the diffstat.
+ * rename). `newMode` is the mode of an added file ("new file mode"), null
+ * for any other. `linesAdded` and `linesRemoved` count the "+" and "-" lines of
+ * the file, context lines and "\" markers aside: the numbers of the diffstat.
  * Text without a "diff --git" line yields no file.
  * @param {string} text - a git unified diff, LF-delimited (a CR before the LF belongs to the line)
- * @returns {Map<string, { oldPath: string, newPath: string, added: boolean, deleted: boolean, binary: boolean, newHash: string|null, linesAdded: number, linesRemoved: number, regions: { start: number, end: number, lines: string[] }[] }>}
+ * @returns {Map<string, { oldPath: string, newPath: string, added: boolean, deleted: boolean, binary: boolean, newHash: string|null, newMode: string|null, linesAdded: number, linesRemoved: number, regions: { start: number, end: number, lines: string[] }[] }>}
  * @throws {Error} with the file in its message: a hunk longer than its header announces, or cut by the end of the text; an unreadable hunk header; hunks that overlap, touch or come out of order; a line that is not a hunk line inside or after a hunk; "---"/"+++" lines without a hunk; a file listed twice
  */
 export function parseUnifiedDiff(text) {
@@ -208,6 +212,7 @@ export function parseUnifiedDiff(text) {
                 deleted: false,
                 binary: false,
                 newHash: null,
+                newMode: null,
                 linesAdded: 0,
                 linesRemoved: 0,
                 regions: []
@@ -227,7 +232,9 @@ export function parseUnifiedDiff(text) {
             sideLeft = hunk[3] === undefined ? 1 : Number(hunk[3]);
             // A hunk with no base line is an insertion after the line it names
             const start = baseLeft === 0 ? Number(hunk[1]) + 1 : Number(hunk[1]);
-            // git leaves an unchanged line at least between two hunks, which the sweep of conflictingFiles relies on
+            // git's default output, the one Bitbucket's diff endpoint returns, leaves an unchanged line at least
+            // between two hunks; with function context (-W) or ignored blank lines, hunks can touch, and touching
+            // regions on one side could hide a conflict from the sweep of conflictingFiles: such a patch throws
             if (afterHunk && start <= baseLine) throw patchError(file, 'overlapping or unordered hunks');
             baseLine = start;
             awaitingHunk = false;
@@ -251,6 +258,7 @@ export function parseUnifiedDiff(text) {
             if (line === '+++ /dev/null') file.deleted = true;
         } else if (line.startsWith('new file mode ')) {
             file.added = true;
+            file.newMode = line.slice('new file mode '.length);
         } else if (line.startsWith('deleted file mode ')) {
             file.deleted = true;
         } else if (line.startsWith('rename from ')) {
@@ -300,9 +308,10 @@ function regionsConflict(regionsA, regionsB) {
     return false;
 }
 
-// A binary file changes its content through a "Binary files" line, a text file through its regions
+// A binary file changes its content through a "Binary files" line, a text file
+// through its regions, and an added file always does (an empty one has neither)
 function changesContent(file) {
-    return file.binary || file.regions.length > 0;
+    return file.added || file.binary || file.regions.length > 0;
 }
 
 /**
@@ -320,6 +329,7 @@ export function conflictingFiles(sideA, sideB) {
         let conflict;
         if (a.deleted && b.deleted) conflict = false;
         else if (a.deleted || b.deleted) conflict = true;
+        else if (a.added && b.added && a.newMode !== b.newMode) conflict = true;
         else if (a.newHash && a.newHash === b.newHash) conflict = false;
         else if (a.binary || b.binary) conflict = changesContent(a) && changesContent(b);
         else conflict = regionsConflict(a.regions, b.regions);
@@ -346,12 +356,12 @@ function createdPaths(files) {
     return paths;
 }
 
-// Each directory of a path of `paths` that `files` holds as a file: git's file/directory conflict
-function addDirectoriesHeldAsFiles(paths, files, conflicting) {
+// Each directory of a path of `paths` where the other side puts a file: git's file/directory conflict
+function addDirectoriesHeldAsFiles(paths, otherCreated, conflicting) {
     for (const path of paths) {
         for (let slash = path.indexOf('/'); slash !== -1; slash = path.indexOf('/', slash + 1)) {
             const directory = path.slice(0, slash);
-            if (files.has(directory)) conflicting.add(directory);
+            if (otherCreated.has(directory)) conflicting.add(directory);
         }
     }
 }
@@ -369,7 +379,7 @@ function addDirectoriesHeldAsFiles(paths, files, conflicting) {
  * its old path became a directory merges cleanly.
  * @param {Map<string, { status: string, sidePath: string }>} sourceFiles - diffstat of the source side, keyed by base path
  * @param {Map<string, { status: string, sidePath: string }>} destFiles - diffstat of the destination side
- * @returns {{ conflicting: string[], toCheck: string[] }} `conflicting` holds base paths and the paths where two files collide, each once
+ * @returns {{ conflicting: string[], toCheck: string[] }} `conflicting` holds base paths, the paths where two files collide and the file/directory paths (a file on one side, a directory on the other), each once
  */
 export function decideFromDiffstat(sourceFiles, destFiles) {
     const conflicting = new Set();

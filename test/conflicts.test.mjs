@@ -113,6 +113,9 @@ test('parseUnifiedDiff: paths git quotes are decoded, renamed or not', () => {
     // A space and double quotes: quoted, with the tab git appends to "---"/"+++" paths with spaces
     const quote = parseUnifiedDiff('diff --git "a/my \\"quoted\\" file.txt" "b/my \\"quoted\\" file.txt"\nindex 7898192..6178079 100644\n--- "a/my \\"quoted\\" file.txt"\t\n+++ "b/my \\"quoted\\" file.txt"\t\n@@ -1 +1 @@\n-a\n+b\n');
     assert.deepEqual([...quote.keys()], ['my "quoted" file.txt']);
+    // A backslash, a tab and a newline
+    const escaped = parseUnifiedDiff('diff --git "a/x\\\\y\\tz\\nw.txt" "b/x\\\\y\\tz\\nw.txt"\nnew file mode 100644\nindex 0000000..7898192\n--- /dev/null\n+++ "b/x\\\\y\\tz\\nw.txt"\n@@ -0,0 +1 @@\n+a\n');
+    assert.deepEqual([...escaped.keys()], ['x\\y\tz\nw.txt']);
     // Renamed between a quoted and a plain path, both ways
     const paths = files => [...files.entries()].map(([key, file]) => [key, file.newPath]);
     assert.deepEqual(paths(parseUnifiedDiff('diff --git "a/caf\\303\\2512.txt" b/plain.txt\nsimilarity index 100%\nrename from "caf\\303\\2512.txt"\nrename to plain.txt\n')), [['café2.txt', 'plain.txt']]);
@@ -300,6 +303,24 @@ test('conflictingFiles: a binary file conflicts only when both sides change its 
     const modeOnly = parseUnifiedDiff('diff --git a/img.bin b/img.bin\nold mode 100644\nnew mode 100755\n');
     assert.deepEqual(conflictingFiles(renamedOnly, modified), []);
     assert.deepEqual(conflictingFiles(modified, modeOnly), []);
+    // An empty file added on one side, a binary file on the other: both add content, whatever the order
+    const addedEmpty = parseUnifiedDiff('diff --git a/e b/e\nnew file mode 100644\nindex 0000000..e69de29\n');
+    const addedBinary = parseUnifiedDiff('diff --git a/e b/e\nnew file mode 100644\nindex 0000000..667820d\nBinary files /dev/null and b/e differ\n');
+    assert.deepEqual(conflictingFiles(addedEmpty, addedBinary), ['e']);
+    assert.deepEqual(conflictingFiles(addedBinary, addedEmpty), ['e']);
+});
+
+test('conflictingFiles: a file added on both sides with different modes conflicts', () => {
+    const added = (mode, hash, rest) => parseUnifiedDiff(`diff --git a/f b/f\nnew file mode ${mode}\nindex 0000000..${hash}\n${rest}`);
+    const echo = '--- /dev/null\n+++ b/f\n@@ -0,0 +1 @@\n+echo\n';
+    assert.equal(added('100755', 'fa11a6a', echo).get('f').newMode, '100755');
+    // The same content, executable on one side only
+    assert.deepEqual(conflictingFiles(added('100644', 'fa11a6a', echo), added('100755', 'fa11a6a', echo)), ['f']);
+    // An empty file, executable on one side only; an empty file against a symlink
+    assert.deepEqual(conflictingFiles(added('100644', 'e69de29', ''), added('100755', 'e69de29', '')), ['f']);
+    assert.deepEqual(conflictingFiles(added('100644', 'e69de29', ''), added('120000', '1de5659', '--- /dev/null\n+++ b/f\n@@ -0,0 +1 @@\n+target\n\\ No newline at end of file\n')), ['f']);
+    // The same addition with the same mode merges cleanly
+    assert.deepEqual(conflictingFiles(added('100755', 'fa11a6a', echo), added('100755', 'fa11a6a', echo)), []);
 });
 
 test('conflictingFiles: a file added empty on both sides, or on one side only, merges cleanly', () => {
