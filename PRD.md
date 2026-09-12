@@ -225,7 +225,7 @@ The application integrates with a Jira workflow where:
 **Description:** Identify and display merge conflicts
 
 **Requirements:**
-- F6.1: Decide conflicts with the destination branch from Bitbucket's diffs of both sides since the merge base, with git's rule (overlapping or adjacent changes with different content, the same result on both sides merging cleanly, modify/delete, different renames, binaries, a file against a directory at the same path, files added on both sides with different modes); no file content is fetched
+- F6.1: Decide conflicts with the destination branch from Bitbucket's diffs of both sides since the merge base, with git's rule (the same result on both sides merging cleanly, overlapping or adjacent changes with different content, modify/delete, different renames, binaries, a file against a directory at the same path, files added on both sides with different modes); no file content is fetched
 - F6.2: Display a badge on each pull request once the statuses are loaded: OK, SYNC (possibly partial: the listed files conflict for sure, others could not be checked, with the reason in the tooltip), or ? with the reason it could not be checked
 - F6.3: Keep the results across restarts (`sync-cache.json`); a result never changes for a pair of commits, so only the pull requests whose commits moved are computed again
 - F6.4: Load on demand only (the SYNC load button), never automatically
@@ -500,11 +500,11 @@ The application integrates with a Jira workflow where:
 ### 8.2 Visual Design Requirements
 
 #### Color Coding
-- **Green**: Commits ahead, positive status
-- **Red**: Commits behind, action required, conflicts, blocking issues
-- **Blue**: Informational badges (SYNC, review status)
+- **Green**: Commits ahead, positive status, SYNC OK
+- **Red**: Commits behind, action required, conflicts, blocking issues, SYNC required
+- **Blue**: Informational badges (review status)
 - **Yellow**: Priority indicators
-- **Gray**: Neutral/inactive state
+- **Gray**: Neutral/inactive state, SYNC not checked
 
 #### Status Badges
 - Rounded corners with 4px radius
