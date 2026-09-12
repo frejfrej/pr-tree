@@ -52,10 +52,15 @@ export async function getCachedProjectData(projectName, fetchProjectData) {
     return getOrSetCache(CACHE_KEYS.PROJECT_DATA(projectName), fetchProjectData);
 }
 
+// The sync-statuses computations in flight, by cache key
+const pendingSyncStatuses = new Map();
+
 /**
  * Get sync statuses (conflicts for every pull request of a project) from cache
  * or fetch from source. The fetch function decides the TTL so that responses
  * built during an Atlassian rate-limit window can be kept until it closes.
+ * Concurrent calls for one project share one computation: a second browser tab
+ * would otherwise send every Bitbucket request again. A failure is not cached.
  * @param {string} projectName - Project identifier
  * @param {function} fetchSyncStatuses - Async function returning { data, ttl } on cache miss (ttl in seconds)
  * @returns {Promise<Object>} Sync statuses data
@@ -67,9 +72,16 @@ export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
         return cachedData;
     }
 
-    const { data, ttl } = await fetchSyncStatuses();
-    cache.set(key, data, ttl);
-    return data;
+    let pending = pendingSyncStatuses.get(key);
+    if (!pending) {
+        pending = (async () => {
+            const { data, ttl } = await fetchSyncStatuses();
+            cache.set(key, data, ttl);
+            return data;
+        })().finally(() => pendingSyncStatuses.delete(key));
+        pendingSyncStatuses.set(key, pending);
+    }
+    return pending;
 }
 
 /**

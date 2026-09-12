@@ -12,7 +12,7 @@ import {
     raiseAllCacheTtls
 } from './cache.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
-import { decideFromDiffstat, parseUnifiedDiff, conflictingFiles } from './conflicts.mjs';
+import { conflictRuleVersion, decideFromDiffstat, parseUnifiedDiff, conflictingFiles } from './conflicts.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
@@ -79,7 +79,8 @@ app.use((req, res, next) => {
 });
 
 // A conflict result never changes for a pair of commits: the results are kept
-// on disk and survive restarts (sync-cache.mjs); only failures are recomputed
+// on disk and survive restarts (sync-cache.mjs); failures and partial results
+// are computed again at the next load
 const syncCache = openSyncCache(path.join(__dirname, 'sync-cache.json'), {
     onError: error => log(`sync-cache.json ignored: ${error.message}`, errorLogStream)
 });
@@ -127,7 +128,10 @@ async function atlassianFetch(url, options) {
         // A refused or reset connection on a dual-stack host comes as an AggregateError with an empty message
         const detail = error.cause && (error.cause.message || error.cause.code);
         const reason = detail ? `: ${detail}` : '';
-        throw new Error(`${error.message}${reason} (${url})`, { cause: error });
+        const failure = new Error(`${error.message}${reason} (${url})`, { cause: error });
+        // The same without the URL, for the user: a diff URL carries every path of its chunk
+        failure.shortMessage = `${error.message}${reason}`;
+        throw failure;
     }
     if (response.status === 429) {
         await response.arrayBuffer().catch(() => {}); // release the socket
@@ -135,6 +139,13 @@ async function atlassianFetch(url, options) {
         throw new RateLimitError();
     }
     return response;
+}
+
+// What the user is told when a conflict check fails; the logs keep the full message
+function failureReason(error) {
+    return error instanceof RateLimitError
+        ? 'Atlassian requests are paused after a rate limit'
+        : (error.shortMessage || error.message);
 }
 
 async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
@@ -610,26 +621,29 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 }
 
                 const key = `${repoName}/${spec}`;
+                // A result stored under another version of the conflict rule is not reused
+                const cacheKey = `${conflictRuleVersion}:${key}`;
                 try {
-                    let result = syncCache.get(key);
+                    let result = syncCache.get(cacheKey);
                     if (!result) {
                         computed++;
                         result = await conflictsLimiter(() => computeConflicts(repoName, spec));
-                        if (!result.error) syncCache.set(key, result);
+                        // Complete results only: a failure or a partial SYNC is computed again at the next load
+                        if (!result.error && !result.reason) syncCache.set(cacheKey, result);
                     }
                     statuses[key] = result;
                 } catch (error) {
-                    if (error instanceof RateLimitError) {
-                        statuses[key] = { error: true, reason: 'Atlassian requests are paused after a rate limit' };
-                    } else {
+                    if (!(error instanceof RateLimitError)) {
                         log(`Error computing sync status for ${repoName} ${spec}: ${error.message}`, errorLogStream);
-                        statuses[key] = { error: true, reason: error.message };
                     }
+                    statuses[key] = { error: true, reason: failureReason(error) };
                 }
             }));
             await syncCache.save().catch(error => log(`sync-cache.json not written: ${error.message}`, errorLogStream));
-            const notChecked = Object.values(statuses).filter(status => status.error).length;
-            log(`Sync statuses of ${projectName} - ${Object.keys(statuses).length} pull requests, ${computed} computed, ${notChecked} not checked`, performanceLogStream);
+            const results = Object.values(statuses);
+            const notChecked = results.filter(status => status.error).length;
+            const partlyChecked = results.filter(status => status.conflicts && status.reason).length;
+            log(`Sync statuses of ${projectName} - ${results.length} pull requests, ${computed} computed, ${notChecked} not checked, ${partlyChecked} partly checked`, performanceLogStream);
 
             // Responses built during a rate-limit window are kept until it closes,
             // regular ones for 5 minutes
@@ -763,7 +777,10 @@ function checkPatch(basePath, patch, diffstat) {
 // are decided here: the files touched on both sides since the merge base come
 // from the diffstats, what the statuses do not decide comes from the patches
 // of both sides (conflicts.mjs). No file content is fetched, nothing is merged.
-const maxOverlappingFiles = 100;
+// When the patches cannot decide (more files to check than the limit, a failed
+// request, a patch that does not match its diffstat), the conflicts the
+// diffstats found are still reported, with the reason the rest was not checked.
+const maxFilesToCheck = 100;
 
 async function computeConflicts(repoName, spec) {
     const startTime = Date.now();
@@ -773,29 +790,40 @@ async function computeConflicts(repoName, spec) {
     if (sourceFiles.size === 0) return { conflicts: false };
     const destFiles = await fetchDiffstatFiles(repoName, destCommit, sourceCommit);
     const { conflicting, toCheck } = decideFromDiffstat(sourceFiles, destFiles);
-    const overlapping = conflicting.length + toCheck.length;
-    if (overlapping > maxOverlappingFiles) {
-        return { error: true, reason: `too many overlapping files (${overlapping})` };
+    const known = [...conflicting].sort();
+    if (toCheck.length > maxFilesToCheck) {
+        const reason = `too many files to check (${toCheck.length})`;
+        log(`Conflict check for ${repoName} ${spec}: ${reason}, the limit is ${maxFilesToCheck}`, errorLogStream);
+        return known.length > 0 ? { conflicts: true, files: known, reason } : { error: true, reason };
     }
 
-    const files = new Set(conflicting);
+    const files = new Set(known);
     if (toCheck.length > 0) {
-        // The base path and the path on each side: a renamed file is found under both
-        const filePaths = toCheck.map(basePath => [basePath, sourceFiles.get(basePath).sidePath, destFiles.get(basePath).sidePath]);
-        const [sourcePatch, destPatch] = await Promise.all([
-            fetchPatch(repoName, sourceCommit, destCommit, filePaths),
-            fetchPatch(repoName, destCommit, sourceCommit, filePaths)
-        ]);
-        for (const basePath of toCheck) {
-            checkPatch(basePath, sourcePatch, sourceFiles);
-            checkPatch(basePath, destPatch, destFiles);
+        try {
+            // The base path and the path on each side: a renamed file is found under both
+            const filePaths = toCheck.map(basePath => [basePath, sourceFiles.get(basePath).sidePath, destFiles.get(basePath).sidePath]);
+            const [sourcePatch, destPatch] = await Promise.all([
+                fetchPatch(repoName, sourceCommit, destCommit, filePaths),
+                fetchPatch(repoName, destCommit, sourceCommit, filePaths)
+            ]);
+            for (const basePath of toCheck) {
+                checkPatch(basePath, sourcePatch, sourceFiles);
+                checkPatch(basePath, destPatch, destFiles);
+            }
+            for (const file of conflictingFiles(sourcePatch, destPatch)) files.add(file);
+        } catch (error) {
+            // Nothing known yet: the caller reports the pull request not checked
+            if (known.length === 0) throw error;
+            if (!(error instanceof RateLimitError)) {
+                log(`Conflict check for ${repoName} ${spec} incomplete, ${known.length} conflicting files known from the diffstats: ${error.message}`, errorLogStream);
+            }
+            return { conflicts: true, files: known, reason: failureReason(error) };
         }
-        for (const file of conflictingFiles(sourcePatch, destPatch)) files.add(file);
     }
     const sorted = [...files].sort();
 
     const duration = Date.now() - startTime;
-    log(`computeConflicts - ${repoName} ${spec} - ${overlapping} overlapping files - conflicts: ${sorted.length > 0} - Duration: ${duration}ms`, performanceLogStream);
+    log(`computeConflicts - ${repoName} ${spec} - ${conflicting.length + toCheck.length} overlapping files - conflicts: ${sorted.length > 0} - Duration: ${duration}ms`, performanceLogStream);
     return sorted.length > 0 ? { conflicts: true, files: sorted } : { conflicts: false };
 }
 

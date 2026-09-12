@@ -119,11 +119,13 @@ function badge(className, title, text) {
     return element;
 }
 
-// Tooltip of a SYNC conflict badge: the files, one per line, capped at five
-export function conflictsTitle(files) {
-    if (!Array.isArray(files) || files.length === 0) return 'Conflicts found';
-    const lines = ['Conflicts in:', ...files.slice(0, 5)];
-    if (files.length > 5) lines.push(`and ${files.length - 5} more`);
+// Tooltip of a SYNC conflict badge: the files, one per line, capped at five; a
+// partial result (the other files could not be checked) ends with the reason
+export function conflictsTitle(files, reason) {
+    const listed = Array.isArray(files) && files.length > 0;
+    const lines = listed ? ['Conflicts in:', ...files.slice(0, 5)] : ['Conflicts found'];
+    if (listed && files.length > 5) lines.push(`and ${files.length - 5} more`);
+    if (reason) lines.push(`Other files not checked: ${reason}`);
     return lines.join('\n');
 }
 
@@ -146,7 +148,7 @@ export function applySyncStatuses() {
         } else if (status.error) {
             counter.replaceChildren(badge('conflicts-error', `Could not check: ${status.reason || 'unknown error'}`, '?'));
         } else if (status.conflicts) {
-            counter.replaceChildren(badge('conflicts-count', conflictsTitle(status.files), 'SYNC'));
+            counter.replaceChildren(badge('conflicts-count', conflictsTitle(status.files, status.reason), 'SYNC'));
         } else {
             counter.replaceChildren(badge('conflicts-ok', 'No conflict with the destination branch', 'OK'));
         }

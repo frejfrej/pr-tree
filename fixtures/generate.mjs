@@ -749,9 +749,9 @@ const conflictFiles = [
     'README.md'
 ];
 const failureReasons = [
-    'The operation was aborted due to timeout (https://api.bitbucket.org/2.0/repositories/sodius/products.secollab/diffstat/...)',
+    'The operation was aborted due to timeout',
     'Request failed with status code 502',
-    'too many overlapping files (140)'
+    'too many files to check (140)'
 ];
 
 /**
