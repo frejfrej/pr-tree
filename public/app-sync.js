@@ -119,10 +119,12 @@ function badge(className, title, text) {
     return element;
 }
 
-function conflictsTitle(files) {
-    if (!files || files.length === 0) return 'Conflicts found';
-    const shown = files.slice(0, 5).join(', ');
-    return files.length > 5 ? `Conflicts in ${shown} and ${files.length - 5} more` : `Conflicts in ${shown}`;
+// Tooltip of a SYNC conflict badge: the files, one per line, capped at five
+export function conflictsTitle(files) {
+    if (!Array.isArray(files) || files.length === 0) return 'Conflicts found';
+    const lines = ['Conflicts in:', ...files.slice(0, 5)];
+    if (files.length > 5) lines.push(`and ${files.length - 5} more`);
+    return lines.join('\n');
 }
 
 /** Renders the stored SYNC statuses onto the conflicts counters: OK, SYNC, or ? with the reason */
