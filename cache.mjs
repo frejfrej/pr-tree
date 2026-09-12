@@ -11,7 +11,6 @@ const cache = new NodeCache({
 // Cache keys for different types of data
 const CACHE_KEYS = {
     PROJECT_DATA: (projectName) => `project_${projectName}`,
-    CONFLICTS: (repoName, spec) => `conflicts_${repoName}_${spec}`,
     SYNC_STATUSES: (projectName) => `sync_statuses_${projectName}`,
     PROJECTS_LIST: 'projects_list'
 };
@@ -51,18 +50,6 @@ export async function getCachedProjects(fetchProjects) {
  */
 export async function getCachedProjectData(projectName, fetchProjectData) {
     return getOrSetCache(CACHE_KEYS.PROJECT_DATA(projectName), fetchProjectData);
-}
-
-/**
- * Get the conflicts of one pull request from cache or compute them: the entry
- * behind /api/sync-statuses/:project, called once per pull request
- * @param {string} repoName - Repository name
- * @param {string} spec - Bitbucket diff spec, destHash..sourceHash
- * @param {function} fetchConflicts - Function computing the conflicts on a cache miss
- * @returns {Promise<Object>} Conflicts data
- */
-export async function getCachedConflicts(repoName, spec, fetchConflicts) {
-    return getOrSetCache(CACHE_KEYS.CONFLICTS(repoName, spec), fetchConflicts, 300);
 }
 
 /**

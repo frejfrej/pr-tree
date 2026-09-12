@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "express": "^5.2.1",
-    "node-cache": "^5.1.2",
-    "node-diff3": "^3.2.1"
+    "node-cache": "^5.1.2"
   }
 }
