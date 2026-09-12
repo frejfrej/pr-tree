@@ -225,15 +225,15 @@ The application integrates with a Jira workflow where:
 **Description:** Identify and display merge conflicts
 
 **Requirements:**
-- F6.1: Check each PR for merge conflicts with destination branch
-- F6.2: Display conflict count in badge on PR
-- F6.3: Cache conflict status to reduce API load
-- F6.4: Update conflict status on each refresh
+- F6.1: Decide conflicts with the destination branch from Bitbucket's diffs of both sides since the merge base, with git's rule (overlapping or adjacent changes with different content, the same result on both sides merging cleanly, modify/delete, different renames, binaries); no file content is fetched
+- F6.2: Display a badge on each pull request once the statuses are loaded: OK, SYNC, or ? with the reason it could not be checked
+- F6.3: Keep the results across restarts (`sync-cache.json`); a result never changes for a pair of commits, so only the pull requests whose commits moved are computed again
+- F6.4: Load on demand only (the SYNC load button), never automatically
 
 **Acceptance Criteria:**
-- PRs with conflicts show red badge with count
-- Hovering badge shows conflict details
-- Conflict checks complete within 5 seconds for all PRs
+- PRs with conflicts show a red SYNC badge, PRs without conflicts a green OK badge
+- Hovering the SYNC badge lists the conflicting files; hovering a ? badge shows the reason
+- A load of the largest project (about 110 pull requests) stays under Bitbucket's hourly request limit and never blocks the server
 
 ---
 
@@ -397,7 +397,6 @@ The application integrates with a Jira workflow where:
 - **Framework:** Express.js v5.2.1
 - **HTTP Client:** the `fetch` built into Node.js 20.11 or later
 - **Caching:** node-cache v5.1.2
-- **Three-way merge:** node-diff3 v3.2.1 (conflict computation)
 
 #### Frontend
 - **Core:** HTML5, CSS3, Vanilla JavaScript (ES6)
@@ -443,7 +442,7 @@ The application integrates with a Jira workflow where:
 **Cache TTLs:**
 - Project data: 120 seconds
 - Projects list: 300 seconds
-- Conflicts: 300 seconds
+- Conflicts: kept for good on disk (`sync-cache.json`), pruned after 90 days
 
 **Hash-Based Change Detection:**
 - Compute MD5 hash of PR + Jira data
