@@ -756,8 +756,9 @@ const failureReasons = [
 
 /**
  * Builds the /api/sync-statuses/:project response: about a fifth of the pull
- * requests have conflicts (with the files), a few could not be computed (with
- * the reason), the rest are OK.
+ * requests have conflicts (with the files), one in ten of those is partial
+ * (other files could not be checked, with the reason), a few pull requests
+ * could not be computed at all (with the reason), the rest are OK.
  */
 export function generateSyncStatuses(projectData) {
     const statuses = {};
@@ -775,7 +776,10 @@ export function generateSyncStatuses(projectData) {
             const count = random() < 0.2 ? integer(random, 6, 8) : integer(random, 1, 3);
             const start = integer(random, 0, conflictFiles.length - 1);
             const files = Array.from({ length: count }, (_, i) => conflictFiles[(start + i) % conflictFiles.length]);
-            statuses[key] = { conflicts: true, files: files.sort() };
+            const status = { conflicts: true, files: files.sort() };
+            // One conflict in ten is partial: other files could not be checked
+            if (random() < 0.1) status.reason = pick(random, failureReasons);
+            statuses[key] = status;
         } else {
             statuses[key] = { conflicts: false };
         }

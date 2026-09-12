@@ -88,6 +88,7 @@ test('the sync statuses of the fixtures have the documented shapes', async () =>
                 assert.equal(typeof status.reason, 'string');
             } else if (status.conflicts) {
                 assert.ok(Array.isArray(status.files) && status.files.length > 0);
+                if (status.reason !== undefined) assert.equal(typeof status.reason, 'string');
             } else {
                 assert.deepEqual(status, { conflicts: false });
             }
