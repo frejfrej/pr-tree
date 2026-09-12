@@ -48,7 +48,7 @@ test('README.md is served for the help modal', async () => {
 test('no other file of the project directory is served', async () => {
     // A literal `..` is normalised away by fetch itself, so only the encoded forms reach the server
     const files = ['config.js', 'config.js.default', 'index.mjs', 'cache.mjs', 'package.json',
-        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs',
+        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs', 'sync-cache.json',
         '..%2fconfig.js', 'README.md%2f..%2fconfig.js'];
     for (const file of files) {
         const response = await fetch(`${baseUrl}/${file}`);
