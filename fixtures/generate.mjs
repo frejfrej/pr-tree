@@ -739,9 +739,13 @@ function calculateHash(data) {
 const conflictFiles = [
     'src/com.sodius.oslc.web/package-lock.json',
     'src/com.sodius.oslc.web/projects/ng-sodius-oslc/core/src/i18n/messages_en.ts',
+    'src/com.sodius.oslc.web/projects/ng-sodius-oslc/core/src/lib/oslc-query.service.ts',
     'pom.xml',
     'src/main/java/com/sodius/secollab/review/ReviewService.java',
+    'src/main/java/com/sodius/secollab/review/ReviewController.java',
     'src/main/resources/messages.properties',
+    'src/main/resources/application.properties',
+    'CHANGELOG.md',
     'README.md'
 ];
 const failureReasons = [
@@ -756,20 +760,22 @@ const failureReasons = [
  * the reason), the rest are OK.
  */
 export function generateSyncStatuses(projectData) {
-    const random = createRandom(`sync-${projectData.pullRequests.length}`);
     const statuses = {};
     for (const pullRequest of projectData.pullRequests) {
         const spec = `${pullRequest.destination.commit?.hash}..${pullRequest.source.commit?.hash}`;
         if (spec.includes('undefined')) continue;
         const key = `${pullRequest.source.repository.name}/${spec}`;
+        // Seeded by the pull request: its status only depends on its commits, as on the real server
+        const random = createRandom(`sync-${key}`);
         const roll = random();
         if (roll < 0.04) {
             statuses[key] = { error: true, reason: pick(random, failureReasons) };
         } else if (roll < 0.24) {
-            const count = integer(random, 1, 3);
-            const files = new Set();
-            for (let i = 0; i < count; i++) files.add(pick(random, conflictFiles));
-            statuses[key] = { conflicts: true, files: [...files].sort() };
+            // One conflict in five lists more files than the tooltip shows (the first five)
+            const count = random() < 0.2 ? integer(random, 6, 8) : integer(random, 1, 3);
+            const start = integer(random, 0, conflictFiles.length - 1);
+            const files = Array.from({ length: count }, (_, i) => conflictFiles[(start + i) % conflictFiles.length]);
+            statuses[key] = { conflicts: true, files: files.sort() };
         } else {
             statuses[key] = { conflicts: false };
         }
