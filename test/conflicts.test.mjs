@@ -122,6 +122,18 @@ test('parseUnifiedDiff: paths git quotes are decoded, renamed or not', () => {
     assert.deepEqual(paths(parseUnifiedDiff('diff --git a/plain2.txt "b/na\\303\\257ve.txt"\nsimilarity index 100%\nrename from plain2.txt\nrename to "na\\303\\257ve.txt"\n')), [['plain2.txt', 'naïve.txt']]);
 });
 
+test('parseUnifiedDiff: a quoted path git would not print is kept as written, never decoded into another path', () => {
+    // An unknown escape (\q) and a quote that is not closed: the header stays the key, so the server's
+    // checkPatch reports the real path missing from the diff instead of matching it to a file
+    const unknownEscape = parseUnifiedDiff('diff --git "a/x\\qy.txt" "b/x\\qy.txt"\nindex 1111111..2222222 100644\n--- "a/x\\qy.txt"\n+++ "b/x\\qy.txt"\n@@ -1 +1 @@\n-a\n+b\n');
+    assert.deepEqual([...unknownEscape.keys()], ['"a/x\\qy.txt" "b/x\\qy.txt"']);
+    const unclosed = parseUnifiedDiff('diff --git "a/unclosed.txt b/unclosed.txt\nindex 1111111..2222222 100644\n@@ -1 +1 @@\n-a\n+b\n');
+    assert.deepEqual([...unclosed.keys()], ['"a/unclosed.txt b/unclosed.txt']);
+    // The same on a "rename to" line: the quoted text stays the new path
+    const renamedTo = parseUnifiedDiff('diff --git a/old.txt "b/x\\qy.txt"\nsimilarity index 100%\nrename from old.txt\nrename to "x\\qy.txt"\n');
+    assert.equal(renamedTo.get('old.txt').newPath, '"x\\qy.txt"');
+});
+
 test('parseUnifiedDiff: several files, several hunks, an empty context line, "no newline" markers', () => {
     // The first hunk of b.txt has an empty context line (its leading space stripped): it still counts as a base line
     const text = patch('a.txt', '-1,6 +1,6', [' l1', ' l2', '-l3', '+A3', ' l4', ' l5', ' l6']) +

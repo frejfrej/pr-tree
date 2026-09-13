@@ -309,7 +309,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
 }
 
 // Function to render participant information
-function renderParticipant(participant, status) {
+export function renderParticipant(participant, status) {
     let iconClass = "";
     if (status === "approved") {
         iconClass = "fa-check-circle";
