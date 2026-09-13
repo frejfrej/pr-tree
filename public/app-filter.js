@@ -31,7 +31,7 @@ export function countActiveFilters({ text = '', participants = [], work = 'all',
         epics.length > 0,
         stories.length > 0,
         participants.length > 0,
-        work !== 'all',
+        participants.length > 0 && work !== 'all',
         sync !== 'Show all'
     ].filter(Boolean).length;
 }
@@ -200,8 +200,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         for (const story of pullRequestStories) {
             stories.set(story.key, story);
         }
-        // Every participant but the author reviews the pull request
-        const reviewers = pullRequest.participants.filter(participant => participant.user.uuid !== pullRequest.author.uuid);
+        // Every participant but the author reviews the pull request: these are the reviewers
+        const otherParticipants = pullRequest.participants.filter(participant => participant.user.uuid !== pullRequest.author.uuid);
         const entry = {
             pullRequest,
             linkedIssues,
@@ -214,8 +214,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             assignees: new Set(linkedIssues
                 .filter(issue => issue.fields.assignee && issue.fields.assignee.displayName)
                 .map(issue => issue.fields.assignee.displayName)),
-            reviewers: new Set(reviewers.map(participant => participant.user.display_name)),
-            pendingReviewers: new Set(reviewers
+            reviewers: new Set(otherParticipants.map(participant => participant.user.display_name)),
+            pendingReviewers: new Set(otherParticipants
                 .filter(participant => !participant.approved)
                 .map(participant => participant.user.display_name)),
             sprints: new Set(issueKeys.flatMap(key => [...(sprintsByIssueKey.get(key) || [])])),
@@ -256,8 +256,7 @@ export function evaluatePullRequest(entry, { text = '', participants = [], work 
     const textMatch = matchesText(entry.searchText, parseTextQuery(text));
     // Participants: without a selection, everybody's pull requests; with one, the
     // pull requests waiting for a selected participant as a reviewer, as an
-    // assignee, or either ("All work"). A pull request is never in review and in
-    // progress at once, so the two kinds of attention never both hold
+    // assignee, or either ("All work")
     const participantMatch = participants.length === 0 ||
         (work === 'reviewers' ? attention.reviewer : work === 'assignees' ? attention.assignee : attention.any);
     // Empty selection = show all; otherwise match ANY selected value

@@ -55,6 +55,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane', 'Bob'] }), 1);
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane'], work: 'reviewers' }), 2);
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane'], work: 'assignees' }), 2);
+    assert.equal(countActiveFilters({ ...defaults, work: 'reviewers' }), 0); // without a participant the work value is ignored, like in evaluatePullRequest
     assert.equal(countActiveFilters({ ...defaults, sync: 'requested' }), 1);
     assert.equal(countActiveFilters({ ...defaults, sync: 'unchecked' }), 1);
     assert.equal(countActiveFilters({ participants: ['A'], work: 'reviewers', sprints: ['1'], fixVersions: ['2'], sync: 'OK' }), 5);
