@@ -214,10 +214,11 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             assignees: new Set(linkedIssues
                 .filter(issue => issue.fields.assignee && issue.fields.assignee.displayName)
                 .map(issue => issue.fields.assignee.displayName)),
-            reviewers: new Set(otherParticipants.map(participant => participant.user.display_name)),
+            reviewers: new Set(otherParticipants.map(participant => participant.user.display_name).filter(Boolean)),
             pendingReviewers: new Set(otherParticipants
                 .filter(participant => !participant.approved)
-                .map(participant => participant.user.display_name)),
+                .map(participant => participant.user.display_name)
+                .filter(Boolean)),
             sprints: new Set(issueKeys.flatMap(key => [...(sprintsByIssueKey.get(key) || [])])),
             fixVersions: new Set(linkedIssues
                 .flatMap(issue => issue.fields.fixVersions || [])

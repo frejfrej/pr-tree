@@ -186,7 +186,7 @@ The application integrates with a Jira workflow where:
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
 
 **Acceptance Criteria:**
-- Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
+- Each filter shows "Show all" option plus all available values
 - Applying filters hides non-matching PRs instantly
 - Filtered counters update to show X of Y PRs visible
 - URL updates with all filter selections
@@ -486,10 +486,10 @@ The application integrates with a Jira workflow where:
 |  Fix version   |   Branch A                            [X / Y]   |
 |  Epic          |                                                 |
 |  Story         |                                                 |
-|  Assignee      |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
-|  Ready assignee|                                                 |
-|  Reviewer      |       JIRA-123 [In Progress]                    |
-|  Ready reviewer|     PR #2                                       |
+|  Participants  |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
+|  Work          |                                                 |
+|                |       JIRA-123 [In Progress]                    |
+|                |     PR #2                                       |
 |  SYNC + Load   |   Branch B                            [X / Y]   |
 |                |     PR #3 [Ahead:2]                             |
 | (does not      | Orphaned Issues                                 |

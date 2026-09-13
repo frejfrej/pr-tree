@@ -29,6 +29,7 @@ test('filtersFromUrl reads the work values it knows and defaults the others to a
     assert.equal(filtersFromUrl('?work=all').work, 'all');
     assert.equal(filtersFromUrl('?work=true').work, 'all');
     assert.equal(filtersFromUrl('?work=').work, 'all');
+    assert.equal(filtersFromUrl('?work=assignees&work=reviewers').work, 'assignees'); // the first of repeated parameters, like project
 });
 
 test('filtersFromUrl ignores the people parameters of links written before 2.8.0', () => {

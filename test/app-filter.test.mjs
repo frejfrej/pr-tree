@@ -112,13 +112,14 @@ test('buildFilterIndex lists the participants: assignees and reviewers, sorted, 
     const index = buildFilterIndex({
         pullRequests: [{
             id: 12, title: 'PROJ-3 search', source: { branch: { name: 'feature/PROJ-3' } },
-            author, participants: [{ user: author, approved: false }, { user: { uuid: 'zoe-uuid', display_name: 'Zoé' }, approved: true }]
+            author, participants: [{ user: author, approved: false }, { user: { uuid: 'zoe-uuid', display_name: 'Zoé' }, approved: true }, { user: { uuid: 'ghost-uuid', display_name: null }, approved: false }]
         }],
         jiraIssuesMap: { 12: ['PROJ-3'] },
         jiraIssuesDetails: [{ key: 'PROJ-3', fields: { assignee: { displayName: 'Émile' }, fixVersions: [] } }],
         sprintIssues: {}
     });
-    // An assignee who reviews nothing and a reviewer who approved everything are participants; accented names sort with their letter
+    // An assignee who reviews nothing and a reviewer who approved everything are participants; accented names sort
+    // with their letter; a participant without a display name is skipped
     assert.deepEqual(index.participants, ['Émile', 'Zoé']);
 });
 
