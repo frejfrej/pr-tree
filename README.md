@@ -84,6 +84,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.7.2
+    * The sprint filter no longer hides the pull requests of an issue past the first 100 issues of its sprint, and the orphaned issues section no longer stops at 50 issues in review: both searches are paged with the token of Jira's search endpoint (`nextPageToken`, `isLast`), which returns no `total`, so only the first page was read since the switch to that endpoint
 * Version 2.7.1
     * The server's SYNC computation moved from `index.mjs` into `sync-statuses.mjs`, with `fetch`, the cache and the logs injected, and is tested against a fake Bitbucket (`test/sync-statuses.test.mjs`: the requests made, what the client is shown, what reaches `sync-cache.json`); no behaviour change, the stored results stay valid (#48)
     * `npm test` checks the documented shape of `/api/pull-requests/:project` and `/api/cache/stats` on the fixture server, and what an unknown project is answered; the TTLs raised during a rate-limit pause, the cache statistics, a quoted path git would not print, a participant with an unknown status and the filter index kept by `initializeFilter` have their tests

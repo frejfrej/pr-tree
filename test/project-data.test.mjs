@@ -40,13 +40,24 @@ const version = name => ({ id: name, name });
  * `commits(repo, include, exclude)` the number of commits; `issues` and
  * `parents` the pools answered to `issueKey in` and `key IN` queries;
  * `boards` per Jira project, `sprints` per board id, `sprintIssues` per
- * sprint id (100 at a time), `inReview` the issues in review.
+ * sprint id, `inReview` the issues in review; both searches are paged with a token like
+ * the search endpoint, `maxResults` at a time.
  * `intercept(url)` runs first: a Response it returns replaces the answer.
  */
 function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], parents = [], boards = {}, sprints = {}, sprintIssues = {}, inReview = [], intercept = () => undefined } = {}) {
     const requests = [];
     const json = body => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     const keysOf = list => list.split(',').map(key => key.trim());
+    // A page of a search, the way the search endpoint answers: `maxResults` items
+    // from the `nextPageToken` given (an offset here), `isLast`, and the token of
+    // the next page when there is one; no total, no startAt.
+    const page = (items, searchParams, map = item => item) => {
+        const startAt = Number(searchParams.get('nextPageToken')?.replace('page-', '') ?? 0);
+        const end = startAt + Number(searchParams.get('maxResults'));
+        const body = { issues: items.slice(startAt, end).map(map), isLast: end >= items.length };
+        if (!body.isLast) body.nextPageToken = `page-${end}`;
+        return body;
+    };
     async function fetch(url, options) {
         requests.push({ url, options });
         const replaced = intercept(url);
@@ -74,13 +85,8 @@ function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], pare
                 const keys = new Set(keysOf(match[1]));
                 return json({ issues: parents.filter(candidate => keys.has(candidate.key)) });
             }
-            if ((match = jql.match(/^sprint = (\d+) /))) {
-                const keys = sprintIssues[match[1]] ?? [];
-                const startAt = Number(searchParams.get('startAt'));
-                const maxResults = Number(searchParams.get('maxResults'));
-                return json({ total: keys.length, issues: keys.slice(startAt, startAt + maxResults).map(key => ({ key })) });
-            }
-            if (jql.includes('status = "In Review"')) return json({ issues: inReview });
+            if ((match = jql.match(/^sprint = (\d+) /))) return json(page(sprintIssues[match[1]] ?? [], searchParams, key => ({ key })));
+            if (jql.includes('status = "In Review"')) return json(page(inReview, searchParams));
         }
         if ((match = pathname.match(/^\/rest\/agile\/1\.0\/board$/))) {
             const values = boards[searchParams.get('projectKeyOrId')] ?? [];
@@ -205,17 +211,21 @@ test('an issue without fix versions inherits the fix versions of its parent, epi
     assert.deepEqual(versions, { 'PROJ-10': ['2.0'], 'PROJ-11': ['2.0'], 'PROJ-12': ['3.0'], 'PROJ-13': [], 'PROJ-1': ['2.0'], 'PROJ-14': [] });
 });
 
-test('the orphaned issues are the ones in review without a pull request, with the Jira site name', async () => {
-    const linked = issue('PROJ-1'), orphan = issue('OTHER-2');
+test('the orphaned issues are the ones in review without a pull request, every page of them, with the Jira site name', async () => {
+    const linked = issue('PROJ-1'), orphans = Array.from({ length: 119 }, (_, i) => issue(`OTHER-${i + 2}`));
     const { buildProjectData, requests, logs } = setUp(fakeAtlassian({
-        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], inReview: [linked, orphan]
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], inReview: [linked, ...orphans]
     }));
     const data = await buildProjectData('P', project);
-    assert.deepEqual(data.orphanedIssues, [{ ...orphan, jiraSiteName }]);
-    const [url] = urlsMatching(requests, /In%20Review/);
-    assert.equal(jqlOf(url), 'project in (PROJ,OTHER) AND status = "In Review" ORDER BY priority DESC, updated DESC');
-    assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,updated,assignee');
-    assert.ok(logs.access.includes('Found 1 orphaned issues in review status'));
+    assert.deepEqual(data.orphanedIssues, orphans.map(orphan => ({ ...orphan, jiraSiteName }))); // both pages, in order, the linked one dropped
+    const urls = urlsMatching(requests, /In%20Review/);
+    assert.deepEqual(urls.map(url => new URL(url).searchParams.get('nextPageToken')), [null, 'page-100']);
+    for (const url of urls) {
+        assert.equal(jqlOf(url), 'project in (PROJ,OTHER) AND status = "In Review" ORDER BY priority DESC, updated DESC');
+        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,updated,assignee');
+        assert.equal(new URL(url).searchParams.get('maxResults'), '100');
+    }
+    assert.ok(logs.access.includes('Found 119 orphaned issues in review status'));
 });
 
 test('the active sprints of every scrum board of each Jira project, once each, and their issues 100 at a time', async () => {
@@ -234,9 +244,13 @@ test('the active sprints of every scrum board of each Jira project, once each, a
         `${jira}/rest/agile/1.0/board/3/sprint?state=active`
     ]);
     assert.deepEqual(data.sprints, [{ id: 7, name: 'Sprint 7' }, { id: 8, name: 'Sprint 8' }]); // id and name only, the shared sprint once
-    const sprintSearches = urlsMatching(requests, /sprint%20%3D/).map(url => [jqlOf(url), new URL(url).searchParams.get('startAt')]);
-    assert.deepEqual(sprintSearches, [['sprint = 7 AND project in (PROJ,OTHER)', '0'], ['sprint = 7 AND project in (PROJ,OTHER)', '100'], ['sprint = 8 AND project in (PROJ,OTHER)', '0']]);
-    assert.equal(data.sprintIssues[7].length, 150);
+    const sprintSearches = urlsMatching(requests, /sprint%20%3D/).map(url => [jqlOf(url), new URL(url).searchParams.get('nextPageToken'), new URL(url).searchParams.get('maxResults')]);
+    assert.deepEqual(sprintSearches, [
+        ['sprint = 7 AND project in (PROJ,OTHER)', null, '100'],
+        ['sprint = 7 AND project in (PROJ,OTHER)', 'page-100', '100'], // the token of the first page, since it was not the last
+        ['sprint = 8 AND project in (PROJ,OTHER)', null, '100']
+    ]);
+    assert.deepEqual(data.sprintIssues[7], Array.from({ length: 150 }, (_, i) => `PROJ-${i}`)); // every page, in order
     assert.deepEqual(data.sprintIssues[8], ['OTHER-1']);
     assert.ok(logs.access.includes('Retrieved a total of 150 issues for sprint 7'));
 });
@@ -296,17 +310,18 @@ test('a Jira failure: the sprints of a project are skipped and logged, a failed 
         pullRequests: { 'repo-a': [[pullRequest(1)]] },
         boards: { PROJ: [{ id: 1, name: 'Board 1' }], OTHER: [{ id: 3, name: 'Board 3' }] },
         sprints: { 1: [{ id: 7, name: 'Sprint 7' }], 3: [{ id: 9, name: 'Sprint 9' }] },
-        sprintIssues: { 7: ['PROJ-1'], 9: ['OTHER-1'] },
+        sprintIssues: { 7: ['PROJ-1'], 9: Array.from({ length: 150 }, (_, i) => `OTHER-${i}`) },
         intercept: url => {
             if (url.includes('projectKeyOrId=PROJ')) throw new Error('boards unreachable');
-            if (url.includes('sprint%20%3D%209')) return new Response('', { status: 502 });
+            if (url.includes('sprint%20%3D%209') && url.includes('nextPageToken')) return new Response('', { status: 502 });
             return undefined;
         }
     }));
     const data = await skipped.buildProjectData('P', project);
     assert.deepEqual(data.sprints, [{ id: 9, name: 'Sprint 9' }]);
-    assert.deepEqual(data.sprintIssues, { 9: [] });
+    assert.equal(data.sprintIssues[9].length, 100); // the first page is kept, the failed second one ends the sprint
     assert.deepEqual(skipped.logs.error, ['Error fetching sprints for project PROJ: boards unreachable', 'Error fetching issues for sprint 9: Request failed with status code 502']);
+    assert.ok(skipped.logs.access.includes('Retrieved a total of 100 issues for sprint 9'));
 
     const orphans = setUp(fakeAtlassian({ intercept: url => (url.includes('In%20Review') ? new Response('', { status: 403 }) : undefined) }));
     await assert.rejects(orphans.buildProjectData('P', project), { message: 'Request failed with status code 403' });

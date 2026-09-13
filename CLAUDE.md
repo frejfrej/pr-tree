@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.7.1** (as of 2026-09-13)
+Current version: **2.7.2** (as of 2026-09-13)
 
 ## Technology Stack
 
@@ -108,7 +108,7 @@ pr-tree/
 - `createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jiraAuth, log: { access, error, performance } })`: the Bitbucket and Jira fetchers of a server and the response of `/api/pull-requests/:project`; nothing here reads config.js or talks to Atlassian by itself; returns `buildProjectData(projectName, projectConfig)` and the fetchers (`fetchPullRequests`, `fetchJiraIssuesDetails`, `fetchJiraSprints`, `fetchSprintIssues`, `fetchInReviewIssuesWithoutPR`, `fetchCommitsDiff`), exposed for the tests
 - `buildProjectData` fetches the open pull requests of each repository 50 per page (following `next`), maps them by destination branch (`fillPullRequestsMap`: keyed by branch name across repositories, a known limitation) and to their issue keys (`createJiraIssuesMap`, `extractJiraIssues` with the project regex), then the Jira issues, the sprints, the sprint issues and the orphaned issues, hashes them (`calculateHash`: MD5 of the pull requests, the issue map and details, the sprints, the sprint issues and the orphaned issues) and fetches the commit counts ahead and behind (`fetchCommitsDiff`, two requests per pull request, `null` on a failure) only when the hash differs from the last response built; otherwise the last response is served again with a new `lastRefreshTime` (one last response per server, whatever the project)
 - `fetchJiraIssuesDetails()` fetches, in batches of 50, the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
-- `fetchJiraSprints` asks the scrum boards of each Jira project then the active sprints of each board (`{ id, name }`, a sprint shared by two boards once; a failure skips the project's sprints); `fetchSprintIssues` reads the keys of each sprint 100 at a time (a failure ends that sprint's list); `fetchInReviewIssuesWithoutPR` lists the issues in review of the Jira projects and keeps those no pull request links (a failure fails the build, like a failed pull-request page)
+- `fetchJiraSprints` asks the scrum boards of each Jira project then the active sprints of each board (`{ id, name }`, a sprint shared by two boards once; a failure skips the project's sprints); `fetchSprintIssues` reads the keys of each sprint 100 at a time (a failed page ends that sprint's list, the pages read are kept); `fetchInReviewIssuesWithoutPR` lists the issues in review of the Jira projects, 100 at a time, and keeps those no pull request links (a failure fails the build, like a failed pull-request page); both go through `searchIssuePages(jql, fields)`, an async generator paged with the `nextPageToken` of the search endpoint until `isLast` (the endpoint returns no `total` and ignores `startAt`; reading a `total` is what truncated sprints to 100 issues, and the orphaned issues to the default page of 50, before 2.7.2)
 - The pure helpers `extractJiraIssues`, `createJiraIssuesMap`, `fillPullRequestsMap` and `calculateHash` are exported; tested against a fake Atlassian in `test/project-data.test.mjs` (the URLs, JQL and fields of every request, the response shape, the batches and parents, the inherited fix versions, the orphaned issues, the sprints, the hash and the commit counts, the failures)
 
 **sync-statuses.mjs**
@@ -233,7 +233,7 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.7.1",
+  "version": "2.7.2",
   "releaseDate": "2026-09-13",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
