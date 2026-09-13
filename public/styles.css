@@ -301,29 +301,6 @@ html.sidebar-hidden .sidebar {
     width: 100%;
 }
 
-.filter-item-checkbox {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-}
-
-.filter-item-checkbox input[type="checkbox"] {
-    margin: 0;
-    cursor: pointer;
-}
-
-.filter-item-checkbox label {
-    cursor: pointer;
-    user-select: none;
-}
-
-.filter-item-checkbox input[type="checkbox"]:disabled,
-.filter-item-checkbox input[type="checkbox"]:disabled + label {
-    color: var(--text-muted);
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
 .filter-row {
     display: flex;
     align-items: center;

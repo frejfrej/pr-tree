@@ -14,31 +14,25 @@ let currentSprints = [];
 let currentFixVersions = [];
 let currentEpics = [];
 let currentStories = [];
-let currentAssignees = [];
-let currentReviewers = [];
+let currentParticipants = [];
+let currentWork = 'all'; // 'all', 'reviewers' or 'assignees'
 let currentSync = "Show all";
-let currentReadyForReviewer = false;
-let currentReadyForAssignee = false;
 let currentApiResult = null;
 let reloadInterval = 100;
 
 // Multi-select filters, in sidebar order
-const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'assigneeSelect', 'reviewerSelect'];
-// The two ready checkboxes, in sidebar order
-const readyCheckboxIds = ['readyForAssigneeCheck', 'readyForReviewerCheck'];
+const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'participantSelect'];
 
 function currentFilters() {
     return {
         text: currentText,
-        assignees: currentAssignees,
-        reviewers: currentReviewers,
+        participants: currentParticipants,
+        work: currentWork,
         sprints: currentSprints,
         fixVersions: currentFixVersions,
         epics: currentEpics,
         stories: currentStories,
-        sync: currentSync,
-        readyReviewer: currentReadyForReviewer,
-        readyAssignee: currentReadyForAssignee
+        sync: currentSync
     };
 }
 
@@ -53,8 +47,8 @@ function applyFilters() {
 }
 
 // Puts every filter control back to its default without applying anything:
-// the search box, the multi-selects, the ready checkboxes (unchecked; their
-// disabled state follows the selection in readFilterControls) and the SYNC select
+// the search box, the multi-selects, the Work select ("All work"; its disabled
+// state follows the participants in readFilterControls) and the SYNC select
 function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
@@ -62,10 +56,8 @@ function resetFilterControls() {
         const multiSelect = getMultiSelect(id);
         if (multiSelect) multiSelect.clearAll(false);
     });
-    readyCheckboxIds.forEach(id => {
-        const checkbox = document.getElementById(id);
-        if (checkbox) checkbox.checked = false;
-    });
+    const workSelect = document.getElementById('workSelect');
+    if (workSelect) workSelect.value = 'all';
     const syncSelect = document.getElementById('syncSelect');
     if (syncSelect) syncSelect.value = 'Show all';
 }
@@ -119,7 +111,7 @@ function restoreMultiSelect(id, values) {
 // after every render, once every option list is populated, and on Back and
 // Forward. Each multi-select keeps only the values its options offer, so a
 // stale name in a shared link or an ended sprint is dropped (and cannot leave
-// a ready checkbox enabled over an empty selection). SYNC follows the URL only
+// the Work select enabled over an empty selection). SYNC follows the URL only
 // while its statuses are loaded: they are fetched on demand, so a reload starts
 // at "Show all". The URL holds the trimmed query: while the user is typing the
 // box keeps its own content (a re-render must not eat a trailing space); after
@@ -134,17 +126,15 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     currentFixVersions = restoreMultiSelect('fixVersionSelect', filters.fixVersions);
     currentEpics = restoreMultiSelect('epicSelect', filters.epics);
     currentStories = restoreMultiSelect('storySelect', filters.stories);
-    currentAssignees = restoreMultiSelect('assigneeSelect', filters.assignees);
-    currentReviewers = restoreMultiSelect('reviewerSelect', filters.reviewers);
+    currentParticipants = restoreMultiSelect('participantSelect', filters.participants);
 
     const syncSelect = document.getElementById('syncSelect');
     const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === filters.sync);
     currentSync = (syncStatusesLoaded() && syncOffered) ? filters.sync : 'Show all';
     if (syncSelect) syncSelect.value = currentSync;
 
-    currentReadyForReviewer = filters.readyReviewer;
-    currentReadyForAssignee = filters.readyAssignee;
-    updateReadyCheckboxes();
+    currentWork = filters.work;
+    updateWorkSelect();
 
     currentText = filters.text;
     const textFilter = document.getElementById('textFilter');
@@ -157,30 +147,21 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     updateTextFilterClearButton();
 }
 
-function initializeReadyFilters() {
-    readyCheckboxIds.forEach(id => {
-        const checkbox = document.getElementById(id);
-        if (checkbox) checkbox.addEventListener('change', handleFilterChange);
-    });
-    updateReadyCheckboxes();
+function initializeWorkFilter() {
+    const workSelect = document.getElementById('workSelect');
+    if (workSelect) workSelect.addEventListener('change', handleFilterChange);
+    updateWorkSelect();
 }
 
-// The ready checkboxes depend on their multi-select: while no assignee (or
-// reviewer) is selected the matching state is cleared (so a readyAssignee=true
-// without an assignee in the URL is dropped) and the box is disabled and
-// unchecked; otherwise the box shows the state
-function updateReadyCheckboxes() {
-    if (currentAssignees.length === 0) currentReadyForAssignee = false;
-    if (currentReviewers.length === 0) currentReadyForReviewer = false;
-    const assigneeCheck = document.getElementById('readyForAssigneeCheck');
-    if (assigneeCheck) {
-        assigneeCheck.disabled = currentAssignees.length === 0;
-        assigneeCheck.checked = currentReadyForAssignee;
-    }
-    const reviewerCheck = document.getElementById('readyForReviewerCheck');
-    if (reviewerCheck) {
-        reviewerCheck.disabled = currentReviewers.length === 0;
-        reviewerCheck.checked = currentReadyForReviewer;
+// The Work select depends on the participants: while none is selected the
+// state is back to "All work" (so a work=reviewers without a participant in
+// the URL is dropped) and the select is disabled; otherwise it shows the state
+function updateWorkSelect() {
+    if (currentParticipants.length === 0) currentWork = 'all';
+    const workSelect = document.getElementById('workSelect');
+    if (workSelect) {
+        workSelect.disabled = currentParticipants.length === 0;
+        workSelect.value = currentWork;
     }
 }
 
@@ -299,33 +280,28 @@ function showErrorState() {
 }
 
 // Copies the filter controls into the state variables and refreshes the
-// controls that depend on them (ready checkboxes, clear button)
+// controls that depend on them (the Work select, the clear button)
 function readFilterControls() {
     const textFilter = document.getElementById('textFilter');
-    const assigneeMultiSelect = getMultiSelect('assigneeSelect');
-    const reviewerMultiSelect = getMultiSelect('reviewerSelect');
+    const participantMultiSelect = getMultiSelect('participantSelect');
     const sprintMultiSelect = getMultiSelect('sprintSelect');
     const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
     const epicMultiSelect = getMultiSelect('epicSelect');
     const storyMultiSelect = getMultiSelect('storySelect');
 
     currentText = textFilter ? textFilter.value : '';
-    currentAssignees = assigneeMultiSelect ? assigneeMultiSelect.getSelectedValues() : [];
-    currentReviewers = reviewerMultiSelect ? reviewerMultiSelect.getSelectedValues() : [];
+    currentParticipants = participantMultiSelect ? participantMultiSelect.getSelectedValues() : [];
     currentSprints = sprintMultiSelect ? sprintMultiSelect.getSelectedValues() : [];
     currentFixVersions = fixVersionMultiSelect ? fixVersionMultiSelect.getSelectedValues() : [];
     currentEpics = epicMultiSelect ? epicMultiSelect.getSelectedValues() : [];
     currentStories = storyMultiSelect ? storyMultiSelect.getSelectedValues() : [];
 
-    // Get sync and ready values from regular form elements
-    const syncSelect = document.getElementById("syncSelect");
-    const assigneeCheck = document.getElementById('readyForAssigneeCheck');
-    const reviewerCheck = document.getElementById('readyForReviewerCheck');
-
-    currentSync = syncSelect ? syncSelect.value : "Show all";
-    currentReadyForAssignee = assigneeCheck ? assigneeCheck.checked : false;
-    currentReadyForReviewer = reviewerCheck ? reviewerCheck.checked : false;
-    updateReadyCheckboxes();
+    // The Work and SYNC values come from regular select elements
+    const workSelect = document.getElementById('workSelect');
+    const syncSelect = document.getElementById('syncSelect');
+    currentWork = workSelect ? workSelect.value : 'all';
+    currentSync = syncSelect ? syncSelect.value : 'Show all';
+    updateWorkSelect();
 
     updateTextFilterClearButton();
 }
@@ -382,41 +358,12 @@ function initializeTextFilter() {
     }
 }
 
-function populateFilters(pullRequests) {
-    const assigneeMultiSelect = getMultiSelect('assigneeSelect');
-    const reviewerMultiSelect = getMultiSelect('reviewerSelect');
-
-    // Extract unique assignees from Jira issues and sort them alphabetically
-    const assignees = new Set();
-    if (currentApiResult && currentApiResult.jiraIssuesDetails) {
-        currentApiResult.jiraIssuesDetails.forEach(issue => {
-            if (issue.fields.assignee && issue.fields.assignee.displayName) {
-                assignees.add(issue.fields.assignee.displayName);
-            }
-        });
-    }
-    const sortedAssignees = [...assignees].sort();
-    const assigneeOptions = sortedAssignees.map(assignee => ({ value: assignee, label: assignee }));
-    if (assigneeMultiSelect) {
-        assigneeMultiSelect.setOptions(assigneeOptions);
-    }
-
-    // Extract unique reviewers and sort them alphabetically
-    // Exclude Rovo Dev agent from reviewers
-    const reviewers = [...new Set(
-        pullRequests.flatMap(pr =>
-            pr.participants
-                .filter(p => p.user.uuid !== pr.author.uuid)
-                .map(p => p.user.display_name)
-        )
-    )].filter(reviewer => reviewer !== 'Rovo Dev').sort();
-    const reviewerOptions = reviewers.map(reviewer => ({ value: reviewer, label: reviewer }));
-    if (reviewerMultiSelect) {
-        reviewerMultiSelect.setOptions(reviewerOptions);
-    }
-
-    // Reflect the current SYNC load state (statuses are only fetched on demand)
-    updateSyncControls();
+// Fills the participant multi-select from the index (the assignees and the
+// reviewers, sorted); the selection is restored from the URL afterwards, like
+// every other filter
+function populateParticipantFilter(participants) {
+    const multiSelect = getMultiSelect('participantSelect');
+    if (multiSelect) multiSelect.setOptions(participants.map(name => ({ value: name, label: name })));
 }
 
 // Function to format the refresh time
@@ -473,11 +420,13 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Re-apply the last loaded SYNC statuses (without fetching them again)
     // before filters run, so the SYNC filter can rely on the rendered badges
     applySyncStatuses();
-    populateFilters(currentApiResult.pullRequests);
+    // Reflect the current SYNC load state (statuses are only fetched on demand)
+    updateSyncControls();
     populateSprintFilter(currentApiResult.sprints);
     populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
     populateIssueFilter('epicSelect', filterIndex.epics);
     populateIssueFilter('storySelect', filterIndex.stories);
+    populateParticipantFilter(filterIndex.participants);
 
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
     restoreFiltersFromUrl({ preferTypedText });
@@ -630,7 +579,7 @@ document.addEventListener('DOMContentLoaded', function() {
     showEmptyState();
     loadProjects();
     initializePopovers();
-    initializeReadyFilters();
+    initializeWorkFilter();
     initializeSyncControls({
         getProject: () => currentProject,
         getSyncFilter: () => currentSync,
