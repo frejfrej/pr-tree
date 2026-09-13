@@ -11,7 +11,6 @@ const cache = new NodeCache({
 // Cache keys for different types of data
 const CACHE_KEYS = {
     PROJECT_DATA: (projectName) => `project_${projectName}`,
-    CONFLICTS: (repoName, spec) => `conflicts_${repoName}_${spec}`,
     SYNC_STATUSES: (projectName) => `sync_statuses_${projectName}`,
     PROJECTS_LIST: 'projects_list'
 };
@@ -53,22 +52,15 @@ export async function getCachedProjectData(projectName, fetchProjectData) {
     return getOrSetCache(CACHE_KEYS.PROJECT_DATA(projectName), fetchProjectData);
 }
 
-/**
- * Get the conflicts of one pull request from cache or compute them: the entry
- * behind /api/sync-statuses/:project, called once per pull request
- * @param {string} repoName - Repository name
- * @param {string} spec - Bitbucket diff spec, destHash..sourceHash
- * @param {function} fetchConflicts - Function computing the conflicts on a cache miss
- * @returns {Promise<Object>} Conflicts data
- */
-export async function getCachedConflicts(repoName, spec, fetchConflicts) {
-    return getOrSetCache(CACHE_KEYS.CONFLICTS(repoName, spec), fetchConflicts, 300);
-}
+// The sync-statuses computations in flight, by cache key
+const pendingSyncStatuses = new Map();
 
 /**
  * Get sync statuses (conflicts for every pull request of a project) from cache
  * or fetch from source. The fetch function decides the TTL so that responses
  * built during an Atlassian rate-limit window can be kept until it closes.
+ * Concurrent calls for one project share one computation: a second browser tab
+ * would otherwise send every Bitbucket request again. A failure is not cached.
  * @param {string} projectName - Project identifier
  * @param {function} fetchSyncStatuses - Async function returning { data, ttl } on cache miss (ttl in seconds)
  * @returns {Promise<Object>} Sync statuses data
@@ -80,9 +72,16 @@ export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
         return cachedData;
     }
 
-    const { data, ttl } = await fetchSyncStatuses();
-    cache.set(key, data, ttl);
-    return data;
+    let pending = pendingSyncStatuses.get(key);
+    if (!pending) {
+        pending = (async () => {
+            const { data, ttl } = await fetchSyncStatuses();
+            cache.set(key, data, ttl);
+            return data;
+        })().finally(() => pendingSyncStatuses.delete(key));
+        pendingSyncStatuses.set(key, pending);
+    }
+    return pending;
 }
 
 /**

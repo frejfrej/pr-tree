@@ -75,6 +75,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters(defaults), 0);
     assert.equal(countActiveFilters({ ...defaults, reviewers: ['Jane', 'Bob'], readyReviewer: true }), 2);
     assert.equal(countActiveFilters({ ...defaults, sync: 'requested' }), 1);
+    assert.equal(countActiveFilters({ ...defaults, sync: 'unchecked' }), 1);
     assert.equal(countActiveFilters({ assignees: ['A'], reviewers: ['J'], sprints: ['1'], fixVersions: ['2'], sync: 'OK', readyReviewer: true }), 6);
     assert.equal(countActiveFilters({ ...defaults, text: '   ' }), 0);
     assert.equal(countActiveFilters({ ...defaults, text: 'banner' }), 1);
@@ -108,7 +109,7 @@ const sampleApiResult = {
     sprintIssues: { 5240: ['PROJ-2', 'PROJ-9'], 5241: ['PROJ-9'] }
 };
 
-const rendered = { statusInProgress: false, statusInReview: true, hasSyncLabel: false };
+const rendered = { statusInProgress: false, statusInReview: true, hasSyncLabel: false, hasOkBadge: false };
 const noFilter = { assignees: [], reviewers: [], sprints: [], fixVersions: [], sync: 'Show all', readyReviewer: false, readyAssignee: false };
 
 test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versions per pull request', () => {
@@ -151,13 +152,21 @@ test('evaluatePullRequest matches any selected value of each filter, and every f
     assert.equal(evaluate({ assignees: ['Jane'], sprints: ['5241'] }), false);
 });
 
-test('evaluatePullRequest SYNC filter follows the rendered badge', () => {
+test('evaluatePullRequest SYNC filter follows the rendered badges: SYNC, OK, or neither', () => {
     const { pullRequestsById } = buildFilterIndex(sampleApiResult);
     const entry = pullRequestsById.get(10);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, { ...rendered, hasSyncLabel: true }).visible, true);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, { ...rendered, hasSyncLabel: false }).visible, false);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, { ...rendered, hasSyncLabel: false }).visible, true);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, { ...rendered, hasSyncLabel: true }).visible, false);
+    const syncBadge = { ...rendered, hasSyncLabel: true };
+    const okBadge = { ...rendered, hasOkBadge: true };
+    const noBadge = rendered;
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, syncBadge).visible, true);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, okBadge).visible, false);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, noBadge).visible, false);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, okBadge).visible, true);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, syncBadge).visible, false);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, noBadge).visible, false);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, noBadge).visible, true);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, okBadge).visible, false);
+    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, syncBadge).visible, false);
 });
 
 test('evaluatePullRequest ready filter keeps pull requests with reviewer attention only', () => {

@@ -1,7 +1,7 @@
 {
   "name": "version",
-  "version": "2.6.0",
-  "releaseDate": "2026-09-10",
+  "version": "2.7.0",
+  "releaseDate": "2026-09-12",
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
   "scripts": {
@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "express": "^5.2.1",
-    "node-cache": "^5.1.2",
-    "node-diff3": "^3.2.1"
+    "node-cache": "^5.1.2"
   }
 }

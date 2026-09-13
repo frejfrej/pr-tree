@@ -1023,7 +1023,8 @@ select:disabled {
     justify-content: center;
 }
 
-.conflicts-count {
+.conflicts-count,
+.conflicts-ok {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1033,6 +1034,10 @@ select:disabled {
     color: var(--on-accent-text);
     font-size: 12px;
     font-weight: bold;
+}
+
+.conflicts-ok {
+    background-color: var(--success-color);
 }
 
 .conflicts-spinner {
@@ -1051,7 +1056,7 @@ select:disabled {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background-color: var(--warning-color);
+    background-color: var(--text-muted);
     color: var(--on-accent-text);
     font-size: 12px;
     font-weight: bold;

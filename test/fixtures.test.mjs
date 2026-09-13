@@ -105,14 +105,43 @@ test('the scale factor multiplies the volumes', () => {
     assert.equal(data.orphanedIssues.length, 39);
 });
 
-test('sync statuses cover every pull request with a conflicts or error flag', () => {
-    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
-    const sync = generateSyncStatuses(data);
-    assert.equal(Object.keys(sync.statuses).length, data.pullRequests.length);
-    assert.equal(sync.rateLimited, false);
-    for (const status of Object.values(sync.statuses)) {
-        assert.ok(status.error === true || typeof status.conflicts === 'boolean');
+test('sync statuses cover every pull request: OK, conflicting files or a reason', () => {
+    let longest = 0;
+    let partial = 0;
+    for (const projectName of ['SECOLLAB', 'OSLC']) {
+        const data = generateProjectData(projectName, projects[projectName]);
+        const sync = generateSyncStatuses(data);
+        assert.equal(Object.keys(sync.statuses).length, data.pullRequests.length);
+        assert.equal(sync.rateLimited, false);
+        const kinds = { ok: 0, conflicts: 0, errors: 0 };
+        for (const status of Object.values(sync.statuses)) {
+            if (status.error === true) {
+                assert.ok(typeof status.reason === 'string' && status.reason.length > 0);
+                assert.deepEqual(status, { error: true, reason: status.reason });
+                kinds.errors++;
+            } else if (status.conflicts === true) {
+                const { files, reason } = status;
+                assert.ok(Array.isArray(files) && files.length > 0 && files.every(file => typeof file === 'string'));
+                assert.deepEqual(files, [...new Set(files)].sort()); // distinct and sorted, as the server returns them
+                if (reason !== undefined) {
+                    assert.ok(typeof reason === 'string' && reason.length > 0);
+                    assert.deepEqual(status, { conflicts: true, files, reason });
+                    partial++;
+                } else {
+                    assert.deepEqual(status, { conflicts: true, files });
+                }
+                longest = Math.max(longest, files.length);
+                kinds.conflicts++;
+            } else {
+                assert.deepEqual(status, { conflicts: false });
+                kinds.ok++;
+            }
+        }
+        assert.ok(kinds.ok > 0 && kinds.conflicts > 0 && kinds.errors > 0, `${projectName} ${JSON.stringify(kinds)}`);
+        assert.deepEqual(generateSyncStatuses(data).statuses, sync.statuses); // deterministic
     }
+    assert.ok(longest > 5, 'a conflict lists more files than the tooltip shows');
+    assert.ok(partial > 0, 'a conflict is partial: some other file could not be checked');
 });
 
 test('fixture options come from the command line or the environment', () => {

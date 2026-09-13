@@ -58,8 +58,8 @@
     * Bitbucket PR and Jira issues data are retrieved server-side
     * A hash is computed based on that data
     * Ahead and Behind commit counts are only retrieved when the hash is updated to avoid issues with the Bitbucket API
-* Display SYNC in a badge onto each pull-requests that requires syncing with its parent branch
-    * SYNC status is only fetched when clicking the load button next to the SYNC filter
+* SYNC badges: once the SYNC status is loaded (the load button next to the SYNC filter, never automatically), each pull request shows a green OK, a red SYNC when it conflicts with its destination branch (the conflicting files in the tooltip) or a grey `?` with the reason when it could not be checked
+    * Conflicts are decided from Bitbucket's diffs of both sides since the merge base with git's rule, usually two to four requests per pull request; a result never changes for a pair of commits, so it is kept in `sync-cache.json` next to the server and reused across reloads and restarts
     * A single server request retrieves the status of all pull requests, cached server-side
     * After an Atlassian HTTP 429 response, the server pauses all Atlassian requests and serves cached data until 10 minutes after the last 429
 * Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
@@ -84,6 +84,12 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.7.0
+    * The SYNC load no longer freezes the server: conflicts are decided from Bitbucket's diffs of both sides instead of a three-way merge of the files (one merge of a 30,000-line lock file ran for five minutes on the event loop and made the other computations time out with `?` badges) (#46)
+    * Git's rule on the two diffs: the same resulting file on both sides merges cleanly (binary files included), overlapping or adjacent changes conflict unless they are identical, line endings count, a file deleted on one side and changed on the other conflicts, and so do different renames of one file and two files renamed onto one path, a file on one side where the other has a directory, and files added on both sides with different modes; a diff that cannot be read completely reports the pull request not checked rather than clean (or, when conflicts are already certain, SYNC with the conflicting files and the reason the other files could not be checked)
+    * Two to four Bitbucket requests per pull request instead of about ten, so the SYNC load is affordable on the largest project; two loads of one project at once share one computation; the results are kept for good in `sync-cache.json` (git-ignored, pruned 90 days after they were computed), reused after a restart, and only the pull requests whose commits moved are computed again
+    * Explicit SYNC badges: green OK, red SYNC with the conflicting files in the tooltip (one per line), grey `?` with the reason; a "Not checked" value in the SYNC filter; nothing is shown until the statuses are loaded
+    * `node-diff3` is no longer a dependency
 * Version 2.6.0
     * Removed what nothing used (#41)
         * The `/api/pull-request-conflicts/:repoName/:spec` endpoint: the SYNC load has used `/api/sync-statuses/:project` since 2.1.0

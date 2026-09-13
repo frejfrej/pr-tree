@@ -48,7 +48,7 @@ test('README.md is served for the help modal', async () => {
 test('no other file of the project directory is served', async () => {
     // A literal `..` is normalised away by fetch itself, so only the encoded forms reach the server
     const files = ['config.js', 'config.js.default', 'index.mjs', 'cache.mjs', 'package.json',
-        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs',
+        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs', 'sync-cache.json',
         '..%2fconfig.js', 'README.md%2f..%2fconfig.js'];
     for (const file of files) {
         const response = await fetch(`${baseUrl}/${file}`);
@@ -74,4 +74,24 @@ test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoin
     const statuses = await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`);
     assert.equal(statuses.status, 200);
     assert.equal(typeof (await statuses.json()).statuses, 'object');
+});
+
+test('the sync statuses of the fixtures have the documented shapes', async () => {
+    const projectNames = await (await fetch(`${baseUrl}/api/projects`)).json();
+    assert.ok(projectNames.length > 0);
+    for (const project of projectNames) {
+        const { statuses } = await (await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`)).json();
+        const values = Object.values(statuses);
+        assert.ok(values.length > 0, project);
+        for (const status of values) {
+            if (status.error) {
+                assert.equal(typeof status.reason, 'string');
+            } else if (status.conflicts) {
+                assert.ok(Array.isArray(status.files) && status.files.length > 0);
+                if (status.reason !== undefined) assert.equal(typeof status.reason, 'string');
+            } else {
+                assert.deepEqual(status, { conflicts: false });
+            }
+        }
+    }
 });
