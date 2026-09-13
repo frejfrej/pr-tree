@@ -100,3 +100,46 @@ test('the sync statuses of the fixtures have the documented shapes', async () =>
         }
     }
 });
+
+test('the pull requests of a project have the documented shape, and the same dataHash on a second call', async () => {
+    const [project] = await (await fetch(`${baseUrl}/api/projects`)).json();
+    const response = await fetch(`${baseUrl}/api/pull-requests/${encodeURIComponent(project)}`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /^application\/json/);
+    const data = await response.json();
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'pullRequestsByDestination', 'sprintIssues', 'sprints']);
+    assert.ok(!Number.isNaN(Date.parse(data.lastRefreshTime)), 'lastRefreshTime is a date');
+    assert.ok(Array.isArray(data.pullRequests) && data.pullRequests.length > 0);
+    assert.ok(Array.isArray(data.jiraIssuesDetails) && Array.isArray(data.sprints) && Array.isArray(data.orphanedIssues));
+    for (const pullRequest of data.pullRequests) {
+        // The commit counts come with the data; the issue keys of every pull request are in the map
+        assert.ok('commitsAhead' in pullRequest && 'commitsBehind' in pullRequest, `pull request ${pullRequest.id}`);
+        assert.ok(Array.isArray(data.jiraIssuesMap[pullRequest.id]), `pull request ${pullRequest.id} in jiraIssuesMap`);
+        assert.ok(data.pullRequestsByDestination[pullRequest.destination.branch.name].some(other => other.id === pullRequest.id), `pull request ${pullRequest.id} under its destination`);
+    }
+    for (const sprint of data.sprints) assert.ok(Array.isArray(data.sprintIssues[sprint.id]), `issues of sprint ${sprint.id}`);
+    assert.match(data.dataHash, /^[0-9a-f]{32}$/);
+    // Cached for two minutes: the second call is the same data
+    const again = await (await fetch(`${baseUrl}/api/pull-requests/${encodeURIComponent(project)}`)).json();
+    assert.equal(again.dataHash, data.dataHash);
+});
+
+test('an unknown project: 500 from the pull requests route, 404 from the sync statuses one', async () => {
+    const pullRequests = await fetch(`${baseUrl}/api/pull-requests/NO_SUCH_PROJECT`);
+    assert.equal(pullRequests.status, 500);
+    assert.equal(await pullRequests.text(), 'Internal Server Error');
+    const statuses = await fetch(`${baseUrl}/api/sync-statuses/NO_SUCH_PROJECT`);
+    assert.equal(statuses.status, 404);
+    assert.deepEqual(await statuses.json(), { error: 'Project not found' });
+});
+
+test('the cache statistics answer the five counters of node-cache', async () => {
+    const response = await fetch(`${baseUrl}/api/cache/stats`);
+    assert.equal(response.status, 200);
+    const stats = await response.json();
+    assert.deepEqual(Object.keys(stats).sort(), ['hits', 'keys', 'ksize', 'misses', 'vsize']);
+    for (const value of Object.values(stats)) assert.equal(typeof value, 'number');
+    // The tests above filled the cache: the projects list, project data and sync statuses at least
+    assert.ok(stats.keys >= 3, `${stats.keys} keys`);
+    assert.ok(stats.hits > 0 && stats.misses > 0);
+});
