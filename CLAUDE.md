@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.7.0** (as of 2026-09-12)
+Current version: **2.7.1** (as of 2026-09-13)
 
 ## Technology Stack
 
@@ -43,6 +43,8 @@ pr-tree/
 ├── index.mjs              # Main Express server & API endpoints
 ├── cache.mjs              # Server-side caching logic (NodeCache wrapper)
 ├── conflicts.mjs          # Conflicts decided from the patches of both sides (pure)
+├── sync-statuses.mjs      # The SYNC computation of a project (fetch, cache and logs injected: createSyncStatuses)
+├── atlassian-fetch.mjs    # RateLimitError and failureReason, what every Atlassian request shares
 ├── sync-cache.mjs         # Conflict results kept in sync-cache.json across restarts
 ├── config.js              # Configuration file (git-ignored, user-specific)
 ├── config.js.default      # Configuration template
@@ -72,12 +74,11 @@ pr-tree/
 
 #### Backend Files
 
-**index.mjs** (839 lines)
+**index.mjs** (656 lines)
 - Main Express application server
 - API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
-- The per-pull-request conflict computation survives only as an internal of `/api/sync-statuses/:project`: `computeConflicts` fetches the diffstats of both sides (with their line counts), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request, the paths of one file in the same request so a rename is seen whole), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches
-- A failed request or a `checkPatch` mismatch is caught: when the diffstats already proved a conflict, the limit or a later failure gives a partial SYNC (`{ conflicts: true, files, reason }`: the known files, and the reason the rest was not checked) instead of a full failure, and a partial result is never stored; results are looked up in and added to `sync-cache.json` (`sync-cache.mjs`) under `<conflictRuleVersion>:<repo>/<dest>..<source>` before any request
-- The reasons sent to the client are short (`atlassianFetch`'s `shortMessage`, without the URL; the full message goes to error.log); each load logs how many pull requests it computed, could not check, and could only partly check
+- The SYNC computation is in `sync-statuses.mjs`: `createSyncStatuses` is called once at startup with `atlassianFetch` as its `fetch`, the workspace and credentials, the error and performance logs and the opened `sync-cache.json`; `/api/sync-statuses/:project` keeps the fixture branch, passes the pull requests of the project data to `computeSyncStatuses`, and adds the rate-limit fields of the response and its TTL
+- `atlassianFetch` (the fixture-mode guard, the pause after a 429, the network failure message with its cause and the URL, `shortMessage` without the URL) stays here; `RateLimitError` is imported from `atlassian-fetch.mjs` (sync-statuses.mjs imports `failureReason` from it)
 - Bitbucket API integration (fetch PRs, commit diffs)
 - Jira API integration (fetch issues, sprints, orphaned issues)
 - `fetchJiraIssuesDetails()` fetches the linked issues (summary, status, priority, fix versions, assignee, parent, issue type), then the parents that were not linked themselves (summary, issue type, fix versions, parent): sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
@@ -101,9 +102,19 @@ pr-tree/
 - Pure: `parseUnifiedDiff(text)` turns a git unified diff into files keyed by base path (the `a/` path of the `diff --git` header, or the `rename from` path for a renamed file; C-quoted paths are decoded, and a `diff --git` header is split correctly even when a path contains ` b/`) with change regions `{ start, end, lines }` in merge-base line coordinates, `newHash` (the post-image blob of the `index` line) and `linesAdded`/`linesRemoved`; content lines keep their CR and a missing final newline marks the line; it throws on a malformed or truncated patch (a hunk longer or shorter than its header, hunks out of order or overlapping, a foreign line, a file header without a hunk, a file listed twice) rather than let it pass for a clean merge
 - `conflictingFiles(sideA, sideB)` applies git's rule, in order: deleted on both sides is clean, deleted on one side conflicts, added on both sides with different modes conflicts (git's add/add, or distinct types for a symlink), the same post-image blob on both sides is clean, a binary whose content changed on both sides conflicts (an added file always counts as changed, even an empty one, so it conflicts against a changed binary), otherwise overlapping or touching regions conflict unless they are the same change (a linear sweep; an added file is an insertion into an empty base)
 - `decideFromDiffstat(sourceFiles, destFiles)` decides from the diffstat statuses: removed on both sides is nothing, removed on one side is a conflict, renamed to different paths on both sides is a conflict, two different files ending at one path (rename/add, two renames onto one path) are a conflict, and so is a path that is a file on one side and a directory on the other (file/directory: only an added or renamed file counts, so a file renamed away before its old path became a directory merges cleanly); the other files touched on both sides need the patches
-- `conflictRuleVersion` (exported): bumped whenever a change to `parseUnifiedDiff`, `conflictingFiles` or `decideFromDiffstat` here, or to `computeConflicts`, `checkPatch` or the diffstat mapping in index.mjs, can change a decision; the server prefixes its cache keys with it, so results computed under an older rule are never reused
+- `conflictRuleVersion` (exported): bumped whenever a change to `parseUnifiedDiff`, `conflictingFiles` or `decideFromDiffstat` here, or to `computeConflicts`, `checkPatch` or the diffstat mapping in sync-statuses.mjs, can change a decision; the server prefixes its cache keys with it, so results computed under an older rule are never reused
 - Known approximations: git merges with the histogram diff, so patches made with another diff algorithm can place hunks differently on repetitive files; a directory renamed on one side while the other adds a file in the old directory is not detected; `.gitattributes` merge drivers are ignored (a `merge=binary` driver makes git conflict even on changes that do not touch); a change of file type is reported not checked
 - Unit-tested with synthetic patches (`test/conflicts.test.mjs`); when the rule changes, check it against `git merge-file` or `git merge-tree` on generated cases (the fuzzers used while 2.7.0 was written are not in the repository) and bump `conflictRuleVersion`
+
+**sync-statuses.mjs**
+- `createSyncStatuses({ fetch, workspace, bbAuth, log: { error, performance }, syncCache, timeoutMs = 30000, maxConcurrent = 4, now })`: the SYNC computation of a server, one limiter and one cache; nothing here talks to Bitbucket by itself (the server passes `atlassianFetch`, the tests a fake answering by URL); returns `computeConflicts(repoName, spec)` and `computeSyncStatuses(projectName, pullRequests)`
+- `computeConflicts` fetches the diffstats of both sides (with their line counts, following `next`), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request (`filesPerPatchRequest`), the paths of one file in the same request so a rename is seen whole, both sides in parallel), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches
+- A failed request or a `checkPatch` mismatch is caught: when the diffstats already proved a conflict, the limit or a later failure gives a partial SYNC (`{ conflicts: true, files, reason }`: the known files, and the reason the rest was not checked) instead of a full failure
+- `computeSyncStatuses` is the per-pull-request block of the route: each result is looked up in `sync-cache.json` under `<conflictRuleVersion>:<repo>/<dest>..<source>` before any request, computed otherwise through the limiter, and stored only when complete (never a failure or a partial result); a pull request without a commit hash on a side gets no entry; the cache is saved once at the end (a failed write is logged); the reasons sent to the client are short (`failureReason`: `shortMessage` without the URL, or the fixed sentence of a rate-limit pause, which is not logged as an error); the summary log line counts the pull requests computed, not checked and partly checked
+- Tested against a fake Bitbucket in `test/sync-statuses.test.mjs` (real `Response` objects, the real `openSyncCache` on a temporary file): what is fetched, what the client is shown, what reaches the disk
+
+**atlassian-fetch.mjs**
+- `RateLimitError` (thrown while Atlassian requests are paused after an HTTP 429) and `failureReason(error)` (what the user is told when a request failed: the fixed sentence for a `RateLimitError`, `shortMessage` or `message` otherwise); `atlassianFetch` itself is still in index.mjs
 
 **sync-cache.mjs**
 - `openSyncCache(filePath, { maxAgeDays, now, onError })`: `size`, `get(key)`, `set(key, result)`, `save()`; the file is `{ version: 1, entries: { "2:repo-name/destHash..sourceHash": { conflicts, files, computedAt } } }` (the module treats keys as opaque strings; the `2:` prefix is the conflict rule version the server puts in front of `repo/dest..source`), read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned of entries older than 90 days at save
@@ -214,8 +225,8 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.7.0",
-  "releaseDate": "2026-09-12",
+  "version": "2.7.1",
+  "releaseDate": "2026-09-13",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
 }
@@ -276,7 +287,7 @@ Returns the SYNC (conflicts) status of every open PR of a project in a single re
 
 A SYNC entry with a `reason` is partial: the listed files conflict for sure, the other files could not be checked; it is not stored and is computed again at the next load.
 
-**Rate-limit behavior (applies to all endpoints):** every Atlassian request goes through `atlassianFetch()` in index.mjs. After any HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429; all cache TTLs are raised to cover that window (`raiseAllCacheTtls` in cache.mjs) so cached data keeps being served. Responses built during the pause carry `rateLimited: true` and are cached until the window closes; uncached endpoints return 503 with `rateLimitedUntil`.
+**Rate-limit behavior (applies to all endpoints):** every Atlassian request goes through `atlassianFetch()` in index.mjs (`RateLimitError` is defined in atlassian-fetch.mjs, with `failureReason`). After any HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429; all cache TTLs are raised to cover that window (`raiseAllCacheTtls` in cache.mjs) so cached data keeps being served. Responses built during the pause carry `rateLimited: true` and are cached until the window closes; uncached endpoints return 503 with `rateLimitedUntil`.
 
 ### GET /api/cache/stats
 Returns cache statistics.
@@ -421,7 +432,7 @@ When adding/modifying endpoints:
 
 ### Testing Changes
 - **Manual testing**: Use the UI to verify functionality; `npm run start:fixtures` gives realistic data without credentials
-- **Unit tests**: `npm test` (node:test, pure logic, the tree rendering and the fixture generator)
+- **Unit tests**: `npm test` (node:test, pure logic, the tree rendering, the fixture generator, the SYNC computation against a fake Bitbucket)
 - **Coverage**: `npm run test:coverage` runs the same tests and prints the lines, branches and functions reached in each module of the project; a file no test loads is absent from the table, not at 0%
 - **API testing**: Use browser DevTools Network tab or curl
 - **Cache testing**: Check `/api/cache/stats` endpoint
@@ -536,11 +547,11 @@ Three streams available:
 11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 12. **Module boundaries**: app-render.js stays free of filter state and of DOM access at import time (its tests import it in node); app-sync.js never imports app.js (it receives accessors), so there is no circular import; anything that needs both the state and a module goes through app.js
 13. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop the response when the project changed meanwhile; `loadSyncStatuses` compares the load generation `resetSyncStatuses` bumps (Back/Forward make quick switches easy); any new fetch that paints something must do the same
-14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (index.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under the older version are simply never looked up again and age out with the rest after 90 days
+14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (sync-statuses.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under the older version are simply never looked up again and age out with the rest after 90 days
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory)
-- **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`, `public/multi-select.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`, `counter-utils.js`) are low because only their pure helpers are tested; no threshold
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`), the server's SYNC computation against a fake Bitbucket answering diffstats and diffs by URL (`test/sync-statuses.test.mjs`: the requests made, the statuses and reasons sent, what is stored in `sync-cache.json` under the rule-version prefix, the summary log line); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory)
+- **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` (the routes and the wiring, the Atlassian fetchers of the project data) is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`, `public/multi-select.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`, `counter-utils.js`) are low because only their pure helpers are tested; no threshold
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
