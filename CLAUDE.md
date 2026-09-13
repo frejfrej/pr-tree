@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.7.2** (as of 2026-09-13)
+Current version: **2.8.0** (as of 2026-09-13)
 
 ## Technology Stack
 
@@ -170,7 +170,7 @@ pr-tree/
 - `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true })` or restores and applies the filters of the URL, then replaces the URL with the filters kept (a value the options no longer offer since a refresh is dropped from the entry)
 - `checkForUpdates()`: the periodic refresh; re-renders when the data hash changed; captures the project before its fetch (`fetchData(project)`) and drops a response arriving after a project switch, like `selectProject`; the `checking` class of the refresh icon marks a running check, and a check started meanwhile is skipped before the `try`, so its `finally` does not stop the icon of the running one
 - `availableProjects`: the project names from `/api/projects`, the list the dropdown is built from and `projectFromUrl` validates against
-- `updateReadyCheckboxes()`: the two ready checkboxes are disabled and unchecked while their multi-select is empty; both checked keeps pull requests needing either attention
+- `updateWorkSelect()`: the Work select is disabled and back to "All work" while no participant is selected; `populateParticipantFilter(participants)` fills the participant multi-select from `filterIndex.participants`
 
 **public/app-render.js**
 - `renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)` (pure): the tree as an HTML string; one `.repository` block per repository, its root branches, the pull requests nested in `.children` containers, most recently updated first; appends the hidden `.tree-no-match` message when there is at least one repository
@@ -189,16 +189,16 @@ pr-tree/
 - `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses, a failed load and a load in flight on a project switch
 
 **public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
-- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees (of the linked issues), reviewers (every participant but the author), pending reviewers (those who have not approved), sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters, and `index.participants`, the sorted names of the assignees and reviewers the participant filter offers (Rovo Dev excluded); built once per data load by `initializeFilter()`, which returns it
+- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; with participants selected, the pull request is kept when it waits for one of them (`computeAttention`: `reviewer` in review and not approved by them, `assignee` in progress with a linked issue assigned to them), the `work` values being `all` (either), `reviewers` and `assignees`; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
 - `filterBranches(filters)`: collects the SYNC and OK badges once, then one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
 - `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/app-url.js**
 - `projectFromUrl(search, projects)` (pure): the project a query string names when it is one of the given ones (app.js passes `availableProjects`); `null` otherwise, an empty name included
-- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `ready`, the former name, is read as `readyReviewer`
-- `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only; parameters that are not filters are kept
+- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `participant` is repeated, `work` is `reviewers` or `assignees` (anything else reads as `all`); `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are never read
+- `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only (`work` only with participants selected); parameters that are not filters are kept, the people parameters of before 2.8.0 are removed
 
 **public/counter-utils.js**
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
@@ -233,7 +233,7 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.7.2",
+  "version": "2.8.0",
   "releaseDate": "2026-09-13",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
@@ -349,20 +349,18 @@ let currentSprints = [];        // sprint ids
 let currentFixVersions = [];    // fix version ids
 let currentEpics = [];         // epic keys
 let currentStories = [];       // story keys
-let currentAssignees = [];
-let currentReviewers = [];
+let currentParticipants = [];  // participant names
+let currentWork = 'all';       // 'all', 'reviewers' or 'assignees'
 let currentSync = "Show all";
-let currentReadyForReviewer = false;
-let currentReadyForAssignee = false;
 let currentApiResult = null;
 ```
 The SYNC statuses and their loading state live in app-sync.js (`currentSyncStatuses`, `syncStatusLoading`, `syncLoadFailed`, `syncLoadGeneration`); app.js asks `syncStatusesLoaded()` to restore the SYNC filter from the URL and calls `resetSyncStatuses()` on a project switch.
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&sync=requested&readyReviewer=true&readyAssignee=true
+?project=PROJ&q=banner&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&participant=Jane&work=reviewers&sync=requested
 ```
-(`ready`, the former name of `readyReviewer`, is still read from old links but never written.)
+(`assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are ignored and removed from the URL.)
 
 The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`), applies them and replaces the URL with the filters kept, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once (a switch to "Select a project" too: the filters are cleared and the URL is bare), and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
 
@@ -545,10 +543,10 @@ Three streams available:
 1. **Module type mismatch**: Backend uses ES modules (.mjs), config uses CommonJS (module.exports)
 2. **Cache staleness**: Remember that data can be up to 2 minutes old
 3. **API rate limits**: Bitbucket can return HTTP 429 if too many requests
-4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the two ready checkboxes; on Back/Forward SYNC follows the URL while its statuses are loaded
+4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the Work select; on Back/Forward SYNC follows the URL while its statuses are loaded
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
 6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
-7. **Ready for reviewer / assignee**: computed by `computeAttention()` from the data, never from rendered styles; `evaluatePullRequest` takes `readyReviewer` and `readyAssignee`
+7. **Participants and Work**: attention is computed by `computeAttention()` from the index (`assignees`, `pendingReviewers`), never from rendered styles; `evaluatePullRequest` takes `participants` and `work` (`all`, `reviewers`, `assignees`); without a participant the work value is ignored, and app.js forces it back to `all`
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
