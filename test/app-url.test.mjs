@@ -71,6 +71,11 @@ test('urlWithFilters removes the people parameters of links written before 2.8.0
     assert.equal(url.search, '?project=PROJ&foo=1');
 });
 
+test('urlWithFilters writes the work value only with participants selected', () => {
+    const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'PROJ', filters: { ...noFilters, work: 'reviewers' } });
+    assert.equal(url.search, '?project=PROJ');
+});
+
 test('urlWithFilters without a project drops the project parameter', () => {
     const url = urlWithFilters(new URL('http://localhost:3000/?project=PROJ&q=x'), { project: null, filters: noFilters });
     assert.equal(url.search, '');

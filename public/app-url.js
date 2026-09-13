@@ -69,7 +69,8 @@ export function urlWithFilters(url, { project, filters }) {
     filters.epics.forEach(value => params.append('epic', value));
     filters.stories.forEach(value => params.append('story', value));
     filters.participants.forEach(value => params.append('participant', value));
-    if (filters.work !== 'all') params.set('work', filters.work);
+    // The work value only means something with participants selected
+    if (filters.participants.length > 0 && filters.work !== 'all') params.set('work', filters.work);
     if (filters.sync !== 'Show all') params.set('sync', filters.sync);
     return result;
 }
