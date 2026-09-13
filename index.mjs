@@ -12,7 +12,8 @@ import {
     raiseAllCacheTtls
 } from './cache.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
-import { conflictRuleVersion, decideFromDiffstat, parseUnifiedDiff, conflictingFiles } from './conflicts.mjs';
+import { RateLimitError } from './atlassian-fetch.mjs';
+import { createSyncStatuses } from './sync-statuses.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
@@ -92,13 +93,6 @@ log(`sync-cache.json: ${syncCache.size} conflict results loaded`, accessLogStrea
 const rateLimitBackoffSeconds = 600;
 let rateLimitedUntil = 0;
 
-class RateLimitError extends Error {
-    constructor() {
-        super('Atlassian rate limit reached (HTTP 429), requests are paused');
-        this.name = 'RateLimitError';
-    }
-}
-
 function isRateLimited() {
     return Date.now() < rateLimitedUntil;
 }
@@ -141,12 +135,17 @@ async function atlassianFetch(url, options) {
     return response;
 }
 
-// What the user is told when a conflict check fails; the logs keep the full message
-function failureReason(error) {
-    return error instanceof RateLimitError
-        ? 'Atlassian requests are paused after a rate limit'
-        : (error.shortMessage || error.message);
-}
+// The SYNC computation (sync-statuses.mjs): every request goes through atlassianFetch
+const { computeSyncStatuses } = createSyncStatuses({
+    fetch: atlassianFetch,
+    workspace: config.bitbucket.workspace,
+    bbAuth,
+    log: {
+        error: message => log(message, errorLogStream),
+        performance: message => log(message, performanceLogStream)
+    },
+    syncCache
+});
 
 async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
     const jiraBaseUrl = `https://${config.jira.siteName}.atlassian.net/rest/api/3/search/jql`;
@@ -610,40 +609,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 return { data: await fixtureSource.buildSyncStatuses(projectName), ttl: 300 };
             }
             const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
-
-            const statuses = {};
-            let computed = 0;
-            await Promise.all(projectData.pullRequests.map(async (pullRequest) => {
-                const repoName = pullRequest.source.repository.name;
-                const spec = `${pullRequest.destination.commit?.hash}..${pullRequest.source.commit?.hash}`;
-                if (spec.includes('undefined')) {
-                    return; // no commit hashes to compare, the frontend flags these as invalid
-                }
-
-                const key = `${repoName}/${spec}`;
-                // A result stored under another version of the conflict rule is not reused
-                const cacheKey = `${conflictRuleVersion}:${key}`;
-                try {
-                    let result = syncCache.get(cacheKey);
-                    if (!result) {
-                        computed++;
-                        result = await conflictsLimiter(() => computeConflicts(repoName, spec));
-                        // Complete results only: a failure or a partial SYNC is computed again at the next load
-                        if (!result.error && !result.reason) syncCache.set(cacheKey, result);
-                    }
-                    statuses[key] = result;
-                } catch (error) {
-                    if (!(error instanceof RateLimitError)) {
-                        log(`Error computing sync status for ${repoName} ${spec}: ${error.message}`, errorLogStream);
-                    }
-                    statuses[key] = { error: true, reason: failureReason(error) };
-                }
-            }));
-            await syncCache.save().catch(error => log(`sync-cache.json not written: ${error.message}`, errorLogStream));
-            const results = Object.values(statuses);
-            const notChecked = results.filter(status => status.error).length;
-            const partlyChecked = results.filter(status => status.conflicts && status.reason).length;
-            log(`Sync statuses of ${projectName} - ${results.length} pull requests, ${computed} computed, ${notChecked} not checked, ${partlyChecked} partly checked`, performanceLogStream);
+            const statuses = await computeSyncStatuses(projectName, projectData.pullRequests);
 
             // Responses built during a rate-limit window are kept until it closes,
             // regular ones for 5 minutes
@@ -677,155 +643,6 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
-
-async function fetchBitbucketJson(url) {
-    const response = await atlassianFetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(30000),
-        headers: {
-            'Authorization': `Basic ${bbAuth}`,
-            'Accept': 'application/json'
-        }
-    });
-    if (!response.ok) {
-        await response.arrayBuffer().catch(() => {}); // release the socket
-        throw new Error(`Request failed with status code ${response.status}`);
-    }
-    return response.json();
-}
-
-// Serializes conflict computations: one SYNC load asks for every pull request of
-// a project at once, and each computation makes many Bitbucket calls of its own.
-function createLimiter(maxConcurrent) {
-    let active = 0;
-    const queue = [];
-    const next = () => {
-        if (active >= maxConcurrent || queue.length === 0) return;
-        active++;
-        const { task, resolve, reject } = queue.shift();
-        task().then(resolve, reject).finally(() => { active--; next(); });
-    };
-    return task => new Promise((resolve, reject) => {
-        queue.push({ task, resolve, reject });
-        next();
-    });
-}
-const conflictsLimiter = createLimiter(4);
-
-// Returns a Map of touched file path -> {status, sidePath, linesAdded, linesRemoved} for one side of a merge.
-// Bitbucket's diffstat/{a}..{b} is a topic (three-dot) diff: changes on side `a` since merge-base(a, b).
-// Renamed files are keyed by their old path (so both sides match) but read from their new path.
-async function fetchDiffstatFiles(repoName, sideCommit, otherCommit) {
-    const files = new Map();
-    let url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diffstat/${sideCommit}..${otherCommit}?pagelen=500`;
-    while (url) {
-        const page = await fetchBitbucketJson(url);
-        for (const entry of page.values || []) {
-            const oldPath = entry.old && entry.old.path;
-            const newPath = entry.new && entry.new.path;
-            files.set(oldPath || newPath, { status: entry.status, sidePath: newPath || oldPath, linesAdded: entry.lines_added, linesRemoved: entry.lines_removed });
-        }
-        url = page.next || null;
-    }
-    return files;
-}
-
-// The changes of one side since the merge base for the given files, as parsed
-// by conflicts.mjs. Bitbucket's diff/{a}..{b}?topic=true is the three-dot diff
-// of side `a` (checked against diffstat on 2026-09-11); `path` can be repeated.
-// The paths of one file (its base path and its path on each side) go in the
-// same request, so a rename is seen whole; 20 files per request keep the URL short.
-const filesPerPatchRequest = 20;
-
-async function fetchPatch(repoName, sideCommit, otherCommit, filePaths) {
-    const files = new Map();
-    for (let i = 0; i < filePaths.length; i += filesPerPatchRequest) {
-        const paths = new Set(filePaths.slice(i, i + filesPerPatchRequest).flat());
-        const query = [...paths].map(p => `path=${encodeURIComponent(p)}`).join('&');
-        const url = `https://api.bitbucket.org/2.0/repositories/${config.bitbucket.workspace}/${repoName}/diff/${sideCommit}..${otherCommit}?topic=true&${query}`;
-        const response = await atlassianFetch(url, {
-            method: 'GET',
-            signal: AbortSignal.timeout(30000),
-            headers: { 'Authorization': `Basic ${bbAuth}` }
-        });
-        if (!response.ok) {
-            await response.arrayBuffer().catch(() => {}); // release the socket
-            throw new Error(`Request failed with status code ${response.status}`);
-        }
-        for (const [basePath, file] of parseUnifiedDiff(await response.text())) {
-            files.set(basePath, file);
-        }
-    }
-    return files;
-}
-
-// A checked file must be in the patch of each side, with the diffstat's line
-// counts: a missing file, a patch cut between two hunks or a path the parser
-// could not read would otherwise pass for a clean merge
-function checkPatch(basePath, patch, diffstat) {
-    const file = patch.get(basePath);
-    if (!file) throw new Error(`${basePath} is missing from the diff`);
-    const { linesAdded, linesRemoved } = diffstat.get(basePath);
-    if ((Number.isInteger(linesAdded) && file.linesAdded !== linesAdded) ||
-        (Number.isInteger(linesRemoved) && file.linesRemoved !== linesRemoved)) {
-        throw new Error(`${basePath}: the diff (+${file.linesAdded} -${file.linesRemoved}) does not match the diffstat (+${linesAdded} -${linesRemoved})`);
-    }
-}
-
-// Bitbucket removed merge-preview diffs from its API and the replacement
-// /pullrequests/{id}/conflicts endpoint rejects API-token auth, so conflicts
-// are decided here: the files touched on both sides since the merge base come
-// from the diffstats, what the statuses do not decide comes from the patches
-// of both sides (conflicts.mjs). No file content is fetched, nothing is merged.
-// When the patches cannot decide (more files to check than the limit, a failed
-// request, a patch that does not match its diffstat), the conflicts the
-// diffstats found are still reported, with the reason the rest was not checked.
-const maxFilesToCheck = 100;
-
-async function computeConflicts(repoName, spec) {
-    const startTime = Date.now();
-    const [destCommit, sourceCommit] = spec.split('..');
-
-    const sourceFiles = await fetchDiffstatFiles(repoName, sourceCommit, destCommit);
-    if (sourceFiles.size === 0) return { conflicts: false };
-    const destFiles = await fetchDiffstatFiles(repoName, destCommit, sourceCommit);
-    const { conflicting, toCheck } = decideFromDiffstat(sourceFiles, destFiles);
-    const known = [...conflicting].sort();
-    if (toCheck.length > maxFilesToCheck) {
-        const reason = `too many files to check (${toCheck.length})`;
-        log(`Conflict check for ${repoName} ${spec}: ${reason}, the limit is ${maxFilesToCheck}`, errorLogStream);
-        return known.length > 0 ? { conflicts: true, files: known, reason } : { error: true, reason };
-    }
-
-    const files = new Set(known);
-    if (toCheck.length > 0) {
-        try {
-            // The base path and the path on each side: a renamed file is found under both
-            const filePaths = toCheck.map(basePath => [basePath, sourceFiles.get(basePath).sidePath, destFiles.get(basePath).sidePath]);
-            const [sourcePatch, destPatch] = await Promise.all([
-                fetchPatch(repoName, sourceCommit, destCommit, filePaths),
-                fetchPatch(repoName, destCommit, sourceCommit, filePaths)
-            ]);
-            for (const basePath of toCheck) {
-                checkPatch(basePath, sourcePatch, sourceFiles);
-                checkPatch(basePath, destPatch, destFiles);
-            }
-            for (const file of conflictingFiles(sourcePatch, destPatch)) files.add(file);
-        } catch (error) {
-            // Nothing known yet: the caller reports the pull request not checked
-            if (known.length === 0) throw error;
-            if (!(error instanceof RateLimitError)) {
-                log(`Conflict check for ${repoName} ${spec} incomplete, ${known.length} conflicting files known from the diffstats: ${error.message}`, errorLogStream);
-            }
-            return { conflicts: true, files: known, reason: failureReason(error) };
-        }
-    }
-    const sorted = [...files].sort();
-
-    const duration = Date.now() - startTime;
-    log(`computeConflicts - ${repoName} ${spec} - ${conflicting.length + toCheck.length} overlapping files - conflicts: ${sorted.length > 0} - Duration: ${duration}ms`, performanceLogStream);
-    return sorted.length > 0 ? { conflicts: true, files: sorted } : { conflicts: false };
-}
 
 const server = app.listen(port, () => {
     // The port actually bound: PORT=0 lets the OS pick one (the server test does that)
