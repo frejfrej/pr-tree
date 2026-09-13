@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createSyncStatuses, filesPerPatchRequest, maxFilesToCheck } from '../sync-statuses.mjs';
@@ -199,6 +199,7 @@ test('more than 100 files to check: not checked without a diff request, or partl
     const partial = setUp(fakeBitbucket({ diffstats: { [`${source}..${dest}`]: [removed('g.txt'), ...files], [`${dest}..${source}`]: [modified('g.txt'), ...files] } }));
     assert.deepEqual(await partial.computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { conflicts: true, files: ['g.txt'], reason } });
     assert.equal(partial.requests.length, 2);
+    assert.deepEqual(partial.logs.error, [`Conflict check for repo-one dddd..ssss: ${reason}, the limit is ${maxFilesToCheck}`]);
 });
 
 test('exactly 100 files are checked, 20 files per diff request', async () => {
@@ -263,7 +264,9 @@ test('a diff request that times out: not checked with the timeout as the reason'
         ? new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)))
         : undefined);
     const { computeSyncStatuses, logs } = setUp(fakeBitbucket({ ...bothSides, intercept: hang }), { timeoutMs: 5 });
+    const started = performance.now();
     const statuses = await computeSyncStatuses('PROJ', [pullRequest()]);
+    assert.ok(performance.now() - started < 5000, 'the timeout given is the one applied, not the 30 s default');
     assert.deepEqual(statuses, { [key]: { error: true, reason: 'The operation was aborted due to timeout' } });
     assert.equal(logs.error.length, 1);
 });
@@ -345,7 +348,7 @@ test('a partial or failed result is not stored', async () => {
     assert.equal(statuses[`${repo}/eeee..${source}`].error, true); // failed
     assert.equal(cache.get(cacheKey), null);
     assert.equal(cache.get(`${conflictRuleVersion}:${repo}/eeee..${source}`), null);
-    assert.equal(existsSync(file), false, 'nothing to write');
+    assert.equal(openSyncCache(file).size, 0, 'nothing reached the disk');
 });
 
 test('a pull request without commit hashes on a side gets no status', async () => {
