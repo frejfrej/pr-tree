@@ -23,17 +23,15 @@ export function initializeFilter(apiResult) {
  * Counts the filters that are not at their default value.
  * A multi-select with several values counts once.
  */
-export function countActiveFilters({ text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, readyReviewer = false, readyAssignee = false }) {
+export function countActiveFilters({ text = '', participants = [], work = 'all', sprints, fixVersions, epics = [], stories = [], sync }) {
     return [
         parseTextQuery(text).length > 0,
-        assignees.length > 0,
-        reviewers.length > 0,
         sprints.length > 0,
         fixVersions.length > 0,
         epics.length > 0,
         stories.length > 0,
-        readyReviewer === true,
-        readyAssignee === true,
+        participants.length > 0,
+        work !== 'all',
         sync !== 'Show all'
     ].filter(Boolean).length;
 }
@@ -143,35 +141,36 @@ function splitIssueKey(key) {
 // --------------------------------------------------------------- attention
 
 /**
- * Decides whether a pull request needs the attention of the people selected
- * in the assignee and reviewer filters. Pure: everything it needs is passed in.
+ * Decides whether a pull request waits for the selected participants. Pure:
+ * everything it needs is in the index entry and the arguments.
  *
- * - assignee: the PR is in progress and a linked issue is assigned to a selected assignee
- * - reviewer: the PR is in review and a selected reviewer (never the author) has not approved
+ * - assignee: the PR is in progress and a linked issue is assigned to a selected participant
+ * - reviewer: the PR is in review and a selected participant reviews it (never the author) and has not approved
  *
- * The title of a PR with attention is highlighted; the "Ready for reviewer" and
- * "Ready for assignee" filters keep the PRs with, respectively, reviewer and
- * assignee attention.
+ * The title of a PR with attention is highlighted; with participants selected,
+ * the Work filter keeps the PRs with reviewer attention ("Ready for
+ * reviewers"), assignee attention ("Ready for assignees") or either ("All work").
+ * @param {{ assignees: Set<string>, pendingReviewers: Set<string> }} entry - an entry of buildFilterIndex().pullRequestsById
+ * @param {{ statusInProgress: boolean, statusInReview: boolean, participants: string[] }} state - the Jira statuses shown and the selected participants
+ * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
-export function computeAttention(pullRequestData, { statusInProgress, statusInReview, linkedIssues, assignees, reviewers }) {
-    const assignee = assignees.length > 0 && statusInProgress &&
-        linkedIssues.some(issue => issue.fields.assignee && assignees.includes(issue.fields.assignee.displayName));
-    const reviewer = reviewers.length > 0 && statusInReview &&
-        pullRequestData.participants.some(participant =>
-            participant.user.uuid !== pullRequestData.author.uuid &&
-            reviewers.includes(participant.user.display_name) &&
-            !participant.approved
-        );
+export function computeAttention({ assignees, pendingReviewers }, { statusInProgress, statusInReview, participants }) {
+    const assignee = statusInProgress === true && participants.some(name => assignees.has(name));
+    const reviewer = statusInReview === true && participants.some(name => pendingReviewers.has(name));
     return { assignee, reviewer, any: assignee || reviewer };
 }
 
 // ------------------------------------------------------------------- index
 
+// The Atlassian agent reviews pull requests too: never a person to filter on
+const excludedParticipant = 'Rovo Dev';
+
 /**
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
- * filters compare against. Pure.
- * @returns {{ pullRequestsById: Map<number, object>, epics: Map<string, { key, summary }>, stories: Map<string, { key, summary }> }}
+ * filters compare against; and the lists the epic, story and participant
+ * filters offer. Pure.
+ * @returns {{ pullRequestsById: Map<number, object>, epics: Map<string, { key, summary }>, stories: Map<string, { key, summary }>, participants: string[] }}
  */
 export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {} }) {
     const issuesByKey = new Map(jiraIssuesDetails.map(issue => [issue.key, issue]));
@@ -189,6 +188,7 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     const pullRequestsById = new Map();
     const epics = new Map();
     const stories = new Map();
+    const participants = new Set();
     for (const pullRequest of pullRequests) {
         const issueKeys = jiraIssuesMap[pullRequest.id] || [];
         const linkedIssues = issueKeys.map(key => issuesByKey.get(key)).filter(issue => issue);
@@ -200,17 +200,23 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         for (const story of pullRequestStories) {
             stories.set(story.key, story);
         }
+        // Every participant but the author reviews the pull request
+        const reviewers = pullRequest.participants.filter(participant => participant.user.uuid !== pullRequest.author.uuid);
         const entry = {
             pullRequest,
             linkedIssues,
             // What the text filter searches: title, source branch and issue keys
             searchText: [pullRequest.title, pullRequest.source?.branch?.name, ...issueKeys]
                 .filter(Boolean).join(' ').toLowerCase(),
+            // The people of the pull request, by display name: the assignees of the
+            // linked issues, the reviewers, and the reviewers who have not approved
+            // (what the attention of computeAttention reads)
             assignees: new Set(linkedIssues
                 .filter(issue => issue.fields.assignee && issue.fields.assignee.displayName)
                 .map(issue => issue.fields.assignee.displayName)),
-            reviewers: new Set(pullRequest.participants
-                .filter(participant => participant.user.uuid !== pullRequest.author.uuid)
+            reviewers: new Set(reviewers.map(participant => participant.user.display_name)),
+            pendingReviewers: new Set(reviewers
+                .filter(participant => !participant.approved)
                 .map(participant => participant.user.display_name)),
             sprints: new Set(issueKeys.flatMap(key => [...(sprintsByIssueKey.get(key) || [])])),
             fixVersions: new Set(linkedIssues
@@ -219,10 +225,18 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             epics: new Set(pullRequestEpics.map(epic => epic.key)),
             stories: new Set(pullRequestStories.map(story => story.key))
         };
+        for (const name of entry.assignees) participants.add(name);
+        for (const name of entry.reviewers) participants.add(name);
         pullRequestsById.set(pullRequest.id, entry);
     }
+    participants.delete(excludedParticipant);
 
-    return { pullRequestsById, epics, stories };
+    return {
+        pullRequestsById,
+        epics,
+        stories,
+        participants: [...participants].sort((a, b) => a.localeCompare(b))
+    };
 }
 
 // -------------------------------------------------------------- evaluation
@@ -230,24 +244,23 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 /**
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, readyReviewer, readyAssignee }
+ * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync };
+ *   work is 'all', 'reviewers' or 'assignees' and only matters with participants selected
  * @param {object} rendered - what the tree shows for this pull request:
  *   statusInProgress, statusInReview (from the Jira statuses), hasSyncLabel and hasOkBadge (the painted SYNC badges)
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sprints, fixVersions, epics = [], stories = [], sync, readyReviewer = false, readyAssignee = false }, { statusInProgress, statusInReview, hasSyncLabel, hasOkBadge }) {
-    const attention = computeAttention(entry.pullRequest, {
-        statusInProgress,
-        statusInReview,
-        linkedIssues: entry.linkedIssues,
-        assignees,
-        reviewers
-    });
+export function evaluatePullRequest(entry, { text = '', participants = [], work = 'all', sprints, fixVersions, epics = [], stories = [], sync }, { statusInProgress, statusInReview, hasSyncLabel, hasOkBadge }) {
+    const attention = computeAttention(entry, { statusInProgress, statusInReview, participants });
 
     const textMatch = matchesText(entry.searchText, parseTextQuery(text));
+    // Participants: without a selection, everybody's pull requests; with one, the
+    // pull requests waiting for a selected participant as a reviewer, as an
+    // assignee, or either ("All work"). A pull request is never in review and in
+    // progress at once, so the two kinds of attention never both hold
+    const participantMatch = participants.length === 0 ||
+        (work === 'reviewers' ? attention.reviewer : work === 'assignees' ? attention.assignee : attention.any);
     // Empty selection = show all; otherwise match ANY selected value
-    const assigneeMatch = assignees.length === 0 || assignees.some(name => entry.assignees.has(name));
-    const reviewerMatch = reviewers.length === 0 || reviewers.some(name => entry.reviewers.has(name));
     const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
     const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
     const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
@@ -257,15 +270,9 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
         (sync === 'requested' && hasSyncLabel) ||
         (sync === 'OK' && hasOkBadge) ||
         (sync === 'unchecked' && !hasSyncLabel && !hasOkBadge);
-    // Ready filters: with one or both checked, keep the pull requests that need the
-    // attention of the selected reviewers or assignees. A pull request is never in
-    // review and in progress at once, so the two boxes combine as OR
-    const readyMatch = (!readyReviewer && !readyAssignee) ||
-        (readyReviewer && attention.reviewer) ||
-        (readyAssignee && attention.assignee);
 
     return {
-        visible: textMatch && assigneeMatch && reviewerMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch && syncMatch && readyMatch,
+        visible: textMatch && participantMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch && syncMatch,
         attention
     };
 }
@@ -276,7 +283,7 @@ export function evaluatePullRequest(entry, { text = '', assignees, reviewers, sp
  * Applies the filters to the rendered tree and refreshes the counters. A root
  * branch or a repository left without a visible pull request is hidden; while
  * every repository is hidden, the "nothing matches" message is shown instead.
- * @param {object} filters - { text, assignees, reviewers, sprints, fixVersions, epics, stories, sync, readyReviewer, readyAssignee }
+ * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync }
  * @returns {number} how many pull requests are left shown and need attention
  */
 export function filterBranches(filters) {
@@ -356,8 +363,8 @@ function filterPullRequest(pullRequestElement, pass) {
     const entry = pass.index.pullRequestsById.get(Number(pullRequestElement.dataset.id));
     let isVisible = false;
     if (entry) {
-        // Attention is computed from data before visibility, so the ready filters never
-        // depend on what a previous pass rendered
+        // Attention is computed from the index before visibility, so the Work filter
+        // never depends on what a previous pass rendered
         const { visible, attention } = evaluatePullRequest(entry, pass.filters, {
             statusInProgress: pullRequestElement.classList.contains('status-in-progress'),
             statusInReview: pullRequestElement.classList.contains('status-in-review'),
