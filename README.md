@@ -90,6 +90,7 @@
     * Two to four Bitbucket requests per pull request instead of about ten, so the SYNC load is affordable on the largest project; two loads of one project at once share one computation; the results are kept for good in `sync-cache.json` (git-ignored, pruned 90 days after they were computed), reused after a restart, and only the pull requests whose commits moved are computed again
     * Explicit SYNC badges: green OK, red SYNC with the conflicting files in the tooltip (one per line), grey `?` with the reason; a "Not checked" value in the SYNC filter; nothing is shown until the statuses are loaded
     * `node-diff3` is no longer a dependency
+    * `npm run test:coverage` runs the tests with Node's coverage report of the project's modules, the server included (Node 22.5 or later); a SIGTERM now ends the server normally, which is what lets its coverage be written
 * Version 2.6.0
     * Removed what nothing used (#41)
         * The `/api/pull-request-conflicts/:repoName/:spec` endpoint: the SYNC load has used `/api/sync-statuses/:project` since 2.1.0
