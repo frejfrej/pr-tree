@@ -12,7 +12,7 @@ import {
     raiseAllCacheTtls
 } from './cache.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
-import { RateLimitError } from './atlassian-fetch.mjs';
+import { RateLimitError, createAtlassianFetch } from './atlassian-fetch.mjs';
 import { createSyncStatuses } from './sync-statuses.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 
@@ -87,52 +87,25 @@ const syncCache = openSyncCache(path.join(__dirname, 'sync-cache.json'), {
 });
 log(`sync-cache.json: ${syncCache.size} conflict results loaded`, accessLogStream);
 
-// Atlassian rate-limit circuit breaker: after an HTTP 429, no request is sent
-// to Atlassian and cached data keeps being served until 10 minutes after the
-// last 429 received.
+// Atlassian rate-limit circuit breaker (atlassian-fetch.mjs): after an HTTP 429,
+// no request is sent to Atlassian and cached data keeps being served until 10
+// minutes after the last 429 received.
 const rateLimitBackoffSeconds = 600;
-let rateLimitedUntil = 0;
-
-function isRateLimited() {
-    return Date.now() < rateLimitedUntil;
-}
-
-function noteRateLimit(url) {
-    rateLimitedUntil = Date.now() + rateLimitBackoffSeconds * 1000;
-    raiseAllCacheTtls(rateLimitBackoffSeconds);
-    log(`HTTP 429 received from ${url} - Atlassian requests paused until ${new Date(rateLimitedUntil).toISOString()}`, errorLogStream);
-}
+const atlassian = createAtlassianFetch({
+    fetch,
+    backoffSeconds: rateLimitBackoffSeconds,
+    onRateLimit: (url, until) => {
+        raiseAllCacheTtls(rateLimitBackoffSeconds);
+        log(`HTTP 429 received from ${url} - Atlassian requests paused until ${new Date(until).toISOString()}`, errorLogStream);
+    }
+});
 
 // Every Atlassian request goes through this wrapper so a single 429 pauses them all.
 async function atlassianFetch(url, options) {
     if (fixtureSource) {
         throw new Error(`Fixture mode: no request is sent to Atlassian (${url})`);
     }
-    if (isRateLimited()) {
-        throw new RateLimitError();
-    }
-
-    let response;
-    try {
-        response = await fetch(url, options);
-    } catch (error) {
-        // The fetch built into Node reports a network failure as "fetch failed" and
-        // keeps the reason (DNS, TLS, refused connection) in error.cause; the callers
-        // log error.message only, so the reason and the URL go into the message
-        // A refused or reset connection on a dual-stack host comes as an AggregateError with an empty message
-        const detail = error.cause && (error.cause.message || error.cause.code);
-        const reason = detail ? `: ${detail}` : '';
-        const failure = new Error(`${error.message}${reason} (${url})`, { cause: error });
-        // The same without the URL, for the user: a diff URL carries every path of its chunk
-        failure.shortMessage = `${error.message}${reason}`;
-        throw failure;
-    }
-    if (response.status === 429) {
-        await response.arrayBuffer().catch(() => {}); // release the socket
-        noteRateLimit(url);
-        throw new RateLimitError();
-    }
-    return response;
+    return atlassian.fetch(url, options);
 }
 
 // The SYNC computation (sync-statuses.mjs): every request goes through atlassianFetch
@@ -585,7 +558,7 @@ app.get('/api/pull-requests/:project', async (req, res) => {
     } catch (error) {
         log(`Error processing pull requests: ${error.message}`, errorLogStream);
         if (error instanceof RateLimitError) {
-            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(rateLimitedUntil).toISOString() });
+            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(atlassian.rateLimitedUntil()).toISOString() });
         } else {
             res.status(500).send('Internal Server Error');
         }
@@ -613,14 +586,14 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
 
             // Responses built during a rate-limit window are kept until it closes,
             // regular ones for 5 minutes
-            const rateLimitedRemainingMs = rateLimitedUntil - Date.now();
+            const pause = atlassian.pause();
             const data = {
                 lastRefreshTime: new Date().toISOString(),
-                rateLimited: rateLimitedRemainingMs > 0,
-                rateLimitedUntil: rateLimitedRemainingMs > 0 ? new Date(rateLimitedUntil).toISOString() : null,
+                rateLimited: pause.rateLimited,
+                rateLimitedUntil: pause.rateLimitedUntil,
                 statuses: statuses
             };
-            const ttl = rateLimitedRemainingMs > 0 ? Math.max(1, Math.ceil(rateLimitedRemainingMs / 1000)) : 300;
+            const ttl = pause.rateLimited ? Math.max(1, Math.ceil(pause.remainingMs / 1000)) : 300;
             return { data, ttl };
         });
 
@@ -634,7 +607,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
             res.json({
                 lastRefreshTime: new Date().toISOString(),
                 rateLimited: true,
-                rateLimitedUntil: new Date(rateLimitedUntil).toISOString(),
+                rateLimitedUntil: new Date(atlassian.rateLimitedUntil()).toISOString(),
                 statuses: {}
             });
             return;
