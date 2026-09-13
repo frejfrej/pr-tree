@@ -88,7 +88,7 @@ test('countActiveFilters counts filters, not selected values', () => {
 
 // ------------------------------------------------------------------ index and evaluation
 
-import { buildFilterIndex, evaluatePullRequest } from '../public/app-filter.js';
+import { buildFilterIndex, evaluatePullRequest, initializeFilter } from '../public/app-filter.js';
 
 const sampleApiResult = {
     pullRequests: [
@@ -398,4 +398,10 @@ test('epic and story filters combine as AND, and a story linked together with it
     });
     assert.deepEqual([...both.pullRequestsById.get(30).stories], ['PROJ-200']);
     assert.equal(countActiveFilters({ assignees: [], reviewers: [], sprints: [], fixVersions: [], sync: 'Show all', readyReviewer: false, readyAssignee: false, epics: ['PROJ-100'], stories: ['PROJ-200'] }), 2);
+});
+
+test('initializeFilter builds the index of a data load and returns it', () => {
+    const index = initializeFilter(sampleApiResult);
+    assert.deepEqual(index, buildFilterIndex(sampleApiResult));
+    assert.ok(index.pullRequestsById.size > 0);
 });

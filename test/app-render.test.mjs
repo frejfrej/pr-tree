@@ -1,8 +1,8 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
-import { renderRepositories, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants } from '../public/app-render.js';
+import { renderRepositories, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -190,4 +190,22 @@ test('renderOrphanedIssues renders nothing without issues and one block per issu
     assert.equal(count(html, 'class="orphaned-issue-priority"'), 1);
     assert.ok(html.includes('href="https://site.atlassian.net/browse/PROJ-10"'));
     assert.equal(count(html, 'Status: In Review'), 2);
+});
+
+test('renderParticipant gives each status its icon, and an unknown status no icon and a console line', () => {
+    const icon = html => html.match(/<i class="fas (\S*) icon">/)[1];
+    assert.equal(icon(renderParticipant(jane, 'approved')), 'fa-check-circle');
+    assert.equal(icon(renderParticipant(jane, 'requestedChanges')), 'fa-times-circle');
+    assert.equal(icon(renderParticipant(jane, 'toReview')), 'fa-question-circle');
+    assert.equal(icon(renderParticipant(jane, 'author')), 'fa-user');
+    const log = mock.method(console, 'log', () => {});
+    try {
+        const html = renderParticipant(jane, 'unknown');
+        assert.equal(icon(html), '');
+        assert.ok(html.includes('data-review-status="unknown"'));
+        assert.ok(html.includes('src="https://avatars/jane.png"'));
+        assert.deepEqual(log.mock.calls.map(call => call.arguments), [["Jane participant's status is invalid: unknown"]]);
+    } finally {
+        log.mock.restore();
+    }
 });
