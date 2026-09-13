@@ -3,7 +3,7 @@
 **Date:** 2026-09-13
 **Issue:** #48 (the SYNC computation); the routes and the small gaps have no issue
 **Target version:** 2.7.1 (a refactor without behaviour change)
-**Prompt:** `docs/superpowers/prompts/2026-09-13-enhance-test-coverage.md`, stages 1 to 4 (stage 4 added on 2026-09-13, after the first three were opened)
+**Prompt:** `docs/superpowers/prompts/2026-09-13-enhance-test-coverage.md`, stages 1 to 5 (stages 4 and 5 added on 2026-09-13, after the first three were opened)
 **Status:** Decided in an interactive session; section 2 lists the decisions taken without a review round
 
 ## 1. Goal
@@ -67,14 +67,29 @@ decision that would be costly to get wrong.
    messages, `failureReason`, and the fields the routes answer with during a
    pause; a server test cannot reach a 429 in fixture mode, so the route mapping
    is tested with the module.
-8. **An unknown project on `/api/pull-requests/:project` answers 500 today**
+8. **Stage 5: `createProjectData` in `project-data.mjs`.** The Bitbucket and Jira
+   fetchers and `buildProjectData` move as they are, generated from the text
+   of `index.mjs` by substitution (`config.jira.siteName`, `config.bitbucket.workspace`,
+   `atlassianFetch`, the log streams), so the URLs, the JQL, the fields, the
+   log lines and the order of the requests are unchanged; `index.mjs` keeps the
+   project lookup and the fixture branch in `buildProjectData(projectName)` and
+   delegates with the project's configuration. The last response used for the
+   hash comparison lives in the factory: one per server, whatever the project,
+   as before (two projects refreshed alternately fetch their commit counts every
+   time; pinned in the tests only for one project, not fixed). The pure helpers
+   (`extractJiraIssues`, `createJiraIssuesMap`, `fillPullRequestsMap`,
+   `calculateHash`) are exported, the fetchers exposed on the returned object.
+   The tests state the rules the prompt lists, plus the failures the code
+   documents (a failed commits request gives `null`, a failed board skips a
+   project's sprints, a failed sprint page ends that sprint, a failed
+   pull-request page or orphan search fails the build).
+9. **An unknown project on `/api/pull-requests/:project` answers 500 today**
    (`buildProjectData` throws "Project not found", the route maps every
    error to 500) while `/api/sync-statuses/:project` answers 404. The test
    pins the 500; changing it is a behaviour change, out of a 2.7.1.
 
 ## 3. Out of scope
 
-- Stage 5 of the prompt (the project data fetchers).
 - Tests needing a DOM (`filterBranches`, `initializePopovers`, the shell,
   the toggles, `app.js`, `multi-select.js`).
 - A coverage threshold, `c8`, an lcov report.
@@ -102,11 +117,13 @@ The server behaves as in 2.7.0. What the tests now state:
 - `test/cache.test.mjs`, `test/conflicts.test.mjs`, `test/app-render.test.mjs`,
   `test/app-filter.test.mjs`: the small gaps of section 2.
 - `test/atlassian-fetch.test.mjs`: the pause after a 429 (section 2, decision 7).
+- `test/project-data.test.mjs`: the project data (section 2, decision 8).
 
 ## 5. Delivery
 
-Four pull requests stacked on `master`, one per stage, from
+Five pull requests stacked on `master`, one per stage, from
 `claude/sync-statuses-module`, `claude/fixture-route-tests`,
-`claude/small-coverage-gaps` and `claude/atlassian-fetch-module`; each carries its before and after coverage
+`claude/small-coverage-gaps`, `claude/atlassian-fetch-module` and
+`claude/project-data-module`; each carries its before and after coverage
 table; none is merged by the session. When merging, retarget the next pull
 request to `master` before the current one's branch is deleted.
