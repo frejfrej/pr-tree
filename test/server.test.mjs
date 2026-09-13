@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -34,8 +35,12 @@ before(async () => {
     });
 });
 
-after(() => {
-    if (server) server.kill();
+after(async () => {
+    // Wait for the exit: the server writes its coverage on the way out (npm run test:coverage)
+    if (!server || server.exitCode !== null || server.signalCode !== null) return;
+    const exited = once(server, 'exit');
+    server.kill();
+    await exited;
 });
 
 test('README.md is served for the help modal', async () => {

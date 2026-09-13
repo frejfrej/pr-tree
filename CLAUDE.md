@@ -72,7 +72,7 @@ pr-tree/
 
 #### Backend Files
 
-**index.mjs** (835 lines)
+**index.mjs** (839 lines)
 - Main Express application server
 - API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
 - The per-pull-request conflict computation survives only as an internal of `/api/sync-statuses/:project`: `computeConflicts` fetches the diffstats of both sides (with their line counts), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request, the paths of one file in the same request so a rename is seen whole), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches
@@ -84,6 +84,7 @@ pr-tree/
 - Response hashing for change detection
 - Comprehensive logging system (access.log, error.log, performance.log)
 - Static file serving for the public directory; `README.md` is served through a dedicated route (the help modal fetches it) and nothing else of the project directory is reachable over HTTP
+- A SIGTERM ends the process normally (`process.exit(0)`): the server test stops the fixture server that way, and a process killed by the signal would write no coverage for `npm run test:coverage`
 
 **cache.mjs** (108 lines)
 - Abstraction layer over node-cache
@@ -421,6 +422,7 @@ When adding/modifying endpoints:
 ### Testing Changes
 - **Manual testing**: Use the UI to verify functionality; `npm run start:fixtures` gives realistic data without credentials
 - **Unit tests**: `npm test` (node:test, pure logic, the tree rendering and the fixture generator)
+- **Coverage**: `npm run test:coverage` runs the same tests and prints the lines, branches and functions reached in each module of the project; a file no test loads is absent from the table, not at 0%
 - **API testing**: Use browser DevTools Network tab or curl
 - **Cache testing**: Check `/api/cache/stats` endpoint
 
@@ -538,6 +540,7 @@ Three streams available:
 
 ### Testing Approach
 - **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`) and the fixture generator (volumes, determinism, deep stack, hierarchy), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory)
+- **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`, `public/multi-select.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`, `counter-utils.js`) are low because only their pure helpers are tested; no threshold
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
@@ -625,6 +628,6 @@ Version information stored in package.json:
 
 ---
 
-**Last Updated**: 2026-09-12
+**Last Updated**: 2026-09-13
 **For**: AI Assistant usage (Claude, GPT, etc.)
 **Maintained by**: Project contributors

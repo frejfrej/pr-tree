@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.mjs",
     "start:fixtures": "node index.mjs --fixtures",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test",
+    "test:coverage": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage --test-coverage-include=\"*.mjs\" --test-coverage-include=projects.js --test-coverage-include=\"public/*.js\" --test-coverage-include=\"fixtures/*.mjs\""
   },
   "keywords": [],
   "author": "François-Régis Jaunatre",

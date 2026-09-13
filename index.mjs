@@ -834,3 +834,7 @@ const server = app.listen(port, () => {
         log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
     }
 });
+
+// A SIGTERM (how the server test stops the server) ends the process normally: a process killed
+// by the signal writes no coverage, and npm run test:coverage would list every module but this one
+process.on('SIGTERM', () => process.exit(0));
