@@ -61,16 +61,14 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // last sent reponse is cached for performance
     let lastResponse = null;
 
-    async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
-        const jiraBaseUrl = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql`;
-        const existingIssuesSet = new Set(existingIssues);
-        let orphanedIssues = [];
-
-        try {
-            // Create JQL to find all issues in Review status that aren't in our existing issues
-            const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
-            const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,updated,assignee`;
-
+    // Every page of a Jira search. The search endpoint pages with a token: no
+    // total, no startAt (a page is the last one when isLast is true or no token
+    // comes back with it). A failed page throws; the caller decides what to keep.
+    async function* searchIssuePages(jql, fields, maxResults = 100) {
+        let nextPageToken = null;
+        do {
+            const pageParam = nextPageToken ? `&nextPageToken=${encodeURIComponent(nextPageToken)}` : '';
+            const url = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}${pageParam}`;
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
@@ -78,22 +76,27 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                     'Accept': 'application/json'
                 }
             });
+            if (!response.ok) throw new Error(`Request failed with status code ${response.status}`);
+            const data = await response.json();
+            nextPageToken = data.isLast === false && data.nextPageToken ? data.nextPageToken : null;
+            yield { issues: data.issues, last: !nextPageToken };
+        } while (nextPageToken);
+    }
 
-            if (response.ok) {
-                const data = await response.json();
-                // Filter out issues that already have pull requests
-                orphanedIssues = data.issues.filter(issue => !existingIssuesSet.has(issue.key));
+    async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
+        const existingIssuesSet = new Set(existingIssues);
+        const orphanedIssues = [];
 
+        try {
+            // Every issue in review of the projects, minus those a pull request links
+            const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
+            for await (const page of searchIssuePages(jql, 'key,summary,status,priority,updated,assignee')) {
                 // Add Jira site name to each issue for URL construction in frontend
-                orphanedIssues = orphanedIssues.map(issue => ({
-                    ...issue,
-                    jiraSiteName: jiraSiteName
-                }));
-
-                log.access(`Found ${orphanedIssues.length} orphaned issues in review status`);
-            } else {
-                throw new Error(`Request failed with status code ${response.status}`);
+                orphanedIssues.push(...page.issues
+                    .filter(issue => !existingIssuesSet.has(issue.key))
+                    .map(issue => ({ ...issue, jiraSiteName })));
             }
+            log.access(`Found ${orphanedIssues.length} orphaned issues in review status`);
         } catch (error) {
             log.error(`Error fetching orphaned issues: ${error.message}`);
             throw error;
@@ -296,42 +299,21 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
 
         for (const sprint of sprints) {
             const jql = `sprint = ${sprint.id} AND project in (${jiraProjects.join(',')})`;
-            let startAt = 0;
-            const maxResults = 100;
-            let total = 0;
-            sprintIssues[sprint.id] = [];
+            const keys = sprintIssues[sprint.id] = [];
 
-            do {
-                const url = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=key&startAt=${startAt}&maxResults=${maxResults}`;
-
-                try {
-                    const startTime = Date.now();
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': `Basic ${jiraAuth}`,
-                            'Accept': 'application/json'
-                        }
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        sprintIssues[sprint.id].push(...data.issues.map(issue => issue.key));
-                        total = data.total;
-                        startAt += data.issues.length;
-
-                        const duration = Date.now() - startTime;
-                        log.performance(`Fetched ${data.issues.length} issues for sprint ${sprint.id} (${startAt}/${total}) - Duration: ${duration}ms`);
-                    } else {
-                        throw new Error(`Request failed with status code ${response.status}`);
-                    }
-                } catch (error) {
-                    log.error(`Error fetching issues for sprint ${sprint.id}: ${error.message}`);
-                    break; // Exit the loop if there's an error, but continue with other sprints
+            try {
+                let startTime = Date.now();
+                for await (const page of searchIssuePages(jql, 'key')) {
+                    keys.push(...page.issues.map(issue => issue.key));
+                    log.performance(`Fetched ${page.issues.length} issues for sprint ${sprint.id} (${keys.length} so far${page.last ? '' : ', more to come'}) - Duration: ${Date.now() - startTime}ms`);
+                    startTime = Date.now();
                 }
-            } while (startAt < total);
+            } catch (error) {
+                // The pages read so far are kept; the other sprints are still fetched
+                log.error(`Error fetching issues for sprint ${sprint.id}: ${error.message}`);
+            }
 
-            log.access(`Retrieved a total of ${sprintIssues[sprint.id].length} issues for sprint ${sprint.id}`);
+            log.access(`Retrieved a total of ${keys.length} issues for sprint ${sprint.id}`);
         }
 
         return sprintIssues;
