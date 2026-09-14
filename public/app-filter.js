@@ -167,10 +167,6 @@ export function computeAttention({ assignees, pendingReviewers }, { statusInProg
 // The Atlassian agent reviews pull requests too: never a person to filter on
 const excludedParticipant = 'Rovo Dev';
 
-// The Work values under which an orphaned issue assigned to a selected participant is kept
-// ("All reviews" and "Ready for reviewers" are not among them: nothing here is reviewed)
-const orphanedIssueWorkValues = ['all', 'issues', 'ready', 'assignees'];
-
 /**
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
@@ -246,19 +242,18 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     // and what the sets are built from; its assignee is its only person
     const orphanedIssuesByKey = new Map();
     for (const issue of orphanedIssues) {
-        const fields = issue.fields || {};
         const epic = epicOf(issue, issuesByKey);
         if (epic) epics.set(epic.key, epic);
         const story = storyOf(issue);
         if (story) stories.set(story.key, story);
-        const assignee = fields.assignee && fields.assignee.displayName;
+        const assignee = issue.fields.assignee && issue.fields.assignee.displayName;
         if (assignee) participants.add(assignee);
         orphanedIssuesByKey.set(issue.key, {
             issue,
-            searchText: [issue.key, fields.summary].filter(Boolean).join(' ').toLowerCase(),
+            searchText: [issue.key, issue.fields.summary].filter(Boolean).join(' ').toLowerCase(),
             assignees: new Set(assignee ? [assignee] : []),
             sprints: new Set(sprintsByIssueKey.get(issue.key) || []),
-            fixVersions: new Set((fields.fixVersions || []).map(version => String(version.id))),
+            fixVersions: new Set((issue.fields.fixVersions || []).map(version => String(version.id))),
             epics: new Set(epic ? [epic.key] : []),
             stories: new Set(story ? [story.key] : [])
         });
@@ -327,6 +322,12 @@ export function evaluatePullRequest(entry, filters, { statusInProgress, statusIn
     };
 }
 
+// The Work values that keep only what the participants review: nothing in
+// the orphaned issues section is reviewed, so they hide it; any other value
+// keeps an issue assigned to a selected participant, like "All work" does
+// for pull requests
+const reviewWorkValues = ['reviews', 'reviewers'];
+
 /**
  * Applies the filters to one indexed orphaned issue. Pure. The issue is in
  * review with no pull request: it waits for its assignee, so with
@@ -341,7 +342,7 @@ export function evaluateOrphanedIssue(entry, filters) {
     const { participants = [], work = 'all' } = filters;
     const attention = participants.some(name => entry.assignees.has(name));
     const participantMatch = participants.length === 0 ||
-        (attention && orphanedIssueWorkValues.includes(work));
+        (attention && !reviewWorkValues.includes(work));
     return {
         visible: matchesIssueFilters(entry, filters) && participantMatch,
         attention
@@ -495,7 +496,7 @@ function filterOrphanedIssues(pass) {
         }
     }
     const counter = section.querySelector('.repo-pr-counter');
-    if (counter) updateCounterDisplay(counter, visible, total);
+    if (counter) updateCounterDisplay(counter, visible, total, 'issue');
     setDisplay(section, visible > 0 ? '' : 'none');
 }
 

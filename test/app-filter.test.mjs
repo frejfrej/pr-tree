@@ -278,6 +278,7 @@ test('buildFilterIndex indexes the orphaned issues: text, assignee, sprints, fix
     assert.deepEqual([...index.epics.keys()], ['PROJ-500', 'PROJ-24']);
     assert.deepEqual([...index.stories.keys()].sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23', 'PROJ-25']);
     assert.deepEqual(index.participants, ['Bob', 'Jane']); // Bob reviews a pull request already; Rovo Dev stays excluded
+    assert.equal(index.pullRequestsById.size, 2); // the pull requests are indexed as before
 });
 
 test('buildFilterIndex resolves a parent that is itself an orphaned issue (the server does not duplicate it into the details)', () => {
@@ -324,7 +325,7 @@ test('evaluateOrphanedIssue keeps an issue assigned to a selected participant, w
     const unassigned = orphanedIssuesByKey.get('PROJ-22');
     assert.deepEqual(evaluateOrphanedIssue(bobs, noFilter), { visible: true, attention: false });
     assert.deepEqual(evaluateOrphanedIssue(unassigned, noFilter), { visible: true, attention: false });
-    for (const work of ['all', 'issues', 'ready', 'assignees']) {
+    for (const work of ['all', 'issues', 'ready', 'assignees', 'unknown']) { // an unknown value behaves like "All work", as for pull requests
         assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: true, attention: true }, work);
         assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane', 'Bob'], work }), { visible: true, attention: true }, work);
         assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane'], work }), { visible: false, attention: false }, work);
