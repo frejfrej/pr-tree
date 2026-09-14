@@ -23,7 +23,6 @@
     --error-color: #FF5630;
     --in-review-color: #0065FF;
     --danger-bg: #FFEBE6;
-    --danger-text: #BF2600;
     --on-accent-text: #FFFFFF;
     --shadow-color: rgba(9, 30, 66, 0.15);
     --focus-ring: rgba(0, 82, 204, 0.25);
@@ -64,7 +63,6 @@
     --error-color: #F87168;
     --in-review-color: #579DFF;
     --danger-bg: #42221F;
-    --danger-text: #FD9891;
     --on-accent-text: #1D2125;
     --shadow-color: rgba(0, 0, 0, 0.5);
     --focus-ring: rgba(87, 157, 255, 0.35);
@@ -1083,6 +1081,10 @@ select:disabled {
 
 .orphaned-issue .pull-request-header {
     gap: 8px;
+}
+
+.orphaned-issue .jira-priority-icon {
+    margin-right: 0; /* the header gap spaces it */
 }
 
 .orphaned-issue-summary {
