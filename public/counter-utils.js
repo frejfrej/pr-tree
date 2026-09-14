@@ -15,11 +15,11 @@ export function updateCounterDisplay(counterElement, visibleCount, totalCount, n
         counterElement.textContent = displayText;
     }
 
-    // Update the title attribute for tooltip
-    const itemText = totalCount === 1 ? noun : `${noun}s`;
+    // The tooltip; the noun agrees with the number it follows
+    const plural = count => count === 1 ? noun : `${noun}s`;
     const titleText = isFiltered
-        ? `${visibleCount} filtered ${itemText} out of ${totalCount} total`
-        : `${totalCount} ${itemText}`;
+        ? `${visibleCount} filtered ${plural(visibleCount)} out of ${totalCount} total`
+        : `${totalCount} ${plural(totalCount)}`;
     if (counterElement.getAttribute('title') !== titleText) {
         counterElement.setAttribute('title', titleText);
     }

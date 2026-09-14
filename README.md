@@ -82,6 +82,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.10.1
+    * The tooltip of a filtered counter agrees with the number shown: "1 filtered issue out of 13 total", "1 filtered pull request out of 8 total" (#67)
 * Version 2.10.0
     * The "Jira issues in review without a pull request" section follows the sidebar filters like the tree (every filter but SYNC; a fix version, epic or story filter needs the issue type, fix versions and parent, which the server now fetches for these issues, their parents completed in the same request as the linked issues' parents) and is hidden when nothing in it matches; its header carries a shown/total counter
     * The section is rendered like a repository block (collapsible, included in "Collapse all" and "Expand all", collapsed state kept across refreshes) with rows shaped like pull requests: priority, key with the issue popover, summary, assignee, last update, and a "No update for N days" warning after 14 days
