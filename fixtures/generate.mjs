@@ -629,9 +629,42 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
             jiraIssuesDetails.push(structuredClone(issue));
         }
     }
+
+    // Issues "In Review" without a pull request, with the fields the filters
+    // need (type, fix versions, parent like the linked issues, and the last
+    // update); one in five is a sub-task of a story created for it, in
+    // progress (an in-review story without a pull request would be an
+    // orphaned issue itself)
+    const orphanedIssues = [];
+    const orphanCount = Math.round((orphanedIssueCounts[projectName] ?? 0) * scale);
+    for (let i = 0; i < orphanCount; i++) {
+        const project = pick(random, projectConfig.jiraProjects);
+        let parent = null;
+        if (i % 5 === 4) {
+            parent = createIssue(random, nextIssueNumber, project, { status: 'In Progress', type: 'Story' });
+            knownIssues.set(parent.key, parent);
+        }
+        const issue = createIssue(random, nextIssueNumber, project, { status: 'In Review', ...(parent ? { parent, type: 'Sub-task' } : {}) });
+        orphanedIssues.push({
+            id: issue.id,
+            key: issue.key,
+            self: issue.self,
+            fields: {
+                summary: issue.fields.summary,
+                status: issue.fields.status,
+                priority: issue.fields.priority,
+                fixVersions: issue.fields.fixVersions,
+                assignee: issue.fields.assignee,
+                issuetype: issue.fields.issuetype,
+                updated: isoDaysAgo(integer(random, 0, 30)),
+                ...(issue.fields.parent ? { parent: issue.fields.parent } : {})
+            }
+        });
+    }
+
     // Parents (stories of sub-tasks, epics of standard issues) are fetched by the
     // server with their summary, type, fix versions and parent
-    for (const issue of [...jiraIssuesDetails]) {
+    for (const issue of [...jiraIssuesDetails, ...orphanedIssues]) {
         const parentKey = issue.fields.parent?.key;
         if (parentKey && !seen.has(parentKey) && knownIssues.has(parentKey)) {
             seen.add(parentKey);
@@ -649,8 +682,8 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
             });
         }
     }
-    // Sub-tasks inherit the fix versions of their parent
-    for (const issue of jiraIssuesDetails) {
+    // Sub-tasks inherit the fix versions of their parent (the orphaned issues too)
+    for (const issue of [...jiraIssuesDetails, ...orphanedIssues]) {
         if (issue.fields.parent && (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
             const parent = jiraIssuesDetails.find(candidate => candidate.key === issue.fields.parent.key);
             if (parent?.fields.fixVersions?.length > 0) {
@@ -678,31 +711,15 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
             if (keys.length >= target) break;
             if (key.startsWith(`${sprint.project}-`) && random() < 0.5) keys.push(key);
         }
+        // About a third of the orphaned issues of the sprint's project take the place of fillers
+        for (const issue of orphanedIssues) {
+            if (keys.length >= target) break;
+            if (issue.key.startsWith(`${sprint.project}-`) && random() < 0.35) keys.push(issue.key);
+        }
         while (keys.length < target) {
             keys.push(`${sprint.project}-${nextIssueNumber(sprint.project)}`);
         }
         sprintIssues[sprint.id] = keys;
-    }
-
-    // Issues "In Review" without a pull request
-    const orphanedIssues = [];
-    const orphanCount = Math.round((orphanedIssueCounts[projectName] ?? 0) * scale);
-    for (let i = 0; i < orphanCount; i++) {
-        const project = pick(random, projectConfig.jiraProjects);
-        const issue = createIssue(random, nextIssueNumber, project, { status: 'In Review' });
-        orphanedIssues.push({
-            id: issue.id,
-            key: issue.key,
-            self: issue.self,
-            fields: {
-                summary: issue.fields.summary,
-                status: issue.fields.status,
-                priority: issue.fields.priority,
-                updated: isoDaysAgo(integer(random, 0, 30)),
-                assignee: issue.fields.assignee
-            },
-            jiraSiteName
-        });
     }
 
     const data = {
