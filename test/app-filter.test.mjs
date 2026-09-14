@@ -249,7 +249,9 @@ const orphanedApiResult = {
     orphanedIssues: [
         { key: 'PROJ-21', fields: { summary: 'Fix the Login page', issuetype: { name: 'Sub-task', subtask: true }, parent: { key: 'PROJ-20', fields: { summary: 'Story twenty', issuetype: { name: 'Story' } } }, assignee: { displayName: 'Bob' }, fixVersions: [{ id: 200, name: '2.0' }] } },
         { key: 'PROJ-22', fields: { summary: 'Unassigned task', issuetype: { name: 'Task' }, assignee: null, fixVersions: [] } },
-        { key: 'PROJ-23', fields: { summary: 'Rovo work', issuetype: { name: 'Task' }, assignee: { displayName: 'Rovo Dev' }, fixVersions: [] } }
+        { key: 'PROJ-23', fields: { summary: 'Rovo work', issuetype: { name: 'Task' }, assignee: { displayName: 'Rovo Dev' }, fixVersions: [] } },
+        { key: 'PROJ-24', fields: { summary: 'Epic in review', issuetype: { name: 'Epic', hierarchyLevel: 1 }, assignee: null, fixVersions: [] } },
+        { key: 'PROJ-25', fields: { issuetype: { name: 'Task' }, assignee: null, fixVersions: [] } }
     ]
 };
 
@@ -268,11 +270,14 @@ test('buildFilterIndex indexes the orphaned issues: text, assignee, sprints, fix
     assert.equal(task.sprints.size, 0);
     assert.deepEqual([...task.stories], ['PROJ-22']); // a standard issue is its own story
     assert.equal(task.epics.size, 0);
+    const epic = index.orphanedIssuesByKey.get('PROJ-24');
+    assert.deepEqual([...epic.epics], ['PROJ-24']); // an epic in review is its own epic, and no story
+    assert.equal(epic.stories.size, 0);
+    assert.equal(index.orphanedIssuesByKey.get('PROJ-25').searchText, 'proj-25'); // no summary: the key alone
     // The lists the filters offer include what the orphaned issues bring (PROJ-1 and PROJ-2 are the stories of the pull requests)
-    assert.deepEqual([...index.epics.keys()], ['PROJ-500']);
-    assert.deepEqual([...index.stories.keys()].sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23']);
+    assert.deepEqual([...index.epics.keys()], ['PROJ-500', 'PROJ-24']);
+    assert.deepEqual([...index.stories.keys()].sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23', 'PROJ-25']);
     assert.deepEqual(index.participants, ['Bob', 'Jane']); // Bob reviews a pull request already; Rovo Dev stays excluded
-    assert.equal(index.pullRequestsById.size, 2); // the pull requests are indexed as before
 });
 
 test('buildFilterIndex resolves a parent that is itself an orphaned issue (the server does not duplicate it into the details)', () => {

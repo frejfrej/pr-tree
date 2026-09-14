@@ -167,6 +167,10 @@ export function computeAttention({ assignees, pendingReviewers }, { statusInProg
 // The Atlassian agent reviews pull requests too: never a person to filter on
 const excludedParticipant = 'Rovo Dev';
 
+// The Work values under which an orphaned issue assigned to a selected participant is kept
+// ("All reviews" and "Ready for reviewers" are not among them: nothing here is reviewed)
+const orphanedIssueWorkValues = ['all', 'issues', 'ready', 'assignees'];
+
 /**
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
@@ -178,7 +182,8 @@ const excludedParticipant = 'Rovo Dev';
 export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {}, orphanedIssues = [] }) {
     // The parents are looked up among the details (where the server puts the
     // parents it fetched) and among the orphaned issues (a parent that is an
-    // orphaned issue itself is not fetched again)
+    // orphaned issue itself is not fetched again); a key in both lists, which
+    // the server never produces, is the orphaned issue's
     const issuesByKey = new Map([...jiraIssuesDetails, ...orphanedIssues].map(issue => [issue.key, issue]));
 
     const sprintsByIssueKey = new Map();
@@ -241,18 +246,19 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     // and what the sets are built from; its assignee is its only person
     const orphanedIssuesByKey = new Map();
     for (const issue of orphanedIssues) {
+        const fields = issue.fields || {};
         const epic = epicOf(issue, issuesByKey);
         if (epic) epics.set(epic.key, epic);
         const story = storyOf(issue);
         if (story) stories.set(story.key, story);
-        const assignee = issue.fields.assignee && issue.fields.assignee.displayName;
+        const assignee = fields.assignee && fields.assignee.displayName;
         if (assignee) participants.add(assignee);
         orphanedIssuesByKey.set(issue.key, {
             issue,
-            searchText: [issue.key, issue.fields.summary].filter(Boolean).join(' ').toLowerCase(),
+            searchText: [issue.key, fields.summary].filter(Boolean).join(' ').toLowerCase(),
             assignees: new Set(assignee ? [assignee] : []),
             sprints: new Set(sprintsByIssueKey.get(issue.key) || []),
-            fixVersions: new Set((issue.fields.fixVersions || []).map(version => String(version.id))),
+            fixVersions: new Set((fields.fixVersions || []).map(version => String(version.id))),
             epics: new Set(epic ? [epic.key] : []),
             stories: new Set(story ? [story.key] : [])
         });
@@ -335,7 +341,7 @@ export function evaluateOrphanedIssue(entry, filters) {
     const { participants = [], work = 'all' } = filters;
     const attention = participants.some(name => entry.assignees.has(name));
     const participantMatch = participants.length === 0 ||
-        (attention && work !== 'reviews' && work !== 'reviewers');
+        (attention && orphanedIssueWorkValues.includes(work));
     return {
         visible: matchesIssueFilters(entry, filters) && participantMatch,
         attention
@@ -348,8 +354,12 @@ export function evaluateOrphanedIssue(entry, filters) {
  * Applies the filters to the rendered tree and refreshes the counters. A root
  * branch or a repository left without a visible pull request is hidden; while
  * every repository is hidden, the "nothing matches" message is shown instead.
+ * The orphaned issues section, rendered as a repository block, is walked
+ * apart: its rows are evaluated by issue key, its counter refreshed, and it
+ * is hidden while no row is left; the attention of its visible rows is
+ * counted.
  * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync }
- * @returns {number} how many pull requests are left shown and need attention
+ * @returns {number} how many pull requests and orphaned issues are left shown and need attention
  */
 export function filterBranches(filters) {
     const pass = {
@@ -372,7 +382,7 @@ export function filterBranches(filters) {
     };
 
     let shownRepositories = 0;
-    for (const repository of document.querySelectorAll('.repository')) {
+    for (const repository of document.querySelectorAll('.repository:not(.orphaned-issues)')) {
         let repositoryTotal = 0;
         let repositoryVisible = 0;
         for (const rootBranch of repository.querySelectorAll('.root-branch')) {
@@ -398,6 +408,8 @@ export function filterBranches(filters) {
     // tree while every repository is hidden
     const noMatch = document.querySelector('.tree-no-match');
     if (noMatch) noMatch.hidden = shownRepositories > 0;
+
+    filterOrphanedIssues(pass);
 
     return pass.shownAttention;
 }
@@ -458,6 +470,33 @@ function filterPullRequest(pullRequestElement, pass) {
     }
 
     return { total: children.total + 1, visible: children.visible + (isVisible ? 1 : 0) };
+}
+
+// The orphaned issues section: one row per issue in review without a pull
+// request, evaluated by its key (a row the index does not know is hidden),
+// highlighted when it waits for a selected participant; the section's
+// counter is refreshed and the section hidden while no row is visible
+function filterOrphanedIssues(pass) {
+    const section = document.querySelector('.orphaned-issues');
+    if (!section) return;
+    let total = 0;
+    let visible = 0;
+    for (const row of section.querySelectorAll('.orphaned-issue')) {
+        const entry = pass.index.orphanedIssuesByKey.get(row.dataset.issueKey);
+        const { visible: isVisible, attention } = entry
+            ? evaluateOrphanedIssue(entry, pass.filters)
+            : { visible: false, attention: false };
+        row.classList.toggle('needs-attention', attention);
+        setDisplay(row, isVisible ? '' : 'none');
+        total++;
+        if (isVisible) {
+            visible++;
+            if (attention) pass.shownAttention++;
+        }
+    }
+    const counter = section.querySelector('.repo-pr-counter');
+    if (counter) updateCounterDisplay(counter, visible, total);
+    setDisplay(section, visible > 0 ? '' : 'none');
 }
 
 // Only touches the style when it changes, to keep style invalidation minimal
