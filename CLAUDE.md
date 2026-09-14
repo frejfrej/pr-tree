@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.10.0** (as of 2026-09-14)
+Current version: **2.10.1** (as of 2026-09-14)
 
 ## Technology Stack
 
@@ -202,7 +202,7 @@ pr-tree/
 - `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only (`work` only with participants selected); parameters that are not filters are kept, the people parameters of before 2.8.0 are removed
 
 **public/counter-utils.js**
-- `updateCounterDisplay(element, visible, total, noun = 'pull request')`: the `n/total` text and tooltip of a counter (the noun is `issue` for the orphaned issues section); the counts come from the filter pass
+- `updateCounterDisplay(element, visible, total, noun = 'pull request')`: the `n/total` text and tooltip of a counter (the noun is `issue` for the orphaned issues section, pluralised from the number it follows: "1 filtered issue out of 13 total"); the counts come from the filter pass; tested with a fake element in `test/counter-utils.test.mjs`
 
 **fixtures/generate.mjs** and **fixtures/index.mjs**
 - `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one: OK statuses, conflicts (about one in ten of them partial, with a reason), and failures (about 4%, with a reason), each seeded by the pull request's key (repository and commits) so a pull request shared by two projects gets the same status
@@ -234,7 +234,7 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.10.0",
+  "version": "2.10.1",
   "releaseDate": "2026-09-14",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
@@ -560,7 +560,7 @@ Three streams available:
 
 ### Testing Approach
 - **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `initializeFilter`, `evaluatePullRequest`, `evaluateOrphanedIssue`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`, `renderParticipant`) and the fixture generator (volumes, determinism, deep stack, hierarchy, the participants list), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time, the TTLs raised during a rate-limit pause (with `mock.timers` on `Date`, since node-cache reads `Date.now()`) and the cache statistics (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`), the Atlassian wrapper with a fake `fetch` and a clock variable (`test/atlassian-fetch.test.mjs`: the pause after a 429 from either API, the failure messages with and without the URL, what the routes answer during a pause), the project data against a fake Atlassian (`test/project-data.test.mjs`: pull-request pagination, the Jira batches of 50 and the parents fetched after them, the fix versions inherited, the orphaned issues (their fields, their parents fetched with the linked issues' parents), the sprints of every board, the hash and the commit counts fetched only when it changed, `pullRequestsByDestination` keyed across repositories), the server's SYNC computation against a fake Bitbucket answering diffstats and diffs by URL (`test/sync-statuses.test.mjs`: the requests made, the statuses and reasons sent, what is stored in `sync-cache.json` under the rule-version prefix, the summary log line); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory), the documented shape of `/api/pull-requests/:project` and its `dataHash` stable across calls, the five counters of `/api/cache/stats`, and the answers to an unknown project (500 from the pull requests route, whose `buildProjectData` throws "Project not found" and whose route maps every error to 500; 404 from the sync statuses route)
-- **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` (the routes and the wiring, the fixture-mode guard) is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`, `public/multi-select.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`, `counter-utils.js`) are low because only their pure helpers are tested; no threshold
+- **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` (the routes and the wiring, the fixture-mode guard) is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`, `public/multi-select.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`) are low because only their pure helpers are tested; no threshold
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)
 - **Regression testing**: Test all filters after making changes
