@@ -11,10 +11,33 @@
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
+ * Every text from Bitbucket or Jira (titles, branch and repository names,
+ * summaries, display names, priority names, URLs) goes through escapeHtml
+ * before it is interpolated, whether into an attribute or between tags; the
+ * one exception is the rendered title and description of a pull request,
+ * HTML made by Bitbucket, which is URL-encoded into a data attribute and
+ * shown as HTML by the popover.
  *
  * Nothing here touches the DOM at import time, so the rendering can be
  * unit-tested with node:test.
  */
+
+/**
+ * The text as HTML: the five characters that can end an attribute or start a
+ * tag are escaped, so it can be interpolated anywhere. null and undefined
+ * give an empty string.
+ */
+export function escapeHtml(text) {
+    if (text === null || text === undefined) {
+        return '';
+    }
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 /**
  * The tree as an HTML string: one block per repository, its root branches and
@@ -42,7 +65,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
                         <i class="fas fa-chevron-down"></i>
                         <i class="fas fa-chevron-right"></i>
                     </button>
-                    <h2 class="repository-name">${repoName}</h2>
+                    <h2 class="repository-name">${escapeHtml(repoName)}</h2>
                     <div class="repo-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
                         ${pullRequestCount}
                     </div>
@@ -112,8 +135,8 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <h3 class="root-branch-name">
-                            <a href="${branchUrl}" target="_blank" onclick="event.stopPropagation();" class="root-branch-link">
-                                ${rootBranch}
+                            <a href="${escapeHtml(branchUrl)}" target="_blank" onclick="event.stopPropagation();" class="root-branch-link">
+                                ${escapeHtml(rootBranch)}
                                 <i class="fas fa-external-link-alt external-link-icon"></i>
                             </a>
                         </h3>
@@ -206,14 +229,11 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
 
         jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
             const priority = issueDetails.fields.priority;
-            const priorityHtml = priority ?
-                `<img src="${priority.iconUrl}" alt="${priority.name}" class="jira-priority-icon" title="${priority.name}">` : '';
-
-            return `<li>${priorityHtml}<a href="https://${jiraSiteName}.atlassian.net/browse/${issueDetails.key}" target="_blank"
-                       data-issue-key="${issueDetails.key}" 
-                       data-issue-summary="${issueDetails.fields.summary}"
+            return `<li>${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
+                       data-issue-key="${escapeHtml(issueDetails.key)}"
+                       data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
-                       ${issueDetails.key} (${issueDetails.fields.status.name})
+                       ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status.name)})
                     </a></li>`;
         }).join('');
 
@@ -253,8 +273,8 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
             ` : ''}
             <div class="conflicts-counter"
                  data-id="conflicts_${pullRequest.id}"
-                 data-repo-name="${pullRequest.source.repository.name}"
-                 data-spec="${spec}">
+                 data-repo-name="${escapeHtml(pullRequest.source.repository.name)}"
+                 data-spec="${escapeHtml(spec)}">
             </div>
         </div>
     `;
@@ -270,11 +290,11 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                     <div class="pull-request-info">
                         <div class="pull-request-header">
                             ${toggleButton}
-                            <a href="${pullRequest.links.html.href}" target="_blank" 
+                            <a href="${escapeHtml(pullRequest.links.html.href)}" target="_blank"
                                class="pull-request-link"
                                data-rendered-title="${encodeURIComponent(renderedTitle)}"
                                data-rendered-description="${encodeURIComponent(renderedDescription)}">
-                               ${pullRequest.title}
+                               ${escapeHtml(pullRequest.title)}
                             </a>
                         </div>
                     </div>
@@ -326,12 +346,27 @@ export function renderParticipant(participant, status) {
         console.log(`${participant.display_name} participant's status is invalid: ${status}`);
     }
 
+    const name = escapeHtml(participant.display_name);
     return `
-        <span class="image-container" data-author="${participant.display_name}" data-review-status="${status}">
-            <img src="${participant.links.avatar.href}" alt="${participant.display_name}">
+        <span class="image-container" data-author="${name}" data-review-status="${status}">
+            <img src="${escapeHtml(participant.links.avatar.href)}" alt="${name}">
             <i class="fas ${iconClass} icon"></i>
         </span>
     `;
+}
+
+// The priority icon of an issue, nothing without a priority
+function renderPriority(priority) {
+    if (!priority) {
+        return '';
+    }
+    const name = escapeHtml(priority.name);
+    return `<img src="${escapeHtml(priority.iconUrl)}" alt="${name}" class="jira-priority-icon" title="${name}">`;
+}
+
+// The Jira page of an issue, escaped for an href
+function issueUrl(jiraSiteName, key) {
+    return escapeHtml(`https://${jiraSiteName}.atlassian.net/browse/${key}`);
 }
 
 // An orphaned issue not updated for this many days gets a warning line
@@ -373,9 +408,8 @@ export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } 
 // One row of the section, shaped like a pull request: the header (priority,
 // key, summary), then the details (assignee, last update, the stale warning)
 function renderOrphanedIssue(issue, jiraSiteName, now) {
-    const priority = issue.fields.priority;
-    const priorityHtml = priority ?
-        `<img src="${priority.iconUrl}" alt="${priority.name}" class="jira-priority-icon" title="${priority.name}">` : '';
+    const key = escapeHtml(issue.key);
+    const summary = escapeHtml(issue.fields.summary);
     const updated = issue.fields.updated || '';
     // Jira writes the offset without a colon (+0000), outside the ECMAScript
     // date format: put the colon in so every engine parses it
@@ -389,22 +423,22 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
         </div>
     ` : '';
     return `
-        <div class="orphaned-issue status-in-review" data-issue-key="${issue.key}">
+        <div class="orphaned-issue status-in-review" data-issue-key="${key}">
             <div class="pull-request-content">
                 <div class="pull-request-header">
-                    ${priorityHtml}
-                    <a href="https://${jiraSiteName}.atlassian.net/browse/${issue.key}" target="_blank"
-                       data-issue-key="${issue.key}"
-                       data-issue-summary="${issue.fields.summary}"
+                    ${renderPriority(issue.fields.priority)}
+                    <a href="${issueUrl(jiraSiteName, issue.key)}" target="_blank"
+                       data-issue-key="${key}"
+                       data-issue-summary="${summary}"
                        class="jira-issue-link">
-                       ${issue.key}
+                       ${key}
                     </a>
-                    <span class="orphaned-issue-summary">${issue.fields.summary}</span>
+                    <span class="orphaned-issue-summary">${summary}</span>
                 </div>
                 <div class="pull-request-details">
                     <div class="participants">
                         ${renderAssignee(issue.fields.assignee)}
-                        <span class="created-date" title="Last updated">${updated.substring(0, 10)}</span>
+                        <span class="created-date" title="Last updated">${escapeHtml(updated.substring(0, 10))}</span>
                     </div>
                     ${staleHtml}
                 </div>
@@ -421,9 +455,10 @@ function renderAssignee(assignee) {
     }
     const avatars = assignee.avatarUrls || {};
     const avatar = avatars['24x24'] || avatars['48x48'];
+    const name = escapeHtml(assignee.displayName);
     return `
-        <span class="image-container" data-author="${assignee.displayName}" title="Assignee: ${assignee.displayName}">
-            ${avatar ? `<img src="${avatar}" alt="${assignee.displayName}">` : ''}
+        <span class="image-container" data-author="${name}" title="Assignee: ${name}">
+            ${avatar ? `<img src="${escapeHtml(avatar)}" alt="${name}">` : ''}
             <i class="fas fa-user icon"></i>
         </span>
     `;
@@ -443,14 +478,14 @@ export function initializePopovers() {
 
     function showPopover(link) {
         if (link.classList.contains('jira-issue-link')) {
-            const key = link.dataset.issueKey;
-            const summary = link.dataset.issueSummary;
+            // Jira text: shown as text, never parsed as HTML
             popover.className = 'jira-issue-popover';
-            popover.innerHTML = `
-                <div class="jira-issue-popover-key">${key}</div>
-                <div class="jira-issue-popover-summary">${summary}</div>
-            `;
+            popover.replaceChildren(
+                textElement('jira-issue-popover-key', link.dataset.issueKey),
+                textElement('jira-issue-popover-summary', link.dataset.issueSummary)
+            );
         } else {
+            // Bitbucket's rendering of the title and description: HTML by design
             const title = decodeURIComponent(link.dataset.renderedTitle);
             const description = decodeURIComponent(link.dataset.renderedDescription);
             popover.className = 'pull-request-popover';
@@ -474,6 +509,13 @@ export function initializePopovers() {
     function hidePopover() {
         popover.style.display = 'none';
         currentLink = null;
+    }
+
+    function textElement(className, text) {
+        const element = document.createElement('div');
+        element.className = className;
+        element.textContent = text;
+        return element;
     }
 
     document.addEventListener('mouseover', function(event) {
