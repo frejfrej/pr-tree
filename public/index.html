@@ -187,10 +187,11 @@
   <div class="filter-item">
     <span class="filter-label">Work
       <i class="fas fa-info-circle info-icon"
-         title="Pull requests waiting for the selected participants. Ready for reviewers: in review and not approved by them. Ready for assignees: in progress with a linked issue assigned to them. All work: either."></i>
+         title="All work: every pull request the selected participants review or have a linked issue assigned to. Ready for participants: those waiting for them. Ready for reviewers: in review and not approved by them. Ready for assignees: in progress with a linked issue assigned to them."></i>
     </span>
     <select id="workSelect" aria-label="Work" disabled>
       <option value="all">All work</option>
+      <option value="ready">Ready for participants</option>
       <option value="reviewers">Ready for reviewers</option>
       <option value="assignees">Ready for assignees</option>
     </select>

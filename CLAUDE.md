@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.8.0** (as of 2026-09-13)
+Current version: **2.9.0** (as of 2026-09-14)
 
 ## Technology Stack
 
@@ -190,14 +190,14 @@ pr-tree/
 
 **public/app-filter.js**
 - `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees (of the linked issues), reviewers (every participant but the author), pending reviewers (those who have not approved), sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters, and `index.participants`, the sorted names of the assignees and reviewers the participant filter offers (Rovo Dev excluded); built once per data load by `initializeFilter()`, which returns it
-- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; with participants selected, the pull request is kept when it waits for one of them (`computeAttention`: `reviewer` in review and not approved by them, `assignee` in progress with a linked issue assigned to them), the `work` values being `all` (either), `reviewers` and `assignees`; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
+- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; with participants selected, the pull request is kept when one of them reviews it or has a linked issue assigned to it (`work` = `all`, the default, from the `reviewers` and `assignees` sets of the entry) or when it waits for one of them (`computeAttention`: `reviewer` in review and not approved by them, `assignee` in progress with a linked issue assigned to them), the other `work` values being `ready` (either attention), `reviewers` and `assignees`; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
 - `filterBranches(filters)`: collects the SYNC and OK badges once, then one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
 - `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/app-url.js**
 - `projectFromUrl(search, projects)` (pure): the project a query string names when it is one of the given ones (app.js passes `availableProjects`); `null` otherwise, an empty name included
-- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `participant` is repeated, `work` is `reviewers` or `assignees` (anything else reads as `all`); `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are never read
+- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `participant` is repeated, `work` is `ready`, `reviewers` or `assignees` (anything else reads as `all`); `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are never read
 - `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only (`work` only with participants selected); parameters that are not filters are kept, the people parameters of before 2.8.0 are removed
 
 **public/counter-utils.js**
@@ -233,8 +233,8 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.8.0",
-  "releaseDate": "2026-09-13",
+  "version": "2.9.0",
+  "releaseDate": "2026-09-14",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
 }
@@ -350,7 +350,7 @@ let currentFixVersions = [];    // fix version ids
 let currentEpics = [];         // epic keys
 let currentStories = [];       // story keys
 let currentParticipants = [];  // participant names
-let currentWork = 'all';       // 'all', 'reviewers' or 'assignees'
+let currentWork = 'all';       // 'all', 'ready', 'reviewers' or 'assignees'
 let currentSync = "Show all";
 let currentApiResult = null;
 ```
@@ -546,7 +546,7 @@ Three streams available:
 4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the Work select; on Back/Forward SYNC follows the URL while its statuses are loaded
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
 6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
-7. **Participants and Work**: attention is computed by `computeAttention()` from the index (`assignees`, `pendingReviewers`), never from rendered styles; `evaluatePullRequest` takes `participants` and `work` (`all`, `reviewers`, `assignees`); without a participant the work value is ignored, and app.js forces it back to `all`
+7. **Participants and Work**: attention is computed by `computeAttention()` from the index (`assignees`, `pendingReviewers`), never from rendered styles; `evaluatePullRequest` takes `participants` and `work` (`all` keeps every pull request of the participants, `ready`, `reviewers` and `assignees` only those waiting for them); without a participant the work value is ignored, and app.js forces it back to `all`
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
@@ -645,6 +645,6 @@ Version information stored in package.json:
 
 ---
 
-**Last Updated**: 2026-09-13
+**Last Updated**: 2026-09-14
 **For**: AI Assistant usage (Claude, GPT, etc.)
 **Maintained by**: Project contributors

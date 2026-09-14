@@ -24,6 +24,7 @@ test('filtersFromUrl defaults every filter without parameters', () => {
 });
 
 test('filtersFromUrl reads the work values it knows and defaults the others to all', () => {
+    assert.equal(filtersFromUrl('?work=ready').work, 'ready');
     assert.equal(filtersFromUrl('?work=assignees').work, 'assignees');
     assert.equal(filtersFromUrl('?work=reviewers').work, 'reviewers');
     assert.equal(filtersFromUrl('?work=all').work, 'all');
@@ -72,9 +73,13 @@ test('urlWithFilters removes the people parameters of links written before 2.8.0
     assert.equal(url.search, '?project=PROJ&foo=1');
 });
 
-test('urlWithFilters writes the work value only with participants selected', () => {
+test('urlWithFilters writes the work value only with participants selected, and never its default', () => {
     const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'PROJ', filters: { ...noFilters, work: 'reviewers' } });
     assert.equal(url.search, '?project=PROJ');
+    const ready = urlWithFilters(new URL('http://localhost:3000/'), { project: 'PROJ', filters: { ...noFilters, participants: ['John'], work: 'ready' } });
+    assert.equal(ready.search, '?project=PROJ&participant=John&work=ready');
+    const all = urlWithFilters(new URL('http://localhost:3000/'), { project: 'PROJ', filters: { ...noFilters, participants: ['John'], work: 'all' } });
+    assert.equal(all.search, '?project=PROJ&participant=John');
 });
 
 test('urlWithFilters without a project drops the project parameter', () => {

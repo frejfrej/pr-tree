@@ -27,8 +27,9 @@
     * Keeps the pull requests delivering the selected issues: the linked issue itself, or the parent of a linked sub-task
 * Provides a participants filter
     * Lists the assignees of the linked Jira issues and the reviewers of the pull requests
-    * Keeps the pull requests waiting for the selected participants, highlighted in red: In Review pull requests they have not approved, In Progress pull requests with a linked issue assigned to them
-* Provides a work filter next to it: "All work" (either kind), "Ready for reviewers" or "Ready for assignees"
+    * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
+    * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved, In Progress pull requests with a linked issue assigned to them
+* Provides a work filter next to it: "All work" (every pull request of the participants, the default), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
 * Provides a fix version filter
     * Filters pull requests based on the fixVersion field of associated Jira issues
     * Dynamically populates with all available fixVersions from the project's Jira issues
@@ -76,6 +77,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.9.0
+    * The Work select's "All work" now keeps every pull request of the selected participants: the ones they review, approved or not, and the ones with a linked issue assigned to them, whatever its status; the former "All work" (only the pull requests waiting for them) is renamed "Ready for participants" (URL value `work=ready`); "All work" is the default
 * Version 2.8.0
     * The Assignee, Reviewer, Ready for assignee and Ready for reviewer filters are replaced by a Participants filter (the assignees of the linked issues and the reviewers of the pull requests, one list) and a Work select: "All work" keeps the pull requests waiting for the selected participants as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only; a participant's pull requests that need nothing from them are no longer listed
     * URL parameters `participant` (repeated) and `work` (`reviewers` or `assignees`); the former `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready` parameters are ignored and removed from the address bar

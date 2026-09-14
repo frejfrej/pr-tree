@@ -15,7 +15,7 @@ let currentFixVersions = [];
 let currentEpics = [];
 let currentStories = [];
 let currentParticipants = [];
-let currentWork = 'all'; // 'all', 'reviewers' or 'assignees'
+let currentWork = 'all'; // 'all', 'ready', 'reviewers' or 'assignees'
 let currentSync = "Show all";
 let currentApiResult = null;
 let reloadInterval = 100;
@@ -154,7 +154,7 @@ function initializeWorkFilter() {
 }
 
 // The Work select depends on the participants: while none is selected the
-// state is back to "All work" (so a work=reviewers without a participant in
+// state is back to "All work" (so a work=ready without a participant in
 // the URL is dropped) and the select is disabled; otherwise it shows the state
 function updateWorkSelect() {
     if (currentParticipants.length === 0) currentWork = 'all';

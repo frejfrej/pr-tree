@@ -53,6 +53,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     const defaults = { participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all' };
     assert.equal(countActiveFilters(defaults), 0);
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane', 'Bob'] }), 1);
+    assert.equal(countActiveFilters({ ...defaults, participants: ['Jane'], work: 'ready' }), 2);
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane'], work: 'reviewers' }), 2);
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane'], work: 'assignees' }), 2);
     assert.equal(countActiveFilters({ ...defaults, work: 'reviewers' }), 0); // without a participant the work value is ignored, like in evaluatePullRequest
@@ -165,13 +166,30 @@ test('evaluatePullRequest SYNC filter follows the rendered badges: SYNC, OK, or 
     assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, syncBadge).visible, false);
 });
 
-test('evaluatePullRequest with participants keeps the pull requests waiting for them, as reviewers or as assignees', () => {
+test('evaluatePullRequest All work keeps every pull request of the participants, waiting for them or not', () => {
     const { pullRequestsById } = buildFilterIndex(sampleApiResult);
     const entry = pullRequestsById.get(10); // Jane reviews it and has not approved, Bob approved; PROJ-1 is assigned to Jane
     const inProgress = { ...rendered, statusInProgress: true, statusInReview: false };
     const neither = { ...rendered, statusInReview: false };
     const evaluate = (filters, state) => evaluatePullRequest(entry, { ...noFilter, ...filters }, state);
-    // All work: either attention
+    // The attention still says whether the pull request waits for them (the highlight)
+    assert.deepEqual(evaluate({ participants: ['Jane'] }, rendered), { visible: true, attention: { assignee: false, reviewer: true, any: true } });
+    assert.deepEqual(evaluate({ participants: ['Jane'] }, inProgress), { visible: true, attention: { assignee: true, reviewer: false, any: true } });
+    assert.deepEqual(evaluate({ participants: ['Jane'] }, neither), { visible: true, attention: { assignee: false, reviewer: false, any: false } }); // neither in review nor in progress: still Jane's
+    assert.deepEqual(evaluate({ participants: ['Bob'] }, rendered), { visible: true, attention: { assignee: false, reviewer: false, any: false } }); // Bob approved: nothing waits for him, still his review
+    assert.equal(evaluate({ participants: ['Bob'] }, inProgress).visible, true);
+    assert.equal(evaluate({ participants: ['Zoé'] }, rendered).visible, false); // neither a reviewer nor an assignee
+    assert.equal(evaluate({ participants: ['Zoé', 'Bob'] }, rendered).visible, true); // any selected participant
+    assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, participants: ['Jane'] }, rendered).visible, false); // only Rovo Dev reviews it
+});
+
+test('evaluatePullRequest Ready for participants keeps the pull requests waiting for them, as reviewers or as assignees', () => {
+    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const entry = pullRequestsById.get(10);
+    const inProgress = { ...rendered, statusInProgress: true, statusInReview: false };
+    const neither = { ...rendered, statusInReview: false };
+    const evaluate = (filters, state) => evaluatePullRequest(entry, { ...noFilter, work: 'ready', ...filters }, state);
+    // Either attention
     assert.deepEqual(evaluate({ participants: ['Jane'] }, rendered), { visible: true, attention: { assignee: false, reviewer: true, any: true } });
     assert.deepEqual(evaluate({ participants: ['Jane'] }, inProgress), { visible: true, attention: { assignee: true, reviewer: false, any: true } });
     assert.equal(evaluate({ participants: ['Jane'] }, neither).visible, false); // neither in review nor in progress
@@ -193,7 +211,7 @@ test('evaluatePullRequest Ready for reviewers keeps reviewer attention only, Rea
 
 test('evaluatePullRequest without a participant ignores the work value', () => {
     const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    for (const work of ['all', 'reviewers', 'assignees']) {
+    for (const work of ['all', 'ready', 'reviewers', 'assignees']) {
         assert.equal(evaluatePullRequest(pullRequestsById.get(10), { ...noFilter, work }, rendered).visible, true);
         assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, work }, rendered).visible, true);
     }
