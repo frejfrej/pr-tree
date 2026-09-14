@@ -180,8 +180,8 @@ otherwise:
 - No new colour; no hard-coded colour.
 - The card rules of `.pull-request` (`.pull-request`, `.pull-request:hover`,
   `.pull-request a`, `.pull-request a:hover`) gain `.orphaned-issue` in their
-  selector lists, or section 7 restates them with the same tokens; the
-  in-review border comes from the shared `.status-in-review` class.
+  selector lists (no duplicated rule); the in-review border comes from the
+  shared `.status-in-review` class.
 - `.orphaned-issue.needs-attention .jira-issue-link { color:
   var(--attention-color); }`.
 - `.orphaned-issue-summary` (inline, normal weight, `var(--text-color)`),
