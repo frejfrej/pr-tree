@@ -71,7 +71,7 @@ test('countActiveFilters counts filters, not selected values', () => {
 
 // ------------------------------------------------------------------ index and evaluation
 
-import { buildFilterIndex, evaluatePullRequest, initializeFilter } from '../public/app-filter.js';
+import { buildFilterIndex, evaluatePullRequest, evaluateOrphanedIssue, initializeFilter } from '../public/app-filter.js';
 
 const sampleApiResult = {
     pullRequests: [
@@ -130,6 +130,7 @@ test('buildFilterIndex tolerates an empty result', () => {
     const index = buildFilterIndex({});
     assert.equal(index.pullRequestsById.size, 0);
     assert.deepEqual(index.participants, []);
+    assert.equal(index.orphanedIssuesByKey.size, 0);
 });
 
 test('evaluatePullRequest shows everything without filters', () => {
@@ -233,6 +234,103 @@ test('evaluatePullRequest without a participant ignores the work value', () => {
         assert.equal(evaluatePullRequest(pullRequestsById.get(10), { ...noFilter, work }, rendered).visible, true);
         assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, work }, rendered).visible, true);
     }
+});
+
+// The orphaned issues (in review, no pull request) as the server sends them:
+// the same fields as the linked issues plus `updated`; the story of the
+// sub-task is a parent-only entry of jiraIssuesDetails, under an epic
+const orphanedApiResult = {
+    ...sampleApiResult,
+    jiraIssuesDetails: [
+        ...sampleApiResult.jiraIssuesDetails,
+        { key: 'PROJ-20', fields: { summary: 'Story twenty', issuetype: { name: 'Story' }, parent: { key: 'PROJ-500', fields: { summary: 'Epic five hundred', issuetype: { name: 'Epic', hierarchyLevel: 1 } } } } }
+    ],
+    sprintIssues: { ...sampleApiResult.sprintIssues, 5241: ['PROJ-9', 'PROJ-21'] },
+    orphanedIssues: [
+        { key: 'PROJ-21', fields: { summary: 'Fix the Login page', issuetype: { name: 'Sub-task', subtask: true }, parent: { key: 'PROJ-20', fields: { summary: 'Story twenty', issuetype: { name: 'Story' } } }, assignee: { displayName: 'Bob' }, fixVersions: [{ id: 200, name: '2.0' }] } },
+        { key: 'PROJ-22', fields: { summary: 'Unassigned task', issuetype: { name: 'Task' }, assignee: null, fixVersions: [] } },
+        { key: 'PROJ-23', fields: { summary: 'Rovo work', issuetype: { name: 'Task' }, assignee: { displayName: 'Rovo Dev' }, fixVersions: [] } }
+    ]
+};
+
+test('buildFilterIndex indexes the orphaned issues: text, assignee, sprints, fix versions, epic through the parent story, story', () => {
+    const index = buildFilterIndex(orphanedApiResult);
+    const subTask = index.orphanedIssuesByKey.get('PROJ-21');
+    assert.equal(subTask.issue.key, 'PROJ-21');
+    assert.equal(subTask.searchText, 'proj-21 fix the login page');
+    assert.deepEqual([...subTask.assignees], ['Bob']);
+    assert.deepEqual([...subTask.sprints], ['5241']);
+    assert.deepEqual([...subTask.fixVersions], ['200']);
+    assert.deepEqual([...subTask.epics], ['PROJ-500']);
+    assert.deepEqual([...subTask.stories], ['PROJ-20']);
+    const task = index.orphanedIssuesByKey.get('PROJ-22');
+    assert.equal(task.assignees.size, 0);
+    assert.equal(task.sprints.size, 0);
+    assert.deepEqual([...task.stories], ['PROJ-22']); // a standard issue is its own story
+    assert.equal(task.epics.size, 0);
+    // The lists the filters offer include what the orphaned issues bring (PROJ-1 and PROJ-2 are the stories of the pull requests)
+    assert.deepEqual([...index.epics.keys()], ['PROJ-500']);
+    assert.deepEqual([...index.stories.keys()].sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23']);
+    assert.deepEqual(index.participants, ['Bob', 'Jane']); // Bob reviews a pull request already; Rovo Dev stays excluded
+    assert.equal(index.pullRequestsById.size, 2); // the pull requests are indexed as before
+});
+
+test('buildFilterIndex resolves a parent that is itself an orphaned issue (the server does not duplicate it into the details)', () => {
+    // The story PROJ-30 is in review with no pull request while its sub-task PROJ-31 is linked by pull request 12
+    const index = buildFilterIndex({
+        pullRequests: [{ id: 12, title: 'PROJ-31 login', source: { branch: { name: 'feature/PROJ-31' } }, author, participants: [{ user: author, approved: false }] }],
+        jiraIssuesMap: { 12: ['PROJ-31'] },
+        jiraIssuesDetails: [
+            { key: 'PROJ-31', fields: { summary: 'Login sub-task', issuetype: { name: 'Sub-task', subtask: true }, parent: { key: 'PROJ-30', fields: { summary: 'Login story', issuetype: { name: 'Story' } } }, assignee: null, fixVersions: [] } }
+        ],
+        sprintIssues: {},
+        orphanedIssues: [
+            { key: 'PROJ-30', fields: { summary: 'Login story', issuetype: { name: 'Story' }, parent: { key: 'PROJ-600', fields: { summary: 'Login epic', issuetype: { name: 'Epic', hierarchyLevel: 1 } } }, assignee: null, fixVersions: [] } }
+        ]
+    });
+    assert.deepEqual([...index.pullRequestsById.get(12).epics], ['PROJ-600']); // the epic of the sub-task, through the orphaned story
+    assert.deepEqual([...index.orphanedIssuesByKey.get('PROJ-30').epics], ['PROJ-600']);
+    assert.deepEqual([...index.epics.keys()], ['PROJ-600']);
+});
+
+test('evaluateOrphanedIssue applies the text, sprint, fix version, epic and story filters and ignores SYNC', () => {
+    const { orphanedIssuesByKey } = buildFilterIndex(orphanedApiResult);
+    const subTask = orphanedIssuesByKey.get('PROJ-21');
+    const visible = filters => evaluateOrphanedIssue(subTask, { ...noFilter, ...filters }).visible;
+    assert.equal(visible({}), true);
+    assert.equal(visible({ text: 'login PROJ-21' }), true);
+    assert.equal(visible({ text: 'banner' }), false);
+    assert.equal(visible({ sprints: ['5241'] }), true);
+    assert.equal(visible({ sprints: ['5240'] }), false);
+    assert.equal(visible({ fixVersions: ['200'] }), true);
+    assert.equal(visible({ fixVersions: ['100'] }), false);
+    assert.equal(visible({ epics: ['PROJ-500'] }), true);
+    assert.equal(visible({ epics: ['PROJ-1'] }), false);
+    assert.equal(visible({ stories: ['PROJ-20'] }), true);
+    assert.equal(visible({ stories: ['PROJ-21'] }), false);
+    assert.equal(visible({ sync: 'requested' }), true); // nothing in the section has a SYNC status
+    assert.equal(visible({ sync: 'unchecked' }), true);
+    assert.equal(visible({ sprints: ['5241'], text: 'banner' }), false); // every filter must match
+});
+
+test('evaluateOrphanedIssue keeps an issue assigned to a selected participant, with attention, except under the review Work values', () => {
+    const { orphanedIssuesByKey } = buildFilterIndex(orphanedApiResult);
+    const bobs = orphanedIssuesByKey.get('PROJ-21');
+    const unassigned = orphanedIssuesByKey.get('PROJ-22');
+    assert.deepEqual(evaluateOrphanedIssue(bobs, noFilter), { visible: true, attention: false });
+    assert.deepEqual(evaluateOrphanedIssue(unassigned, noFilter), { visible: true, attention: false });
+    for (const work of ['all', 'issues', 'ready', 'assignees']) {
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: true, attention: true }, work);
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane', 'Bob'], work }), { visible: true, attention: true }, work);
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane'], work }), { visible: false, attention: false }, work);
+        assert.deepEqual(evaluateOrphanedIssue(unassigned, { ...noFilter, participants: ['Bob'], work }), { visible: false, attention: false }, work);
+    }
+    // Nothing in the section is reviewed: the review values hide it (the attention is still what it is)
+    for (const work of ['reviews', 'reviewers']) {
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: false, attention: true }, work);
+    }
+    // The other filters still apply with participants selected
+    assert.equal(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], text: 'banner' }).visible, false);
 });
 
 // ------------------------------------------------------------------ text filter

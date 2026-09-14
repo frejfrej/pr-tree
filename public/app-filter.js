@@ -81,8 +81,8 @@ function issueReference(issue) {
  * sub-task (the story is looked up in issuesByKey, where the server puts the
  * parents it fetched). Pure.
  * @param {object} issue - a linked issue or an inline parent
- * @param {Map<string, object>} issuesByKey - the issues of jiraIssuesDetails by
- *   key (required: the sub-task branch reads it)
+ * @param {Map<string, object>} issuesByKey - the issues of jiraIssuesDetails and
+ *   the orphaned issues by key (required: the sub-task branch reads it)
  * @returns {{ key: string, summary: string } | null}
  */
 export function epicOf(issue, issuesByKey) {
@@ -170,12 +170,16 @@ const excludedParticipant = 'Rovo Dev';
 /**
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
- * filters compare against; and the lists the epic, story and participant
- * filters offer. Pure.
- * @returns {{ pullRequestsById: Map<number, object>, epics: Map<string, { key, summary }>, stories: Map<string, { key, summary }>, participants: string[] }}
+ * filters compare against; one entry per orphaned issue (in review, no pull
+ * request) with the same sets; and the lists the epic, story and participant
+ * filters offer, the orphaned issues included. Pure.
+ * @returns {{ pullRequestsById: Map<number, object>, orphanedIssuesByKey: Map<string, object>, epics: Map<string, { key, summary }>, stories: Map<string, { key, summary }>, participants: string[] }}
  */
-export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {} }) {
-    const issuesByKey = new Map(jiraIssuesDetails.map(issue => [issue.key, issue]));
+export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {}, orphanedIssues = [] }) {
+    // The parents are looked up among the details (where the server puts the
+    // parents it fetched) and among the orphaned issues (a parent that is an
+    // orphaned issue itself is not fetched again)
+    const issuesByKey = new Map([...jiraIssuesDetails, ...orphanedIssues].map(issue => [issue.key, issue]));
 
     const sprintsByIssueKey = new Map();
     for (const [sprintId, issueKeys] of Object.entries(sprintIssues)) {
@@ -232,10 +236,32 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         for (const name of entry.reviewers) participants.add(name);
         pullRequestsById.set(pullRequest.id, entry);
     }
+
+    // The orphaned issues: the issue itself is what the text filter searches
+    // and what the sets are built from; its assignee is its only person
+    const orphanedIssuesByKey = new Map();
+    for (const issue of orphanedIssues) {
+        const epic = epicOf(issue, issuesByKey);
+        if (epic) epics.set(epic.key, epic);
+        const story = storyOf(issue);
+        if (story) stories.set(story.key, story);
+        const assignee = issue.fields.assignee && issue.fields.assignee.displayName;
+        if (assignee) participants.add(assignee);
+        orphanedIssuesByKey.set(issue.key, {
+            issue,
+            searchText: [issue.key, issue.fields.summary].filter(Boolean).join(' ').toLowerCase(),
+            assignees: new Set(assignee ? [assignee] : []),
+            sprints: new Set(sprintsByIssueKey.get(issue.key) || []),
+            fixVersions: new Set((issue.fields.fixVersions || []).map(version => String(version.id))),
+            epics: new Set(epic ? [epic.key] : []),
+            stories: new Set(story ? [story.key] : [])
+        });
+    }
     participants.delete(excludedParticipant);
 
     return {
         pullRequestsById,
+        orphanedIssuesByKey,
         epics,
         stories,
         participants: [...participants].sort((a, b) => a.localeCompare(b))
@@ -243,6 +269,18 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 }
 
 // -------------------------------------------------------------- evaluation
+
+// The filters an indexed pull request and an indexed orphaned issue share:
+// the text, and any selected value of the sprint, fix version, epic and story
+// filters (an empty selection matches everything)
+function matchesIssueFilters(entry, { text = '', sprints = [], fixVersions = [], epics = [], stories = [] }) {
+    const textMatch = matchesText(entry.searchText, parseTextQuery(text));
+    const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
+    const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
+    const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
+    const storyMatch = stories.length === 0 || stories.some(key => entry.stories.has(key));
+    return textMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch;
+}
 
 /**
  * Applies the filters to one indexed pull request. Pure.
@@ -253,10 +291,10 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
  *   statusInProgress, statusInReview (from the Jira statuses), hasSyncLabel and hasOkBadge (the painted SYNC badges)
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, { text = '', participants = [], work = 'all', sprints, fixVersions, epics = [], stories = [], sync }, { statusInProgress, statusInReview, hasSyncLabel, hasOkBadge }) {
+export function evaluatePullRequest(entry, filters, { statusInProgress, statusInReview, hasSyncLabel, hasOkBadge }) {
+    const { participants = [], work = 'all', sync } = filters;
     const attention = computeAttention(entry, { statusInProgress, statusInReview, participants });
 
-    const textMatch = matchesText(entry.searchText, parseTextQuery(text));
     // Participants: without a selection, everybody's pull requests; with one, every
     // pull request a selected participant reviews ("All reviews"), has a linked
     // issue assigned to ("All issues") or either ("All work"), or only those
@@ -271,11 +309,6 @@ export function evaluatePullRequest(entry, { text = '', participants = [], work 
                     work === 'reviews' ? reviews() :
                         work === 'issues' ? issues() :
                             reviews() || issues());
-    // Empty selection = show all; otherwise match ANY selected value
-    const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
-    const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
-    const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
-    const storyMatch = stories.length === 0 || stories.some(key => entry.stories.has(key));
     // 'OK' means computed without conflict; 'unchecked' is a pull request with neither badge
     const syncMatch = sync === 'Show all' ||
         (sync === 'requested' && hasSyncLabel) ||
@@ -283,7 +316,28 @@ export function evaluatePullRequest(entry, { text = '', participants = [], work 
         (sync === 'unchecked' && !hasSyncLabel && !hasOkBadge);
 
     return {
-        visible: textMatch && participantMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch && syncMatch,
+        visible: matchesIssueFilters(entry, filters) && participantMatch && syncMatch,
+        attention
+    };
+}
+
+/**
+ * Applies the filters to one indexed orphaned issue. Pure. The issue is in
+ * review with no pull request: it waits for its assignee, so with
+ * participants selected it is kept when assigned to one of them, under every
+ * Work value but the review ones ("All reviews", "Ready for reviewers": nothing
+ * here is reviewed); the SYNC filter does not apply.
+ * @param {object} entry - an entry of buildFilterIndex().orphanedIssuesByKey
+ * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync }
+ * @returns {{ visible: boolean, attention: boolean }} attention: assigned to a selected participant
+ */
+export function evaluateOrphanedIssue(entry, filters) {
+    const { participants = [], work = 'all' } = filters;
+    const attention = participants.some(name => entry.assignees.has(name));
+    const participantMatch = participants.length === 0 ||
+        (attention && work !== 'reviews' && work !== 'reviewers');
+    return {
+        visible: matchesIssueFilters(entry, filters) && participantMatch,
         attention
     };
 }
