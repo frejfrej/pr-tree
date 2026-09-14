@@ -3,17 +3,26 @@
  *
  * Repositories, root branches and pull requests with children can be
  * collapsed. Every code path that changes a collapsed state goes through the
- * set*Collapsed helpers, so the collapsed class, the children container and
- * the child counter always change together. The chevrons are pure CSS, driven
- * by the "collapsed" class.
+ * set*Collapsed helpers, so the collapsed class, the children container, the
+ * child counter and the aria-expanded of the toggle button always change
+ * together. The chevrons are pure CSS, driven by the "collapsed" class.
  */
+
+// The toggle button of a block announces whether the block is open
+function setExpanded(button, collapsed) {
+    if (button) {
+        button.setAttribute('aria-expanded', String(!collapsed));
+    }
+}
 
 export function setRepositoryCollapsed(repository, collapsed) {
     repository.classList.toggle('collapsed', collapsed);
+    setExpanded(repository.querySelector(':scope > .repository-header > .toggle-button'), collapsed);
 }
 
 export function setRootBranchCollapsed(rootBranch, collapsed) {
     rootBranch.classList.toggle('collapsed', collapsed);
+    setExpanded(rootBranch.querySelector(':scope > .root-branch-header > .toggle-button'), collapsed);
 }
 
 export function setPullRequestCollapsed(pullRequest, collapsed) {
@@ -23,6 +32,7 @@ export function setPullRequestCollapsed(pullRequest, collapsed) {
     }
     pullRequest.classList.toggle('collapsed', collapsed);
     children.hidden = collapsed;
+    setExpanded(pullRequest.querySelector('.pull-request-header > .toggle-button'), collapsed);
     // The child counter is shown on root pull requests permanently, and on
     // other pull requests only while they are collapsed. counter-utils only
     // refreshes counters carrying the "visible" class.

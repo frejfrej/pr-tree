@@ -5,7 +5,11 @@
  * Nothing here depends on the filter state: the tree is rendered in full, and
  * the filter pass (app-filter.js) hides and counts on the rendered result.
  * The inline onclick handlers of the tree call the toggle functions that
- * app.js installs on window. The pull-request and issue links carry, as data
+ * app.js installs on window; the click of a repository or root branch is on
+ * the whole header (the mouse), and the toggle button inside it, a real
+ * button with a name and aria-expanded, reaches the same handler when the
+ * keyboard activates it, since that click bubbles. toggleButton renders
+ * every one of them, and tree-toggle.js keeps aria-expanded in step. The pull-request and issue links carry, as data
  * attributes, what the popovers show; initializePopovers reads them back, so
  * the writer and the reader of those attributes live together.
  * The orphaned issues section is rendered as a repository block so the
@@ -39,6 +43,16 @@ export function escapeHtml(text) {
         .replace(/'/g, '&#39;');
 }
 
+// The chevron button of a collapsible block. `name` is the accessible name
+// (escaped); the chevrons are decoration. `onclick` is only given for the
+// pull-request button, the others rely on the click of their header.
+function toggleButton(name, onclick = '') {
+    return `<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle ${name}"${onclick ? ` onclick="${onclick}"` : ''}>
+                        <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                    </button>`;
+}
+
 /**
  * The tree as an HTML string: one block per repository, its root branches and
  * the pull requests nested under their parents, most recently updated first.
@@ -61,10 +75,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
         html += `
             <div class="repository">
                 <div class="repository-header" onclick="toggleRepository(this)">
-                    <button class="toggle-button">
-                        <i class="fas fa-chevron-down"></i>
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+                    ${toggleButton(escapeHtml(repoName))}
                     <h2 class="repository-name">${escapeHtml(repoName)}</h2>
                     <div class="repo-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
                         ${pullRequestCount}
@@ -130,10 +141,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             html += `
                 <div class="root-branch">
                     <div class="root-branch-header" onclick="toggleRootBranch(this)">
-                        <button class="toggle-button">
-                            <i class="fas fa-chevron-down"></i>
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
+                        ${toggleButton(escapeHtml(rootBranch))}
                         <h3 class="root-branch-name">
                             <a href="${escapeHtml(branchUrl)}" target="_blank" onclick="event.stopPropagation();" class="root-branch-link">
                                 ${escapeHtml(rootBranch)}
@@ -254,12 +262,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     const descendantCount = calculateDescendants(pullRequest, pullRequestsByDestination);
     const isRootPullRequest = level === 1;
 
-    const toggleButton = hasChildren ? `
-        <button class="toggle-button" onclick="toggleChildren(this)">
-            <i class="fas fa-chevron-down"></i>
-            <i class="fas fa-chevron-right"></i>
-        </button>
-    ` : '';
+    const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests', 'toggleChildren(this)') : '';
 
     // Combine both counters in a container
     const spec = pullRequest.destination.commit?.hash + '..' + pullRequest.source.commit?.hash;
@@ -289,7 +292,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                 <div class="pull-request-main">
                     <div class="pull-request-info">
                         <div class="pull-request-header">
-                            ${toggleButton}
+                            ${toggleButtonHtml}
                             <a href="${escapeHtml(pullRequest.links.html.href)}" target="_blank"
                                class="pull-request-link"
                                data-rendered-title="${encodeURIComponent(renderedTitle)}"
@@ -389,11 +392,8 @@ export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } 
     return `
         <div class="repository orphaned-issues">
             <div class="repository-header" onclick="toggleRepository(this)">
-                <button class="toggle-button">
-                    <i class="fas fa-chevron-down"></i>
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-                <h2 class="repository-name"><i class="fas fa-exclamation-circle"></i> Jira issues in review without a pull request</h2>
+                ${toggleButton('Jira issues in review without a pull request')}
+                <h2 class="repository-name"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Jira issues in review without a pull request</h2>
                 <div class="repo-pr-counter" title="${count} issue${count !== 1 ? 's' : ''}">
                     ${count}
                 </div>

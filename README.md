@@ -9,6 +9,7 @@
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
     * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
+    * Every toggle is a button: Tab reaches it, Enter or Space folds or unfolds, and its state is announced
     * The tab title shows the selected project and, when participants are selected, the number of pull requests and orphaned issues waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
@@ -83,6 +84,7 @@
 
 ## Changelog:
 * Version 2.10.1
+    * The toggle buttons of the repositories, the root branches, the stacked pull requests and the orphaned issues section are real buttons with a name ("Toggle products.secollab") and an `aria-expanded` state kept up to date by every collapse and expand, so a screen reader announces them, and the focus ring is visible on the coloured repository header; Enter and Space on a focused button collapse and expand like a click (#66)
     * Every text from Bitbucket and Jira (pull request titles, branch and repository names, issue summaries and statuses, display names, priority names, URLs) is HTML-escaped when the tree and the orphaned issues section are rendered, and the issue popover shows the summary as text; a `"` or `<` in a Jira summary or a display name no longer breaks the markup (#65)
     * The tooltip of a filtered counter agrees with the number shown: "1 filtered issue out of 13 total", "1 filtered pull request out of 8 total" (#67)
 * Version 2.10.0
