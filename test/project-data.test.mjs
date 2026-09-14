@@ -270,6 +270,18 @@ test('a parent that is itself an orphaned issue is not requested again nor added
     assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions.map(v => v.name), ['5.0']); // inherited from the orphaned story all the same
 });
 
+test('a failed parent request is logged and leaves the issues without their parents', async () => {
+    const linked = issue('PROJ-1', { type: 'Sub-task', parent: 'PROJ-100', fixVersions: [] });
+    const { buildProjectData, logs } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked],
+        intercept: url => (jqlOf(url)?.startsWith('key IN') ? new Response('', { status: 502 }) : undefined)
+    }));
+    const data = await buildProjectData('P', project);
+    assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1']); // no parent-only entry, the build goes on
+    assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions, []);
+    assert.deepEqual(logs.error, ['Error fetching parent issues: Request failed with status code 502']);
+});
+
 test('the active sprints of every scrum board of each Jira project, once each, and their issues 100 at a time', async () => {
     const shared = { id: 7, name: 'Sprint 7', state: 'active' };
     const { buildProjectData, requests, logs } = setUp(fakeAtlassian({
