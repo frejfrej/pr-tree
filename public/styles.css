@@ -801,6 +801,11 @@ select:disabled {
     opacity: 0.8;
 }
 
+/* The header is painted in the primary colour, the focus ring must not be */
+.repository-header .toggle-button:focus-visible {
+    outline-color: var(--on-accent-text);
+}
+
 /* Chevrons: down when open, right when collapsed, one pair per level */
 .toggle-button .fa-chevron-right {
     display: none;

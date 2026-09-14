@@ -189,6 +189,7 @@ test('renderOrphanedIssues renders nothing without issues, otherwise a repositor
     // A repository block: the tree's toggle, collapse-all and toggle-state code applies to it
     assert.equal(count(html, 'class="repository orphaned-issues"'), 1);
     assert.ok(html.includes('onclick="toggleRepository(this)"'));
+    assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle Jira issues in review without a pull request">'));
     assert.ok(html.includes('Jira issues in review without a pull request'));
     assert.match(html, /<div class="repo-pr-counter" title="2 issues">\s*2\s*<\/div>/);
     // One row per issue, keyed for the filter pass, with the in-review border
@@ -304,4 +305,24 @@ test('renderOrphanedIssues escapes the summary, the names and the URLs of an iss
     assert.ok(html.includes('data-author="Ann &lt;&quot;&amp;&quot;&gt;" title="Assignee: Ann &lt;&quot;&amp;&quot;&gt;"'));
     assert.ok(html.includes('src="https://avatars/ann.png?a=&quot;1&quot;" alt="Ann &lt;&quot;&amp;&quot;&gt;"'));
     assert.ok(html.includes('alt="P &quot;1&quot;" class="jira-priority-icon" title="P &quot;1&quot;"'));
+});
+
+// The toggle buttons: real buttons with a name and a state, so the keyboard
+// reaches them and a screen reader knows what they open; the ones of the
+// repositories and root branches carry no handler (their click bubbles to the
+// header's), the one of a pull request carries its own
+test('renderRepositories gives every collapsible block a named toggle button that says it is expanded', () => {
+    const html = renderSample();
+    assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle repo-one">'));
+    assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle repo-two">'));
+    assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle main">'));
+    assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle develop">'));
+    assert.equal(count(html, '<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle the stacked pull requests" onclick="toggleChildren(this)">'), 1); // PR 1 only
+    assert.equal(count(html, '<button'), 5);
+    assert.equal(count(html, 'class="toggle-button"'), 5);
+    assert.equal(count(html, 'aria-expanded="true"'), 5);
+    assert.equal(count(html, '<i class="fas fa-chevron-down" aria-hidden="true"></i>'), 5);
+    // A hostile name stays inside the label
+    const hostile = renderRepositories([pullRequest(8, { repo: 'r"><b>', source: 'x', destination: 'y"z' })], {}, [], new Map([['y"z', []]]), 'site');
+    assert.ok(hostile.includes('aria-label="Toggle r&quot;&gt;&lt;b&gt;"') && hostile.includes('aria-label="Toggle y&quot;z"'));
 });
