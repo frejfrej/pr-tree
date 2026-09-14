@@ -9,12 +9,17 @@
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
     * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
-    * The tab title shows the selected project and, when participants are selected, the number of pull requests waiting for them
+    * The tab title shows the selected project and, when participants are selected, the number of pull requests and orphaned issues waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
 * Displays a link to related issues with the corresponding status
 * Displays the status of the pull requests alongside the status of related issues
+* Lists the Jira issues in review that no pull request links, in a section below the tree
+    * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC does not apply) and is hidden when nothing in it matches
+    * Each issue shows its priority, key (with the same popover as in the tree), summary, assignee and last update; an issue not updated for 14 days gets a warning
+    * With participants selected, an issue assigned to one of them is highlighted like a pull request waiting for them and counted in the tab title; "All reviews" and "Ready for reviewers" hide the section
+    * The section collapses like a repository ("Collapse all" and "Expand all" include it)
 * Provides initial warnings
     * If the pull request was approved by everyone
     * If the pull request is open but related issues are closed or in review
@@ -26,7 +31,7 @@
 * Provides a story filter
     * Keeps the pull requests delivering the selected issues: the linked issue itself, or the parent of a linked sub-task
 * Provides a participants filter
-    * Lists the assignees of the linked Jira issues and the reviewers of the pull requests
+    * Lists the assignees of the linked Jira issues and of the orphaned issues, and the reviewers of the pull requests
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
     * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved, In Progress pull requests with a linked issue assigned to them
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
@@ -77,6 +82,12 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.10.0
+    * The "Jira issues in review without a pull request" section follows the sidebar filters like the tree (every filter but SYNC; a fix version, epic or story filter needs the issue type, fix versions and parent, which the server now fetches for these issues, their parents completed in the same request as the linked issues' parents) and is hidden when nothing in it matches; its header carries a shown/total counter
+    * The section is rendered like a repository block (collapsible, included in "Collapse all" and "Expand all", collapsed state kept across refreshes) with rows shaped like pull requests: priority, key with the issue popover, summary, assignee, last update, and a "No update for N days" warning after 14 days
+    * With participants selected, an orphaned issue assigned to one of them is kept under "All work", "All issues", "Ready for participants" and "Ready for assignees", highlighted and counted in the tab title; "All reviews" and "Ready for reviewers" hide the section
+    * The fix version filter lists the fix versions of the orphaned issues too; the epic, story and participant lists include what they bring
+    * Fixture data: the orphaned issues carry the same fields, some are sub-tasks with their parent, some are in a sprint
 * Version 2.9.0
     * The Work select's "All work" now keeps every pull request of the selected participants: the ones they review, approved or not, and the ones with a linked issue assigned to them, whatever its status; the former "All work" (only the pull requests waiting for them) is renamed "Ready for participants" (URL value `work=ready`); "All work" is the default
     * Two more Work values: "All reviews" (`work=reviews`) keeps the pull requests the selected participants review, approved or not, "All issues" (`work=issues`) the pull requests with a linked issue assigned to them, whatever its status

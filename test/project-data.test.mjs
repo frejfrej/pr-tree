@@ -187,10 +187,10 @@ test('the Jira issues are fetched in batches of 50, then the parents that were n
     assert.equal(searches[0].split(',')[0], 'issueKey in (PROJ-1');
     assert.equal(searches[3], 'key IN (PROJ-500,PROJ-501)'); // each missing parent once, linked parents not asked again
     const fields = url => new URL(url).searchParams.get('fields');
-    const searchUrls = urlsMatching(requests, /search\/jql/);
+    const searchUrls = urlsMatching(requests, /search\/jql/).filter(url => !jqlOf(url).includes('In Review'));
     assert.equal(fields(searchUrls[0]), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype');
     assert.equal(fields(searchUrls[3]), 'key,summary,issuetype,fixVersions,parent');
-    assert.equal(requests.find(r => r.url.includes('search/jql')).options.headers.Authorization, `Basic ${jiraAuth}`);
+    assert.equal(requests.find(r => r.url.includes('issueKey%20in')).options.headers.Authorization, `Basic ${jiraAuth}`);
     assert.deepEqual(data.jiraIssuesDetails.slice(-2).map(i => [i.key, i.fields.issuetype.name]), [['PROJ-500', 'Epic'], ['PROJ-501', 'Story']]);
     assert.equal(data.jiraIssuesDetails.length, 122);
     assert.match(logs.performance.find(line => line.includes('Parent issues fetch')), /^fetchJiraIssuesDetails - Parent issues fetch \(2\) - Duration: \d+ms$/);
@@ -211,21 +211,75 @@ test('an issue without fix versions inherits the fix versions of its parent, epi
     assert.deepEqual(versions, { 'PROJ-10': ['2.0'], 'PROJ-11': ['2.0'], 'PROJ-12': ['3.0'], 'PROJ-13': [], 'PROJ-1': ['2.0'], 'PROJ-14': [] });
 });
 
-test('the orphaned issues are the ones in review without a pull request, every page of them, with the Jira site name', async () => {
+test('the orphaned issues are the ones in review without a pull request, every page of them, with the fields of the filters', async () => {
     const linked = issue('PROJ-1'), orphans = Array.from({ length: 119 }, (_, i) => issue(`OTHER-${i + 2}`));
     const { buildProjectData, requests, logs } = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], inReview: [linked, ...orphans]
     }));
     const data = await buildProjectData('P', project);
-    assert.deepEqual(data.orphanedIssues, orphans.map(orphan => ({ ...orphan, jiraSiteName }))); // both pages, in order, the linked one dropped
+    assert.deepEqual(data.orphanedIssues, orphans); // both pages, in order, the linked one dropped, nothing added
     const urls = urlsMatching(requests, /In%20Review/);
     assert.deepEqual(urls.map(url => new URL(url).searchParams.get('nextPageToken')), [null, 'page-100']);
     for (const url of urls) {
         assert.equal(jqlOf(url), 'project in (PROJ,OTHER) AND status = "In Review" ORDER BY priority DESC, updated DESC');
-        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,updated,assignee');
+        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated');
         assert.equal(new URL(url).searchParams.get('maxResults'), '100');
     }
     assert.ok(logs.access.includes('Found 119 orphaned issues in review status'));
+});
+
+test('the parents of the orphaned issues are fetched with the parents of the linked issues, once, and their fix versions inherited', async () => {
+    const linked = issue('PROJ-1', { type: 'Sub-task', parent: 'PROJ-100', fixVersions: [] });
+    const orphans = [
+        issue('PROJ-2', { type: 'Sub-task', parent: 'PROJ-100', fixVersions: [] }), // the parent of the linked issue too
+        issue('PROJ-3', { type: 'Sub-task', parent: 'PROJ-200', fixVersions: [] }), // a parent without fix versions
+        issue('PROJ-4', { type: 'Story', parent: 'PROJ-300', fixVersions: [version('3.0')] }) // keeps its own
+    ];
+    const parents = [
+        issue('PROJ-100', { type: 'Story', fixVersions: [version('2.0')] }),
+        issue('PROJ-200', { type: 'Story', fixVersions: [] }),
+        issue('PROJ-300', { type: 'Epic', fixVersions: [version('4.0')] })
+    ];
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], parents, inReview: [linked, ...orphans]
+    }));
+    const data = await buildProjectData('P', project);
+    const searches = urlsMatching(requests, /search\/jql/).map(jqlOf);
+    assert.deepEqual(searches.filter(jql => jql.startsWith('key IN')), ['key IN (PROJ-100,PROJ-200,PROJ-300)']); // one request, each parent once
+    // The orphaned search runs before the details: that is what lets one parent request serve both
+    assert.ok(searches.findIndex(jql => jql.includes('In Review')) < searches.findIndex(jql => jql.startsWith('issueKey in')));
+    // The parent-only entries land with the linked issues, where the frontend looks them up
+    assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'PROJ-100', 'PROJ-200', 'PROJ-300']);
+    assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions.map(v => v.name), ['2.0']);
+    const versions = data.orphanedIssues.map(i => [i.key, i.fields.fixVersions.map(v => v.name)]);
+    assert.deepEqual(versions, [['PROJ-2', ['2.0']], ['PROJ-3', []], ['PROJ-4', ['3.0']]]);
+});
+
+test('a parent that is itself an orphaned issue is not requested again nor added to the details', async () => {
+    // The story PROJ-50 is in review with no pull request while its sub-task PROJ-1 has one
+    const linked = issue('PROJ-1', { type: 'Sub-task', parent: 'PROJ-50', fixVersions: [] });
+    const story = issue('PROJ-50', { type: 'Story', parent: 'PROJ-900', fixVersions: [version('5.0')] });
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], parents: [issue('PROJ-900', { type: 'Epic' })], inReview: [story]
+    }));
+    const data = await buildProjectData('P', project);
+    const searches = urlsMatching(requests, /search\/jql/).map(jqlOf);
+    assert.deepEqual(searches.filter(jql => jql.startsWith('key IN')), ['key IN (PROJ-900)']); // the story's epic, not the story
+    assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'PROJ-900']);
+    assert.deepEqual(data.orphanedIssues.map(i => i.key), ['PROJ-50']);
+    assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions.map(v => v.name), ['5.0']); // inherited from the orphaned story all the same
+});
+
+test('a failed parent request is logged and leaves the issues without their parents', async () => {
+    const linked = issue('PROJ-1', { type: 'Sub-task', parent: 'PROJ-100', fixVersions: [] });
+    const { buildProjectData, logs } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked],
+        intercept: url => (jqlOf(url)?.startsWith('key IN') ? new Response('', { status: 502 }) : undefined)
+    }));
+    const data = await buildProjectData('P', project);
+    assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1']); // no parent-only entry, the build goes on
+    assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions, []);
+    assert.deepEqual(logs.error, ['Error fetching parent issues: Request failed with status code 502']);
 });
 
 test('the active sprints of every scrum board of each Jira project, once each, and their issues 100 at a time', async () => {

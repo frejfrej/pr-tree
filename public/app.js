@@ -408,8 +408,8 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
         currentApiResult.jiraSiteName
     );
 
-    // Add orphaned issues section
-    const orphanedIssuesHtml = renderOrphanedIssues(currentApiResult.orphanedIssues);
+    // Add orphaned issues section (a repository block, filtered with the tree)
+    const orphanedIssuesHtml = renderOrphanedIssues(currentApiResult.orphanedIssues, currentApiResult.jiraSiteName);
 
     // Combine content
     container.innerHTML = mainContent + orphanedIssuesHtml;
@@ -423,7 +423,7 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Reflect the current SYNC load state (statuses are only fetched on demand)
     updateSyncControls();
     populateSprintFilter(currentApiResult.sprints);
-    populateFixVersionFilter(currentApiResult.jiraIssuesDetails);
+    populateFixVersionFilter([...currentApiResult.jiraIssuesDetails, ...(currentApiResult.orphanedIssues || [])]);
     populateIssueFilter('epicSelect', filterIndex.epics);
     populateIssueFilter('storySelect', filterIndex.stories);
     populateParticipantFilter(filterIndex.participants);
