@@ -173,10 +173,23 @@ test('the filter index built on the SECOLLAB fixture links every pull request', 
     assert.ok(withIssues.length > data.pullRequests.length * 0.8);
     const inSprint = [...pullRequestsById.values()].filter(entry => entry.sprints.size > 0);
     assert.ok(inSprint.length > 10, `${inSprint.length} pull requests in a sprint`);
-    const noFilter = { assignees: [], reviewers: [], sprints: [], fixVersions: [], sync: 'Show all', readyReviewer: false, readyAssignee: false };
+    const noFilter = { participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all' };
     const rendered = { statusInProgress: false, statusInReview: false, hasSyncLabel: false };
     for (const entry of pullRequestsById.values()) {
         assert.equal(evaluatePullRequest(entry, noFilter, rendered).visible, true);
+    }
+});
+
+test('the filter index of the SECOLLAB fixture lists the fictional team as participants', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const { pullRequestsById, participants } = buildFilterIndex(data);
+    assert.ok(participants.length >= 5, `${participants.length} participants`);
+    assert.deepEqual(participants, [...participants].sort((a, b) => a.localeCompare(b)));
+    const entries = [...pullRequestsById.values()];
+    assert.ok(entries.some(entry => entry.reviewers.has('Rovo Dev')), 'the fixture has Rovo Dev reviewing');
+    assert.ok(!participants.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
+    for (const name of participants) {
+        assert.ok(entries.some(entry => entry.assignees.has(name) || entry.reviewers.has(name)), `${name} is an assignee or a reviewer`);
     }
 });
 

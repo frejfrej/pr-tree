@@ -166,13 +166,13 @@ The application integrates with a Jira workflow where:
 **Description:** Multi-criteria filtering to focus on relevant PRs
 
 **Requirements:**
-- F4.1: Filter by PR author
-- F4.2: Filter by PR reviewer
+- F4.1: Filter by participant: the assignees of the linked Jira issues and the reviewers of the pull requests, one multi-select
+- F4.2: Filter by work, with participants selected: "All work" keeps the pull requests waiting for them as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only; a participant's pull requests that need nothing from them are hidden
 - F4.3: Filter by sprint (based on associated Jira issues)
 - F4.4: Filter by sync status (needs sync / up to date)
-- F4.5: Filter by "ready for reviewer" status - Shows only PRs where:
+- F4.5: "Ready for reviewers" shows only PRs where:
   - Associated Jira issue has "In Review" status
-  - AND reviewer has not yet approved (indicated by red highlighting/action required)
+  - AND a selected participant reviews the PR and has not yet approved (indicated by red highlighting/action required)
   - This identifies PRs awaiting initial review or re-review after changes
 - F4.6: Filter by Jira fixVersion
 - F4.7: Support simultaneous multiple filters
@@ -181,19 +181,19 @@ The application integrates with a Jira workflow where:
 - F4.10: Filter by text: title, source branch name and linked issue keys must contain every word typed
 - F4.11: Filter by epic (the epic above the linked issues, through the parent story for sub-tasks)
 - F4.12: Filter by story (the linked issue, or the parent of a linked sub-task)
-- F4.13: Filter by "ready for assignee" status: In Progress pull requests with a linked issue assigned to a selected assignee; with both ready filters checked, pull requests needing either attention are kept
+- F4.13: "Ready for assignees" shows only In Progress pull requests with a linked issue assigned to a selected participant; "All work" keeps the pull requests needing either attention
 - F4.14: Hide the repositories and branches left without a matching pull request; show a message when no pull request matches
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
 
 **Acceptance Criteria:**
-- Each filter shows "Show all" option plus all available values (or checkbox for boolean filters)
+- Each filter shows "Show all" option plus all available values
 - Applying filters hides non-matching PRs instantly
 - Filtered counters update to show X of Y PRs visible
 - URL updates with all filter selections
 - Sharing URL restores all filters (except SYNC, whose statuses are loaded on demand)
-- PRs highlighted in red when action required from filtered user
+- PRs highlighted in red when action required from a selected participant
 - Parent PRs remain visible if any children match filter
-- Ready for reviewer filter correctly identifies PRs in "In Review" status needing reviewer action
+- The "Ready for reviewers" value correctly identifies PRs in "In Review" status needing a selected participant's review
 
 ---
 
@@ -486,10 +486,10 @@ The application integrates with a Jira workflow where:
 |  Fix version   |   Branch A                            [X / Y]   |
 |  Epic          |                                                 |
 |  Story         |                                                 |
-|  Assignee      |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
-|  Ready assignee|                                                 |
-|  Reviewer      |       JIRA-123 [In Progress]                    |
-|  Ready reviewer|     PR #2                                       |
+|  Participants  |     PR #1 [SYNC] [Ahead:3] [Behind:1]           |
+|  Work          |                                                 |
+|                |       JIRA-123 [In Progress]                    |
+|                |     PR #2                                       |
 |  SYNC + Load   |   Branch B                            [X / Y]   |
 |                |     PR #3 [Ahead:2]                             |
 | (does not      | Orphaned Issues                                 |
@@ -782,8 +782,9 @@ The following are explicitly **not** part of current requirements:
 - **In Review**: Jira issue status indicating code is ready for review
 - **In Progress**: Jira issue status indicating active development work
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
-- **Ready for Reviewer**: PR with associated issue in "In Review" status that hasn't been approved yet
-- **Ready for Assignee**: PR with associated issue in "In Progress" status assigned to the selected assignee
+- **Participant**: a person appearing as the assignee of a linked Jira issue or as a reviewer of a pull request
+- **Ready for Reviewers**: PR with associated issue in "In Review" status that a selected participant has not approved yet
+- **Ready for Assignees**: PR with associated issue in "In Progress" status assigned to a selected participant
 - **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch

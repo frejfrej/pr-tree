@@ -8,7 +8,7 @@
 - Multi-project support with dropdown selection
 - Pull request visualization ordered by most recently updated
 - Jira issue integration with status tracking
-- Advanced filtering (text, sprint, fix version, epic, story, assignee, reviewer, sync status)
+- Advanced filtering (text, sprint, fix version, epic, story, participants, work, sync status)
 - Real-time conflict detection
 - Commit ahead/behind tracking
 - Smart reload (auto-updates every 2 minutes when data changes)
@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.7.2** (as of 2026-09-13)
+Current version: **2.8.0** (as of 2026-09-13)
 
 ## Technology Stack
 
@@ -170,7 +170,7 @@ pr-tree/
 - `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true })` or restores and applies the filters of the URL, then replaces the URL with the filters kept (a value the options no longer offer since a refresh is dropped from the entry)
 - `checkForUpdates()`: the periodic refresh; re-renders when the data hash changed; captures the project before its fetch (`fetchData(project)`) and drops a response arriving after a project switch, like `selectProject`; the `checking` class of the refresh icon marks a running check, and a check started meanwhile is skipped before the `try`, so its `finally` does not stop the icon of the running one
 - `availableProjects`: the project names from `/api/projects`, the list the dropdown is built from and `projectFromUrl` validates against
-- `updateReadyCheckboxes()`: the two ready checkboxes are disabled and unchecked while their multi-select is empty; both checked keeps pull requests needing either attention
+- `updateWorkSelect()`: the Work select is disabled and back to "All work" while no participant is selected; `populateParticipantFilter(participants)` fills the participant multi-select from `filterIndex.participants`
 
 **public/app-render.js**
 - `renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)` (pure): the tree as an HTML string; one `.repository` block per repository, its root branches, the pull requests nested in `.children` containers, most recently updated first; appends the hidden `.tree-no-match` message when there is at least one repository
@@ -189,16 +189,16 @@ pr-tree/
 - `syncStatusesLoaded()` and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL and to forget the statuses, a failed load and a load in flight on a project switch
 
 **public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees, reviewers, sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters; built once per data load by `initializeFilter()`, which returns it
-- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
+- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees (of the linked issues), reviewers (every participant but the author), pending reviewers (those who have not approved), sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); it also returns `index.epics` and `index.stories`, the epics and stories to list in the filters, and `index.participants`, the sorted names of the assignees and reviewers the participant filter offers (Rovo Dev excluded); built once per data load by `initializeFilter()`, which returns it
+- `evaluatePullRequest(entry, filters, rendered)` (pure): visibility and attention of one pull request; with participants selected, the pull request is kept when it waits for one of them (`computeAttention`: `reviewer` in review and not approved by them, `assignee` in progress with a linked issue assigned to them), the `work` values being `all` (either), `reviewers` and `assignees`; the SYNC filter values are `requested` (SYNC badge), `OK` (OK badge) and `unchecked` ("Not checked": neither badge, so the `?` and `!` pull requests)
 - `filterBranches(filters)`: collects the SYNC and OK badges once, then one walk of the rendered tree, direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request, shows the `.tree-no-match` message while every repository is hidden, returns the attention count
 - `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
 - `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure)
 
 **public/app-url.js**
 - `projectFromUrl(search, projects)` (pure): the project a query string names when it is one of the given ones (app.js passes `availableProjects`); `null` otherwise, an empty name included
-- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `ready`, the former name, is read as `readyReviewer`
-- `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only; parameters that are not filters are kept
+- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `currentFilters()`; `participant` is repeated, `work` is `reviewers` or `assignees` (anything else reads as `all`); `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are never read
+- `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only (`work` only with participants selected); parameters that are not filters are kept, the people parameters of before 2.8.0 are removed
 
 **public/counter-utils.js**
 - `updateCounterDisplay(element, visible, total)`: the `n/total` text and tooltip of a counter; the counts come from the filter pass
@@ -233,7 +233,7 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.7.2",
+  "version": "2.8.0",
   "releaseDate": "2026-09-13",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
@@ -349,20 +349,18 @@ let currentSprints = [];        // sprint ids
 let currentFixVersions = [];    // fix version ids
 let currentEpics = [];         // epic keys
 let currentStories = [];       // story keys
-let currentAssignees = [];
-let currentReviewers = [];
+let currentParticipants = [];  // participant names
+let currentWork = 'all';       // 'all', 'reviewers' or 'assignees'
 let currentSync = "Show all";
-let currentReadyForReviewer = false;
-let currentReadyForAssignee = false;
 let currentApiResult = null;
 ```
 The SYNC statuses and their loading state live in app-sync.js (`currentSyncStatuses`, `syncStatusLoading`, `syncLoadFailed`, `syncLoadGeneration`); app.js asks `syncStatusesLoaded()` to restore the SYNC filter from the URL and calls `resetSyncStatuses()` on a project switch.
 
 State is synchronized with URL query parameters for deep linking:
 ```
-?project=PROJ&q=banner&assignee=John&reviewer=Jane&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&sync=requested&readyReviewer=true&readyAssignee=true
+?project=PROJ&q=banner&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&participant=Jane&work=reviewers&sync=requested
 ```
-(`ready`, the former name of `readyReviewer`, is still read from old links but never written.)
+(`assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are ignored and removed from the URL.)
 
 The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`), applies them and replaces the URL with the filters kept, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once (a switch to "Select a project" too: the filters are cleared and the URL is bare), and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
 
@@ -545,10 +543,10 @@ Three streams available:
 1. **Module type mismatch**: Backend uses ES modules (.mjs), config uses CommonJS (module.exports)
 2. **Cache staleness**: Remember that data can be up to 2 minutes old
 3. **API rate limits**: Bitbucket can return HTTP 429 if too many requests
-4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the two ready checkboxes; on Back/Forward SYNC follows the URL while its statuses are loaded
+4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the Work select; on Back/Forward SYNC follows the URL while its statuses are loaded
 5. **Regex patterns**: Must match exact Jira issue key format in PR titles
 6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks
-7. **Ready for reviewer / assignee**: computed by `computeAttention()` from the data, never from rendered styles; `evaluatePullRequest` takes `readyReviewer` and `readyAssignee`
+7. **Participants and Work**: attention is computed by `computeAttention()` from the index (`assignees`, `pendingReviewers`), never from rendered styles; `evaluatePullRequest` takes `participants` and `work` (`all`, `reviewers`, `assignees`); without a participant the work value is ignored, and app.js forces it back to `all`
 8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
 9. **`pullRequestsByDestination` is keyed by branch name across repositories**: two repositories sharing a branch name (e.g. `master`) share the entry; known limitation, not handled
 10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
@@ -558,7 +556,7 @@ Three streams available:
 14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (sync-statuses.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under the older version are simply never looked up again and age out with the rest after 90 days
 
 ### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `initializeFilter`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`, `renderParticipant`) and the fixture generator (volumes, determinism, deep stack, hierarchy), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time, the TTLs raised during a rate-limit pause (with `mock.timers` on `Date`, since node-cache reads `Date.now()`) and the cache statistics (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`), the Atlassian wrapper with a fake `fetch` and a clock variable (`test/atlassian-fetch.test.mjs`: the pause after a 429 from either API, the failure messages with and without the URL, what the routes answer during a pause), the project data against a fake Atlassian (`test/project-data.test.mjs`: pull-request pagination, the Jira batches of 50 and the parents fetched after them, the fix versions inherited, the orphaned issues, the sprints of every board, the hash and the commit counts fetched only when it changed, `pullRequestsByDestination` keyed across repositories), the server's SYNC computation against a fake Bitbucket answering diffstats and diffs by URL (`test/sync-statuses.test.mjs`: the requests made, the statuses and reasons sent, what is stored in `sync-cache.json` under the rule-version prefix, the summary log line); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory), the documented shape of `/api/pull-requests/:project` and its `dataHash` stable across calls, the five counters of `/api/cache/stats`, and the answers to an unknown project (500 from the pull requests route, whose `buildProjectData` throws "Project not found" and whose route maps every error to 500; 404 from the sync statuses route)
+- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `initializeFilter`, `evaluatePullRequest`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`, `renderParticipant`) and the fixture generator (volumes, determinism, deep stack, hierarchy, the participants list), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time, the TTLs raised during a rate-limit pause (with `mock.timers` on `Date`, since node-cache reads `Date.now()`) and the cache statistics (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`), the Atlassian wrapper with a fake `fetch` and a clock variable (`test/atlassian-fetch.test.mjs`: the pause after a 429 from either API, the failure messages with and without the URL, what the routes answer during a pause), the project data against a fake Atlassian (`test/project-data.test.mjs`: pull-request pagination, the Jira batches of 50 and the parents fetched after them, the fix versions inherited, the orphaned issues, the sprints of every board, the hash and the commit counts fetched only when it changed, `pullRequestsByDestination` keyed across repositories), the server's SYNC computation against a fake Bitbucket answering diffstats and diffs by URL (`test/sync-statuses.test.mjs`: the requests made, the statuses and reasons sent, what is stored in `sync-cache.json` under the rule-version prefix, the summary log line); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, the API, `README.md`, nothing else of the project directory), the documented shape of `/api/pull-requests/:project` and its `dataHash` stable across calls, the five counters of `/api/cache/stats`, and the answers to an unknown project (500 from the pull requests route, whose `buildProjectData` throws "Project not found" and whose route maps every error to 500; 404 from the sync statuses route)
 - **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` (the routes and the wiring, the fixture-mode guard) is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`, `public/multi-select.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`, `counter-utils.js`) are low because only their pure helpers are tested; no threshold
 - **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
 - **UI**: manual testing in the browser (layout, filters, theme)

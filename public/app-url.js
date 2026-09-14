@@ -1,31 +1,34 @@
 /**
  * The project and the filters as URL parameters: what the address bar shows,
  * what a shared link carries and what Back and Forward put back. Pure: nothing
- * here reads the page. Multi-selects use repeated parameters (?assignee=A&assignee=B).
+ * here reads the page. Multi-selects use repeated parameters (?participant=A&participant=B).
  */
 
-// Parameters written by the filters. 'ready' is the former name of
-// readyReviewer: still read from old links, only ever removed when writing.
-export const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'assignee', 'reviewer', 'sync', 'readyReviewer', 'readyAssignee', 'ready'];
+// Parameters written by the filters, and the former ones: assignee, reviewer,
+// readyReviewer, readyAssignee and ready were the people filters before 2.8.0,
+// never read any more, only ever removed when writing.
+export const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'participant', 'work', 'sync', 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready'];
+
+// The values of the Work select besides 'all', its default
+const workValues = ['reviewers', 'assignees'];
 
 /**
  * The filters a query string describes, in the shape of currentFilters().
  * @param {string} search - window.location.search, with or without the leading "?"
- * @returns {{ text: string, assignees: string[], reviewers: string[], sprints: string[], fixVersions: string[], epics: string[], stories: string[], sync: string, readyReviewer: boolean, readyAssignee: boolean }}
+ * @returns {{ text: string, participants: string[], work: string, sprints: string[], fixVersions: string[], epics: string[], stories: string[], sync: string }}
  */
 export function filtersFromUrl(search) {
     const params = new URLSearchParams(search);
+    const work = params.get('work');
     return {
         text: params.get('q') || '',
-        assignees: params.getAll('assignee'),
-        reviewers: params.getAll('reviewer'),
+        participants: params.getAll('participant'),
+        work: workValues.includes(work) ? work : 'all',
         sprints: params.getAll('sprint'),
         fixVersions: params.getAll('fixVersion'),
         epics: params.getAll('epic'),
         stories: params.getAll('story'),
-        sync: params.get('sync') || 'Show all',
-        readyReviewer: params.get('readyReviewer') === 'true' || params.get('ready') === 'true',
-        readyAssignee: params.get('readyAssignee') === 'true'
+        sync: params.get('sync') || 'Show all'
     };
 }
 
@@ -44,7 +47,8 @@ export function projectFromUrl(search, projects) {
 
 /**
  * A copy of a URL carrying the project and the active filters, and none of
- * the previous ones; parameters that are not filters are kept.
+ * the previous ones (the former people parameters included); parameters that
+ * are not filters are kept.
  * @param {URL} url - left untouched
  * @param {{ project: string | null, filters: object }} state - filters in the shape of currentFilters()
  * @returns {URL}
@@ -60,14 +64,13 @@ export function urlWithFilters(url, { project, filters }) {
     }
     const text = filters.text.trim();
     if (text !== '') params.set('q', text);
-    filters.assignees.forEach(value => params.append('assignee', value));
-    filters.reviewers.forEach(value => params.append('reviewer', value));
     filters.sprints.forEach(value => params.append('sprint', value));
     filters.fixVersions.forEach(value => params.append('fixVersion', value));
     filters.epics.forEach(value => params.append('epic', value));
     filters.stories.forEach(value => params.append('story', value));
+    filters.participants.forEach(value => params.append('participant', value));
+    // The work value only means something with participants selected
+    if (filters.participants.length > 0 && filters.work !== 'all') params.set('work', filters.work);
     if (filters.sync !== 'Show all') params.set('sync', filters.sync);
-    if (filters.readyReviewer) params.set('readyReviewer', 'true');
-    if (filters.readyAssignee) params.set('readyAssignee', 'true');
     return result;
 }

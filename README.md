@@ -9,7 +9,7 @@
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
     * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
-    * The tab title shows the selected project and, when an assignee or reviewer filter is active, the number of pull requests waiting for them
+    * The tab title shows the selected project and, when participants are selected, the number of pull requests waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
@@ -25,24 +25,16 @@
     * Keeps the pull requests whose linked issues belong to the selected epics; a pull request linked to a sub-task follows the epic of its parent story
 * Provides a story filter
     * Keeps the pull requests delivering the selected issues: the linked issue itself, or the parent of a linked sub-task
-* Provides an assignee filter
-    * Filters pull requests based on the assignee of associated Jira issues
-    * Highlights in red those where an effort is expected
-* Provides a reviewer filter
-    * Filters pull requests of selected reviewer
-    * Highlights in red those where an effort is expected
-* Provides a ready for reviewer filter
-    * Filters In Review pull requests which reviewer has not already approved
-* Provides a ready for assignee filter
-    * Filters In Progress pull requests with a linked issue assigned to the selected assignee
-    * With both ready filters checked, pull requests needing either attention are kept
+* Provides a participants filter
+    * Lists the assignees of the linked Jira issues and the reviewers of the pull requests
+    * Keeps the pull requests waiting for the selected participants, highlighted in red: In Review pull requests they have not approved, In Progress pull requests with a linked issue assigned to them
+* Provides a work filter next to it: "All work" (either kind), "Ready for reviewers" or "Ready for assignees"
 * Provides a fix version filter
     * Filters pull requests based on the fixVersion field of associated Jira issues
     * Dynamically populates with all available fixVersions from the project's Jira issues
-* Allows simultaneous filtering by both assignee and reviewer
 * Hides the repositories and branches left without a matching pull request; when nothing matches, a message replaces the tree
 * Maintains filter selections in URL
-    * All filter selections (project, text, sprint, fixVersion, epic, story, assignee, reviewer, ready for assignee, ready for reviewer) are saved in the URL
+    * All filter selections (project, text, sprint, fixVersion, epic, story, participants, work) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
     * Back and Forward put the filters, and the project, back as the URL describes
@@ -84,6 +76,9 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.8.0
+    * The Assignee, Reviewer, Ready for assignee and Ready for reviewer filters are replaced by a Participants filter (the assignees of the linked issues and the reviewers of the pull requests, one list) and a Work select: "All work" keeps the pull requests waiting for the selected participants as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only; a participant's pull requests that need nothing from them are no longer listed
+    * URL parameters `participant` (repeated) and `work` (`reviewers` or `assignees`); the former `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready` parameters are ignored and removed from the address bar
 * Version 2.7.2
     * The sprint filter no longer hides the pull requests of an issue past the first 100 issues of its sprint, and the orphaned issues section no longer stops at 50 issues in review: both searches are paged with the token of Jira's search endpoint (`nextPageToken`, `isLast`), which returns no `total`, so only the first page was read since the switch to that endpoint
 * Version 2.7.1
