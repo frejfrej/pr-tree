@@ -183,7 +183,7 @@ test('renderOrphanedIssues renders nothing without issues, otherwise a repositor
     assert.equal(renderOrphanedIssues(undefined, 'site'), '');
     const now = Date.parse('2026-09-14T12:00:00.000Z');
     const html = renderOrphanedIssues([
-        { key: 'PROJ-9', fields: { summary: 'Nine', status: { name: 'In Review' }, priority: { name: 'Low', iconUrl: 'https://jira/low.svg' }, updated: '2026-08-31T11:00:00.000Z', assignee: { displayName: 'Jane', avatarUrls: { '24x24': 'https://avatars/jane-24.png', '48x48': 'https://avatars/jane-48.png' } } } },
+        { key: 'PROJ-9', fields: { summary: 'Nine', status: { name: 'In Review' }, priority: { name: 'Low', iconUrl: 'https://jira/low.svg' }, updated: '2026-08-31T11:00:00.000+0000', assignee: { displayName: 'Jane', avatarUrls: { '24x24': 'https://avatars/jane-24.png', '48x48': 'https://avatars/jane-48.png' } } } }, // the offset as Jira writes it
         { key: 'PROJ-10', fields: { summary: 'Ten', status: { name: 'In Review' }, priority: null, updated: '2026-09-01T12:00:00.000Z', assignee: null } }
     ], 'site', { now });
     // A repository block: the tree's toggle, collapse-all and toggle-state code applies to it
@@ -213,11 +213,25 @@ test('renderOrphanedIssues renders nothing without issues, otherwise a repositor
 test('renderOrphanedIssues falls back to the 48x48 avatar and never marks an issue without an update date', () => {
     const now = Date.parse('2026-09-14T12:00:00.000Z');
     const html = renderOrphanedIssues([
-        { key: 'PROJ-11', fields: { summary: 'Eleven', priority: null, assignee: { displayName: 'Bob', avatarUrls: { '48x48': 'https://avatars/bob-48.png' } } } }
+        { key: 'PROJ-11', fields: { summary: 'Eleven', priority: null, assignee: { displayName: 'Bob', avatarUrls: { '48x48': 'https://avatars/bob-48.png' } } } },
+        { key: 'PROJ-12', fields: { summary: 'Twelve', priority: null, assignee: { displayName: 'Ann', avatarUrls: {} } } },
+        { key: 'PROJ-13', fields: { summary: 'Thirteen', priority: null, assignee: { avatarUrls: { '48x48': 'https://avatars/x.png' } } } }
     ], 'site', { now });
     assert.ok(html.includes('src="https://avatars/bob-48.png"'));
     assert.equal(count(html, 'class="warnings"'), 0);
     assert.ok(html.includes('title="Last updated"></span>'));
+    // Ann has a displayName but no avatar URL: the icon alone, never an empty <img src="">
+    assert.ok(html.includes('title="Assignee: Ann"'));
+    assert.equal(count(html, '<img'), 1); // only Bob has an avatar url; no priority icons here either
+    // An assignee without a displayName is treated as unassigned
+    assert.equal(count(html, '<span class="orphaned-issue-unassigned">Unassigned</span>'), 1);
+});
+
+test('renderOrphanedIssues counts one issue in the singular', () => {
+    const html = renderOrphanedIssues([
+        { key: 'PROJ-14', fields: { summary: 'Fourteen', priority: null, assignee: null } }
+    ], 'site', { now: Date.parse('2026-09-14T12:00:00.000Z') });
+    assert.ok(html.includes('title="1 issue"'));
 });
 
 test('renderParticipant gives each status its icon, and an unknown status no icon and a console line', () => {

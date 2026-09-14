@@ -377,8 +377,10 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
     const priorityHtml = priority ?
         `<img src="${priority.iconUrl}" alt="${priority.name}" class="jira-priority-icon" title="${priority.name}">` : '';
     const updated = issue.fields.updated || '';
+    // Jira writes the offset without a colon (+0000), outside the ECMAScript
+    // date format: put the colon in so every engine parses it
     // NaN for a missing or unparsable date: never stale
-    const days = Math.floor((now - Date.parse(updated)) / dayMs);
+    const days = Math.floor((now - Date.parse(updated.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'))) / dayMs);
     const staleHtml = days >= staleAfterDays ? `
         <div class="warnings">
             <ul>
@@ -418,10 +420,10 @@ function renderAssignee(assignee) {
         return '<span class="orphaned-issue-unassigned">Unassigned</span>';
     }
     const avatars = assignee.avatarUrls || {};
-    const avatar = avatars['24x24'] || avatars['48x48'] || '';
+    const avatar = avatars['24x24'] || avatars['48x48'];
     return `
         <span class="image-container" data-author="${assignee.displayName}" title="Assignee: ${assignee.displayName}">
-            <img src="${avatar}" alt="${assignee.displayName}">
+            ${avatar ? `<img src="${avatar}" alt="${assignee.displayName}">` : ''}
             <i class="fas fa-user icon"></i>
         </span>
     `;
