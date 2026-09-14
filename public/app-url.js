@@ -10,12 +10,12 @@
 export const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'participant', 'work', 'sync', 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready'];
 
 // The values of the Work select besides 'all', its default
-const workValues = ['reviewers', 'assignees'];
+const workValues = ['reviews', 'issues', 'ready', 'reviewers', 'assignees'];
 
 /**
  * The filters a query string describes, in the shape of currentFilters().
  * @param {string} search - window.location.search, with or without the leading "?"
- * @returns {{ text: string, participants: string[], work: string, sprints: string[], fixVersions: string[], epics: string[], stories: string[], sync: string }}
+ * @returns {{ text: string, participants: string[], work: string, sprints: string[], fixVersions: string[], epics: string[], stories: string[], sync: string }} work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees'
  */
 export function filtersFromUrl(search) {
     const params = new URLSearchParams(search);

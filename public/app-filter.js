@@ -149,7 +149,9 @@ function splitIssueKey(key) {
  *
  * The title of a PR with attention is highlighted; with participants selected,
  * the Work filter keeps the PRs with reviewer attention ("Ready for
- * reviewers"), assignee attention ("Ready for assignees") or either ("All work").
+ * reviewers"), assignee attention ("Ready for assignees") or either ("Ready for
+ * participants"); "All work", "All reviews" and "All issues" keep every PR of
+ * the participants, whether it waits for them or not.
  * @param {{ assignees: Set<string>, pendingReviewers: Set<string> }} entry - an entry of buildFilterIndex().pullRequestsById
  * @param {{ statusInProgress: boolean, statusInReview: boolean, participants: string[] }} state - the Jira statuses shown and the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
@@ -246,7 +248,7 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
  * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync };
- *   work is 'all', 'reviewers' or 'assignees' and only matters with participants selected
+ *   work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees' and only matters with participants selected
  * @param {object} rendered - what the tree shows for this pull request:
  *   statusInProgress, statusInReview (from the Jira statuses), hasSyncLabel and hasOkBadge (the painted SYNC badges)
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
@@ -255,11 +257,20 @@ export function evaluatePullRequest(entry, { text = '', participants = [], work 
     const attention = computeAttention(entry, { statusInProgress, statusInReview, participants });
 
     const textMatch = matchesText(entry.searchText, parseTextQuery(text));
-    // Participants: without a selection, everybody's pull requests; with one, the
-    // pull requests waiting for a selected participant as a reviewer, as an
-    // assignee, or either ("All work")
+    // Participants: without a selection, everybody's pull requests; with one, every
+    // pull request a selected participant reviews ("All reviews"), has a linked
+    // issue assigned to ("All issues") or either ("All work"), or only those
+    // waiting for one of them as a reviewer, as an assignee, or either ("Ready
+    // for participants")
+    const reviews = () => participants.some(name => entry.reviewers.has(name));
+    const issues = () => participants.some(name => entry.assignees.has(name));
     const participantMatch = participants.length === 0 ||
-        (work === 'reviewers' ? attention.reviewer : work === 'assignees' ? attention.assignee : attention.any);
+        (work === 'reviewers' ? attention.reviewer :
+            work === 'assignees' ? attention.assignee :
+                work === 'ready' ? attention.any :
+                    work === 'reviews' ? reviews() :
+                        work === 'issues' ? issues() :
+                            reviews() || issues());
     // Empty selection = show all; otherwise match ANY selected value
     const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
     const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
