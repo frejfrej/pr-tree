@@ -9,7 +9,7 @@
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
     * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
-    * The tab title shows the selected project and, when participants are selected, the number of pull requests waiting for them
+    * The tab title shows the selected project and, when participants are selected, the number of pull requests and orphaned issues waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
@@ -31,7 +31,7 @@
 * Provides a story filter
     * Keeps the pull requests delivering the selected issues: the linked issue itself, or the parent of a linked sub-task
 * Provides a participants filter
-    * Lists the assignees of the linked Jira issues and the reviewers of the pull requests
+    * Lists the assignees of the linked Jira issues and of the orphaned issues, and the reviewers of the pull requests
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
     * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved, In Progress pull requests with a linked issue assigned to them
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
