@@ -167,7 +167,7 @@ The application integrates with a Jira workflow where:
 
 **Requirements:**
 - F4.1: Filter by participant: the assignees of the linked Jira issues and the reviewers of the pull requests, one multi-select
-- F4.2: Filter by work, with participants selected: "All work" (the default) keeps every pull request they review or have a linked issue assigned to, "Ready for participants" only the pull requests waiting for them as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only
+- F4.2: Filter by work, with participants selected: "All work" (the default) keeps every pull request they review or have a linked issue assigned to, "All reviews" and "All issues" one kind only; "Ready for participants" only the pull requests waiting for them as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only
 - F4.3: Filter by sprint (based on associated Jira issues)
 - F4.4: Filter by sync status (needs sync / up to date)
 - F4.5: "Ready for reviewers" shows only PRs where:

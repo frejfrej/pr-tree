@@ -24,6 +24,8 @@ test('filtersFromUrl defaults every filter without parameters', () => {
 });
 
 test('filtersFromUrl reads the work values it knows and defaults the others to all', () => {
+    assert.equal(filtersFromUrl('?work=reviews').work, 'reviews');
+    assert.equal(filtersFromUrl('?work=issues').work, 'issues');
     assert.equal(filtersFromUrl('?work=ready').work, 'ready');
     assert.equal(filtersFromUrl('?work=assignees').work, 'assignees');
     assert.equal(filtersFromUrl('?work=reviewers').work, 'reviewers');
