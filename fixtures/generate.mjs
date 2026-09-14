@@ -213,6 +213,11 @@ function isoDaysAgo(days) {
     return date.toISOString();
 }
 
+// The same instant as Jira writes it: the offset without a colon
+function jiraDaysAgo(days) {
+    return isoDaysAgo(days).replace('Z', '+0000');
+}
+
 function initials(name) {
     return name.split(/\s+/).map(part => part[0]).join('').toUpperCase();
 }
@@ -634,7 +639,8 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
     // need (type, fix versions, parent like the linked issues, and the last
     // update); one in five is a sub-task of a story created for it, in
     // progress (an in-review story without a pull request would be an
-    // orphaned issue itself)
+    // orphaned issue itself); the fixed date recedes, so in the browser
+    // nearly every orphaned issue shows the 14-day warning
     const orphanedIssues = [];
     const orphanCount = Math.round((orphanedIssueCounts[projectName] ?? 0) * scale);
     for (let i = 0; i < orphanCount; i++) {
@@ -642,9 +648,14 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
         let parent = null;
         if (i % 5 === 4) {
             parent = createIssue(random, nextIssueNumber, project, { status: 'In Progress', type: 'Story' });
+            // So the sub-task has something to inherit even when the story drew no version
+            if (parent.fields.fixVersions.length === 0) {
+                parent.fields.fixVersions = [pick(random, fixVersionsByProject[project] || [])].filter(Boolean);
+            }
             knownIssues.set(parent.key, parent);
         }
-        const issue = createIssue(random, nextIssueNumber, project, { status: 'In Review', ...(parent ? { parent, type: 'Sub-task' } : {}) });
+        const type = parent ? 'Sub-task' : pickWeighted(random, issueTypes.filter(([name]) => name !== 'Sub-task'));
+        const issue = createIssue(random, nextIssueNumber, project, { status: 'In Review', parent, type });
         orphanedIssues.push({
             id: issue.id,
             key: issue.key,
@@ -656,7 +667,7 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
                 fixVersions: issue.fields.fixVersions,
                 assignee: issue.fields.assignee,
                 issuetype: issue.fields.issuetype,
-                updated: isoDaysAgo(integer(random, 0, 30)),
+                updated: jiraDaysAgo(integer(random, 0, 30)),
                 ...(issue.fields.parent ? { parent: issue.fields.parent } : {})
             }
         });

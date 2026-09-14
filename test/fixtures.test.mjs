@@ -235,16 +235,25 @@ test('the orphaned issues of the SECOLLAB fixture carry the fields of the filter
         assert.ok(issue.fields.issuetype && Array.isArray(issue.fields.fixVersions) && issue.fields.updated, issue.key);
         assert.equal(issue.fields.status.name, 'In Review');
         assert.equal('jiraSiteName' in issue, false);
+        assert.match(issue.fields.updated, /\+0000$/);
         if (issue.fields.parent) assert.ok(detailKeys.has(issue.fields.parent.key), `${issue.key}'s parent ${issue.fields.parent.key} is a parent-only entry`);
     }
     const subTasks = data.orphanedIssues.filter(issue => issue.fields.issuetype.subtask);
-    assert.equal(subTasks.length, 2); // one in five of 13
+    assert.ok(subTasks.length >= 2, `${subTasks.length} sub-tasks`); // one in five is made one deliberately
+    for (const subTask of subTasks) assert.ok(subTask.fields.parent, `${subTask.key} is a sub-task without a parent`);
     for (const subTask of subTasks) {
         const parent = data.jiraIssuesDetails.find(issue => issue.key === subTask.fields.parent.key);
         assert.equal(parent.fields.issuetype.subtask, false);
+        assert.ok(parent.fields.fixVersions.length > 0, 'the parent has a version to inherit');
         assert.deepEqual(subTask.fields.fixVersions, parent.fields.fixVersions); // inherited
         assert.equal(data.orphanedIssues.some(issue => issue.key === parent.key), false); // the parent is in progress, not an orphan
     }
     const inSprint = data.orphanedIssues.filter(issue => Object.values(data.sprintIssues).some(keys => keys.includes(issue.key)));
     assert.ok(inSprint.length >= 1 && inSprint.length < data.orphanedIssues.length, `${inSprint.length} orphaned issues in a sprint`);
+
+    // At scale 3 every sub-task among the orphaned issues still has its parent
+    const scaled = generateProjectData('SECOLLAB', projects.SECOLLAB, { scale: 3 });
+    const scaledSubTasks = scaled.orphanedIssues.filter(issue => issue.fields.issuetype.subtask);
+    assert.ok(scaledSubTasks.length >= 6, `${scaledSubTasks.length} sub-tasks at scale 3`);
+    for (const subTask of scaledSubTasks) assert.ok(subTask.fields.parent, `${subTask.key} is a sub-task without a parent`);
 });
