@@ -268,6 +268,7 @@ test('renderRepositories escapes every Bitbucket and Jira text it interpolates',
     const pr = pullRequest(7, { repo: 'repo<"&>', source: 'feat/<b>x</b>', destination: 'main"><i>', participants: [{ user: hostile, approved: true, state: 'approved' }] });
     pr.title = 'Title <script>alert("x")</script> & co';
     pr.links.html.href = 'https://bitbucket.org/ws/repo/pull-requests/7?x="y"';
+    pr.created_on = '<b>2026';
     const details = [
         { key: 'PROJ-7', fields: { summary: 'Summary "><b>bold</b> & more', status: { name: 'In <Review>' }, priority: { name: 'High "priority"', iconUrl: 'https://jira/high.svg?a="b"' } } }
     ];
@@ -279,6 +280,7 @@ test('renderRepositories escapes every Bitbucket and Jira text it interpolates',
     assert.ok(html.includes('main&quot;&gt;&lt;i&gt;'));
     assert.ok(html.includes('Title &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; co'));
     assert.ok(html.includes('href="https://bitbucket.org/ws/repo/pull-requests/7?x=&quot;y&quot;"'));
+    assert.ok(html.includes('<span class="created-date">&lt;b&gt;2026</span>'));
     assert.ok(html.includes('data-issue-summary="Summary &quot;&gt;&lt;b&gt;bold&lt;/b&gt; &amp; more"'));
     assert.ok(html.includes('PROJ-7 (In &lt;Review&gt;)'));
     assert.ok(html.includes('alt="High &quot;priority&quot;" class="jira-priority-icon" title="High &quot;priority&quot;"'));

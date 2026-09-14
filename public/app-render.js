@@ -307,7 +307,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
                 <div class="pull-request-details">
                     <div class="participants">
                         ${renderParticipant(pullRequest.author, "author")} 
-                        <span class="created-date">${pullRequest.created_on.substring(0,10)}</span>
+                        <span class="created-date">${escapeHtml(pullRequest.created_on.substring(0, 10))}</span>
                         ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails}
                         ${pullRequest.commitsBehind !== null && pullRequest.commitsBehind !== undefined ?
                             `<span class="commit-badge commit-badge-behind" title="Number of commits behind destination branch">
