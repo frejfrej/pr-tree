@@ -88,13 +88,11 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         const orphanedIssues = [];
 
         try {
-            // Every issue in review of the projects, minus those a pull request links
+            // Every issue in review of the projects, minus those a pull request links,
+            // with the fields the filters need (fix versions, parent and type like the linked issues)
             const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
-            for await (const page of searchIssuePages(jql, 'key,summary,status,priority,updated,assignee')) {
-                // Add Jira site name to each issue for URL construction in frontend
-                orphanedIssues.push(...page.issues
-                    .filter(issue => !existingIssuesSet.has(issue.key))
-                    .map(issue => ({ ...issue, jiraSiteName })));
+            for await (const page of searchIssuePages(jql, 'key,summary,status,priority,updated,assignee,fixVersions,parent,issuetype')) {
+                orphanedIssues.push(...page.issues.filter(issue => !existingIssuesSet.has(issue.key)));
             }
             log.access(`Found ${orphanedIssues.length} orphaned issues in review status`);
         } catch (error) {
@@ -160,7 +158,11 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         }
     }
 
-    async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
+    // The linked issues in batches of 50, then their parents; `moreIssues`
+    // (the orphaned issues, already fetched with the same fields) have their
+    // parents fetched in the same request and inherit fix versions the same
+    // way, in place; they are not part of the result
+    async function fetchJiraIssuesDetails(jiraIssues, jiraProjects, moreIssues = []) {
         const jiraBaseUrl = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql`;
 
         let pageSize = 50;
@@ -196,20 +198,28 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             }
         }
 
-        // Collect parent keys that aren't in our results (for subtasks)
+        jiraIssuesDetails.push(...await completeParents([...jiraIssuesDetails, ...moreIssues]));
+        return jiraIssuesDetails;
+    }
+
+    // Fetches, in one request, the parents named by `issues` that are not in
+    // `issues` (their fix versions, inherited by sub-tasks, and their summary,
+    // type and parent for the epic and story filters), then lets the issues
+    // without fix versions inherit their parent's: one pass in array order
+    // (`issues`, then the parents fetched), so a version can travel
+    // epic -> story -> sub-task when the story comes first. Returns the parents fetched.
+    async function completeParents(issues) {
+        const jiraBaseUrl = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql`;
+        const known = new Set(issues.map(issue => issue.key));
         const missingParentKeys = [];
-        for (const issue of jiraIssuesDetails) {
-            if (issue.fields.parent) {
-                const parentKey = issue.fields.parent.key;
-                if (!jiraIssuesDetails.find(i => i.key === parentKey) &&
-                    !missingParentKeys.includes(parentKey)) {
-                    missingParentKeys.push(parentKey);
-                }
+        for (const issue of issues) {
+            const parentKey = issue.fields.parent && issue.fields.parent.key;
+            if (parentKey && !known.has(parentKey) && !missingParentKeys.includes(parentKey)) {
+                missingParentKeys.push(parentKey);
             }
         }
 
-        // Fetch missing parent issues: their fix versions (inherited by sub-tasks)
-        // and their summary, type and parent (epic and story filters)
+        const parents = [];
         if (missingParentKeys.length > 0) {
             const parentJql = `key IN (${missingParentKeys.join(',')})`;
             const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,summary,issuetype,fixVersions,parent`;
@@ -224,7 +234,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                 });
                 if (response.ok) {
                     const data = await response.json();
-                    jiraIssuesDetails.push(...data.issues);
+                    parents.push(...data.issues);
                 }
                 const duration = Date.now() - startTime;
                 log.performance(`fetchJiraIssuesDetails - Parent issues fetch (${missingParentKeys.length}) - Duration: ${duration}ms`);
@@ -233,20 +243,17 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             }
         }
 
-        // Issues without fix versions inherit their parent's (sub-tasks from their story, stories from
-        // their epic when it was fetched too). One pass in array order, so a version can travel
-        // epic -> story -> sub-task when the story comes first
-        for (const issue of jiraIssuesDetails) {
+        const all = [...issues, ...parents];
+        for (const issue of all) {
             if (issue.fields.parent &&
                 (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
-                const parent = jiraIssuesDetails.find(i => i.key === issue.fields.parent.key);
+                const parent = all.find(i => i.key === issue.fields.parent.key);
                 if (parent && parent.fields.fixVersions && parent.fields.fixVersions.length > 0) {
                     issue.fields.fixVersions = parent.fields.fixVersions;
                 }
             }
         }
-
-        return jiraIssuesDetails;
+        return parents;
     }
 
     async function fetchJiraSprints(jiraProjects) {
@@ -345,7 +352,11 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
         log.access(`Total JIRA issues found: ${allJiraIssues.length}`);
 
-        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
+        // The issues in review no pull request links, before the details so that
+        // their parents are fetched with the parents of the linked issues
+        const orphanedIssues = await fetchInReviewIssuesWithoutPR(projectConfig.jiraProjects, allJiraIssues);
+
+        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects, orphanedIssues);
 
         // Fetch sprints
         const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
@@ -354,12 +365,6 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         // Fetch sprint issues
         const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
         log.access(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`);
-
-        // retrieve orphaned issues
-        const orphanedIssues = await fetchInReviewIssuesWithoutPR(
-            projectConfig.jiraProjects,
-            allJiraIssues
-        );
 
         // calculate dataHash and determine if the data is new based on the last saved response
         let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
