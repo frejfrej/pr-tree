@@ -2,7 +2,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
-import { renderRepositories, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant } from '../public/app-render.js';
+import { renderRepositories, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -250,4 +250,58 @@ test('renderParticipant gives each status its icon, and an unknown status no ico
     } finally {
         log.mock.restore();
     }
+});
+
+test('escapeHtml escapes the five HTML characters and turns null and undefined into an empty string', () => {
+    assert.equal(escapeHtml('a & b <c> "d" \'e\''), 'a &amp; b &lt;c&gt; &quot;d&quot; &#39;e&#39;');
+    assert.equal(escapeHtml('plain text'), 'plain text');
+    assert.equal(escapeHtml(42), '42');
+    assert.equal(escapeHtml(null), '');
+    assert.equal(escapeHtml(undefined), '');
+});
+
+// A user with Jira or Bitbucket write access can put any character into a
+// summary, a title, a name or a branch: none of them may end an attribute or
+// open a tag in the rendered tree
+test('renderRepositories escapes every Bitbucket and Jira text it interpolates', () => {
+    const hostile = { ...jane, display_name: 'Eve "><img src=x onerror=alert(1)>', links: { avatar: { href: 'https://avatars/eve.png?a=1&b="2"' } } };
+    const pr = pullRequest(7, { repo: 'repo<"&>', source: 'feat/<b>x</b>', destination: 'main"><i>', participants: [{ user: hostile, approved: true, state: 'approved' }] });
+    pr.title = 'Title <script>alert("x")</script> & co';
+    pr.links.html.href = 'https://bitbucket.org/ws/repo/pull-requests/7?x="y"';
+    pr.created_on = '<b>2026';
+    const details = [
+        { key: 'PROJ-7', fields: { summary: 'Summary "><b>bold</b> & more', status: { name: 'In <Review>' }, priority: { name: 'High "priority"', iconUrl: 'https://jira/high.svg?a="b"' } } }
+    ];
+    const html = renderRepositories([pr], { '7': ['PROJ-7'] }, details, new Map([['main"><i>', [pr]]]), 'site');
+    for (const raw of ['<script>', '<img src=x', '<b>bold</b>', '<i>', 'repo<"&>']) {
+        assert.ok(!html.includes(raw), `raw ${raw} found in the rendered tree`);
+    }
+    assert.ok(html.includes('<h2 class="repository-name">repo&lt;&quot;&amp;&gt;</h2>'));
+    assert.ok(html.includes('main&quot;&gt;&lt;i&gt;'));
+    assert.ok(html.includes('Title &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; co'));
+    assert.ok(html.includes('href="https://bitbucket.org/ws/repo/pull-requests/7?x=&quot;y&quot;"'));
+    assert.ok(html.includes('<span class="created-date">&lt;b&gt;2026</span>'));
+    assert.ok(html.includes('data-issue-summary="Summary &quot;&gt;&lt;b&gt;bold&lt;/b&gt; &amp; more"'));
+    assert.ok(html.includes('PROJ-7 (In &lt;Review&gt;)'));
+    assert.ok(html.includes('alt="High &quot;priority&quot;" class="jira-priority-icon" title="High &quot;priority&quot;"'));
+    assert.ok(html.includes('src="https://jira/high.svg?a=&quot;b&quot;"'));
+    assert.ok(html.includes('data-author="Eve &quot;&gt;&lt;img src=x onerror=alert(1)&gt;"'));
+    assert.ok(html.includes('alt="Eve &quot;&gt;&lt;img src=x onerror=alert(1)&gt;"'));
+    assert.ok(html.includes('src="https://avatars/eve.png?a=1&amp;b=&quot;2&quot;"'));
+    // The branch URL keeps its own encoding of the branch name, then is escaped like any attribute
+    assert.ok(html.includes(`href="${escapeHtml('https://bitbucket.org/ws/repo<"&>/branch/' + encodeURIComponent('main"><i>'))}"`));
+});
+
+test('renderOrphanedIssues escapes the summary, the names and the URLs of an issue', () => {
+    const html = renderOrphanedIssues([
+        { key: 'PROJ-<1>', fields: { summary: 'Summary "><script>x</script>', priority: { name: 'P "1"', iconUrl: 'https://jira/p1.svg?q="1"' }, updated: '2026-09-13T11:00:00.000+0000', assignee: { displayName: 'Ann <"&">', avatarUrls: { '24x24': 'https://avatars/ann.png?a="1"' } } } }
+    ], 'site', { now: Date.parse('2026-09-14T12:00:00.000Z') });
+    assert.ok(!html.includes('<script>') && !html.includes('Ann <') && !html.includes('PROJ-<1>'));
+    assert.ok(html.includes('data-issue-key="PROJ-&lt;1&gt;"'));
+    assert.ok(html.includes('href="https://site.atlassian.net/browse/PROJ-&lt;1&gt;"'));
+    assert.ok(html.includes('data-issue-summary="Summary &quot;&gt;&lt;script&gt;x&lt;/script&gt;"'));
+    assert.ok(html.includes('<span class="orphaned-issue-summary">Summary &quot;&gt;&lt;script&gt;x&lt;/script&gt;</span>'));
+    assert.ok(html.includes('data-author="Ann &lt;&quot;&amp;&quot;&gt;" title="Assignee: Ann &lt;&quot;&amp;&quot;&gt;"'));
+    assert.ok(html.includes('src="https://avatars/ann.png?a=&quot;1&quot;" alt="Ann &lt;&quot;&amp;&quot;&gt;"'));
+    assert.ok(html.includes('alt="P &quot;1&quot;" class="jira-priority-icon" title="P &quot;1&quot;"'));
 });

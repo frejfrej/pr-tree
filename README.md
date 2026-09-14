@@ -83,6 +83,7 @@
 
 ## Changelog:
 * Version 2.10.1
+    * Every text from Bitbucket and Jira (pull request titles, branch and repository names, issue summaries and statuses, display names, priority names, URLs) is HTML-escaped when the tree and the orphaned issues section are rendered, and the issue popover shows the summary as text; a `"` or `<` in a Jira summary or a display name no longer breaks the markup (#65)
     * The tooltip of a filtered counter agrees with the number shown: "1 filtered issue out of 13 total", "1 filtered pull request out of 8 total" (#67)
 * Version 2.10.0
     * The "Jira issues in review without a pull request" section follows the sidebar filters like the tree (every filter but SYNC; a fix version, epic or story filter needs the issue type, fix versions and parent, which the server now fetches for these issues, their parents completed in the same request as the linked issues' parents) and is hidden when nothing in it matches; its header carries a shown/total counter
