@@ -190,7 +190,7 @@ test('the Jira issues are fetched in batches of 50, then the parents that were n
     const searchUrls = urlsMatching(requests, /search\/jql/).filter(url => !jqlOf(url).includes('In Review'));
     assert.equal(fields(searchUrls[0]), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype');
     assert.equal(fields(searchUrls[3]), 'key,summary,issuetype,fixVersions,parent');
-    assert.equal(requests.find(r => r.url.includes('search/jql')).options.headers.Authorization, `Basic ${jiraAuth}`);
+    assert.equal(requests.find(r => r.url.includes('issueKey%20in')).options.headers.Authorization, `Basic ${jiraAuth}`);
     assert.deepEqual(data.jiraIssuesDetails.slice(-2).map(i => [i.key, i.fields.issuetype.name]), [['PROJ-500', 'Epic'], ['PROJ-501', 'Story']]);
     assert.equal(data.jiraIssuesDetails.length, 122);
     assert.match(logs.performance.find(line => line.includes('Parent issues fetch')), /^fetchJiraIssuesDetails - Parent issues fetch \(2\) - Duration: \d+ms$/);
@@ -222,7 +222,7 @@ test('the orphaned issues are the ones in review without a pull request, every p
     assert.deepEqual(urls.map(url => new URL(url).searchParams.get('nextPageToken')), [null, 'page-100']);
     for (const url of urls) {
         assert.equal(jqlOf(url), 'project in (PROJ,OTHER) AND status = "In Review" ORDER BY priority DESC, updated DESC');
-        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,updated,assignee,fixVersions,parent,issuetype');
+        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated');
         assert.equal(new URL(url).searchParams.get('maxResults'), '100');
     }
     assert.ok(logs.access.includes('Found 119 orphaned issues in review status'));
@@ -253,6 +253,21 @@ test('the parents of the orphaned issues are fetched with the parents of the lin
     assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions.map(v => v.name), ['2.0']);
     const versions = data.orphanedIssues.map(i => [i.key, i.fields.fixVersions.map(v => v.name)]);
     assert.deepEqual(versions, [['PROJ-2', ['2.0']], ['PROJ-3', []], ['PROJ-4', ['3.0']]]);
+});
+
+test('a parent that is itself an orphaned issue is not requested again nor added to the details', async () => {
+    // The story PROJ-50 is in review with no pull request while its sub-task PROJ-1 has one
+    const linked = issue('PROJ-1', { type: 'Sub-task', parent: 'PROJ-50', fixVersions: [] });
+    const story = issue('PROJ-50', { type: 'Story', parent: 'PROJ-900', fixVersions: [version('5.0')] });
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], parents: [issue('PROJ-900', { type: 'Epic' })], inReview: [story]
+    }));
+    const data = await buildProjectData('P', project);
+    const searches = urlsMatching(requests, /search\/jql/).map(jqlOf);
+    assert.deepEqual(searches.filter(jql => jql.startsWith('key IN')), ['key IN (PROJ-900)']); // the story's epic, not the story
+    assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'PROJ-900']);
+    assert.deepEqual(data.orphanedIssues.map(i => i.key), ['PROJ-50']);
+    assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions.map(v => v.name), ['5.0']); // inherited from the orphaned story all the same
 });
 
 test('the active sprints of every scrum board of each Jira project, once each, and their issues 100 at a time', async () => {

@@ -91,7 +91,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             // Every issue in review of the projects, minus those a pull request links,
             // with the fields the filters need (fix versions, parent and type like the linked issues)
             const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
-            for await (const page of searchIssuePages(jql, 'key,summary,status,priority,updated,assignee,fixVersions,parent,issuetype')) {
+            for await (const page of searchIssuePages(jql, 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated')) {
                 orphanedIssues.push(...page.issues.filter(issue => !existingIssuesSet.has(issue.key)));
             }
             log.access(`Found ${orphanedIssues.length} orphaned issues in review status`);
@@ -235,6 +235,8 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                 if (response.ok) {
                     const data = await response.json();
                     parents.push(...data.issues);
+                } else {
+                    log.error(`Error fetching parent issues: Request failed with status code ${response.status}`);
                 }
                 const duration = Date.now() - startTime;
                 log.performance(`fetchJiraIssuesDetails - Parent issues fetch (${missingParentKeys.length}) - Duration: ${duration}ms`);
@@ -244,10 +246,11 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         }
 
         const all = [...issues, ...parents];
+        const byKey = new Map(all.map(issue => [issue.key, issue]));
         for (const issue of all) {
             if (issue.fields.parent &&
                 (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
-                const parent = all.find(i => i.key === issue.fields.parent.key);
+                const parent = byKey.get(issue.fields.parent.key);
                 if (parent && parent.fields.fixVersions && parent.fields.fixVersions.length > 0) {
                     issue.fields.fixVersions = parent.fields.fixVersions;
                 }
@@ -352,8 +355,9 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
         log.access(`Total JIRA issues found: ${allJiraIssues.length}`);
 
-        // The issues in review no pull request links, before the details so that
-        // their parents are fetched with the parents of the linked issues
+        // The issues in review no pull request links, before the details so that their
+        // parents are fetched with the parents of the linked issues; fetchJiraIssuesDetails
+        // inherits their fix versions in place and does not return them
         const orphanedIssues = await fetchInReviewIssuesWithoutPR(projectConfig.jiraProjects, allJiraIssues);
 
         const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects, orphanedIssues);
