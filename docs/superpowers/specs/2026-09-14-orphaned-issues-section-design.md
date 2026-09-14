@@ -203,11 +203,11 @@ otherwise:
 
 - The orphaned issues copy `issuetype`, `fixVersions` and `parent` from
   `createIssue` (40% of the standard ones under an epic, as the linked ones).
-- One in five orphaned issues is a sub-task of a standard issue created for
-  it (in review too, not linked by any pull request); that parent is added to
-  `jiraIssuesDetails` as a parent-only entry (the parent loop runs over the
-  linked issues and the orphaned issues), and the inheritance pass covers the
-  orphaned issues.
+- One in five orphaned issues is a sub-task of a story created for it (in
+  progress, not in review: an in-review story without a pull request would be
+  an orphaned issue itself); that parent is added to `jiraIssuesDetails` as a
+  parent-only entry (the parent loop runs over the linked issues and the
+  orphaned issues), and the inheritance pass covers the orphaned issues.
 - About a third of the orphaned issues of a project take the place of filler
   keys in a sprint of their Jira project, so the sprint filter has something
   to keep.
