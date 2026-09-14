@@ -32,6 +32,8 @@ export function setPullRequestCollapsed(pullRequest, collapsed) {
     }
     pullRequest.classList.toggle('collapsed', collapsed);
     children.hidden = collapsed;
+    // The header is nested a few levels down; the stacked pull requests are
+    // in the sibling .children container, never inside this element
     setExpanded(pullRequest.querySelector('.pull-request-header > .toggle-button'), collapsed);
     // The child counter is shown on root pull requests permanently, and on
     // other pull requests only while they are collapsed. counter-utils only
