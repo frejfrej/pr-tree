@@ -178,18 +178,46 @@ test('renderRepositories renders every pull request of the fixture projects once
     }
 });
 
-test('renderOrphanedIssues renders nothing without issues and one block per issue otherwise', () => {
-    assert.equal(renderOrphanedIssues([]), '');
-    assert.equal(renderOrphanedIssues(undefined), '');
+test('renderOrphanedIssues renders nothing without issues, otherwise a repository block with one row per issue', () => {
+    assert.equal(renderOrphanedIssues([], 'site'), '');
+    assert.equal(renderOrphanedIssues(undefined, 'site'), '');
+    const now = Date.parse('2026-09-14T12:00:00.000Z');
     const html = renderOrphanedIssues([
-        { key: 'PROJ-9', jiraSiteName: 'site', fields: { summary: 'Nine', status: { name: 'In Review' }, priority: { name: 'Low', iconUrl: 'https://jira/low.svg' } } },
-        { key: 'PROJ-10', jiraSiteName: 'site', fields: { summary: 'Ten', status: { name: 'In Review' }, priority: null } }
-    ]);
-    assert.ok(html.includes('JIRA Issues In Review without Pull Requests (2)'));
-    assert.equal(count(html, '<div class="orphaned-issue">'), 2);
-    assert.equal(count(html, 'class="orphaned-issue-priority"'), 1);
+        { key: 'PROJ-9', fields: { summary: 'Nine', status: { name: 'In Review' }, priority: { name: 'Low', iconUrl: 'https://jira/low.svg' }, updated: '2026-08-31T11:00:00.000Z', assignee: { displayName: 'Jane', avatarUrls: { '24x24': 'https://avatars/jane-24.png', '48x48': 'https://avatars/jane-48.png' } } } },
+        { key: 'PROJ-10', fields: { summary: 'Ten', status: { name: 'In Review' }, priority: null, updated: '2026-09-01T12:00:00.000Z', assignee: null } }
+    ], 'site', { now });
+    // A repository block: the tree's toggle, collapse-all and toggle-state code applies to it
+    assert.equal(count(html, 'class="repository orphaned-issues"'), 1);
+    assert.ok(html.includes('onclick="toggleRepository(this)"'));
+    assert.ok(html.includes('Jira issues in review without a pull request'));
+    assert.match(html, /<div class="repo-pr-counter" title="2 issues">\s*2\s*<\/div>/);
+    // One row per issue, keyed for the filter pass, with the in-review border
+    assert.equal(count(html, 'class="orphaned-issue status-in-review"'), 2);
+    assert.ok(html.includes('data-issue-key="PROJ-9"') && html.includes('data-issue-key="PROJ-10"'));
+    assert.equal(count(html, 'class="pull-request '), 0); // never a .pull-request: the tree pass must not see the rows
+    assert.equal(count(html, 'class="pull-request"'), 0);
+    assert.equal(count(html, 'class="jira-priority-icon"'), 1);
     assert.ok(html.includes('href="https://site.atlassian.net/browse/PROJ-10"'));
-    assert.equal(count(html, 'Status: In Review'), 2);
+    assert.ok(html.includes('data-issue-summary="Ten"')); // the popover attributes of the tree's issue links
+    assert.equal(count(html, 'class="jira-issue-link"'), 2);
+    assert.ok(html.includes('<span class="orphaned-issue-summary">Nine</span>'));
+    assert.ok(html.includes('src="https://avatars/jane-24.png"') && html.includes('title="Assignee: Jane"'));
+    assert.equal(count(html, '<span class="orphaned-issue-unassigned">Unassigned</span>'), 1);
+    assert.ok(html.includes('title="Last updated">2026-08-31</span>'));
+    assert.equal(count(html, 'Status:'), 0); // every issue here is in review: the header says it
+    // PROJ-9 was updated 14 days ago: stale; PROJ-10 13 days ago: not yet
+    assert.equal(count(html, 'class="warnings"'), 1);
+    assert.ok(html.includes('No update for 14 days'));
+});
+
+test('renderOrphanedIssues falls back to the 48x48 avatar and never marks an issue without an update date', () => {
+    const now = Date.parse('2026-09-14T12:00:00.000Z');
+    const html = renderOrphanedIssues([
+        { key: 'PROJ-11', fields: { summary: 'Eleven', priority: null, assignee: { displayName: 'Bob', avatarUrls: { '48x48': 'https://avatars/bob-48.png' } } } }
+    ], 'site', { now });
+    assert.ok(html.includes('src="https://avatars/bob-48.png"'));
+    assert.equal(count(html, 'class="warnings"'), 0);
+    assert.ok(html.includes('title="Last updated"></span>'));
 });
 
 test('renderParticipant gives each status its icon, and an unknown status no icon and a console line', () => {

@@ -8,6 +8,9 @@
  * app.js installs on window. The pull-request and issue links carry, as data
  * attributes, what the popovers show; initializePopovers reads them back, so
  * the writer and the reader of those attributes live together.
+ * The orphaned issues section is rendered as a repository block so the
+ * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
+ * never `.pull-request`, so the tree pass does not see them.
  *
  * Nothing here touches the DOM at import time, so the rendering can be
  * unit-tested with node:test.
@@ -331,50 +334,96 @@ export function renderParticipant(participant, status) {
     `;
 }
 
-/** The section of issues in review without a pull request; an empty string without issues */
-export function renderOrphanedIssues(issues) {
+// An orphaned issue not updated for this many days gets a warning line
+const staleAfterDays = 14;
+const dayMs = 24 * 60 * 60 * 1000;
+
+/**
+ * The section of issues in review without a pull request, as a repository
+ * block (same header, toggle and counter, so the tree's collapse code and the
+ * filter pass treat it alike) with one row per issue: priority, key (with the
+ * issue popover), summary, assignee, last update, and a warning when the
+ * issue has not been updated for 14 days. Pure; an empty string without
+ * issues. `now` (epoch ms) is what the staleness is measured from.
+ */
+export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } = {}) {
     if (!issues || issues.length === 0) {
         return '';
     }
-
-    const issuesHtml = issues.map(issue => `
-        <div class="orphaned-issue">
-            <div class="orphaned-issue-header">
-                ${issue.fields.priority ? `
-                    <img 
-                        src="${issue.fields.priority.iconUrl}" 
-                        alt="${issue.fields.priority.name}"
-                        class="orphaned-issue-priority"
-                        title="${issue.fields.priority.name}"
-                    />
-                ` : ''}
-                <a 
-                    href="https://${issue.jiraSiteName}.atlassian.net/browse/${issue.key}"
-                    target="_blank"
-                    class="orphaned-issue-key"
-                >
-                    ${issue.key}
-                </a>
-            </div>
-            <p class="orphaned-issue-summary">${issue.fields.summary}</p>
-            <div class="orphaned-issue-status">
-                Status: ${issue.fields.status.name}
-            </div>
-        </div>
-    `).join('');
-
+    const count = issues.length;
     return `
-        <div class="orphaned-issues">
-            <div class="orphaned-issues-header">
-                <h2 class="orphaned-issues-title">
-                    <i class="fas fa-exclamation-circle"></i>
-                    JIRA Issues In Review without Pull Requests (${issues.length})
-                </h2>
+        <div class="repository orphaned-issues">
+            <div class="repository-header" onclick="toggleRepository(this)">
+                <button class="toggle-button">
+                    <i class="fas fa-chevron-down"></i>
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+                <h2 class="repository-name"><i class="fas fa-exclamation-circle"></i> Jira issues in review without a pull request</h2>
+                <div class="repo-pr-counter" title="${count} issue${count !== 1 ? 's' : ''}">
+                    ${count}
+                </div>
             </div>
-            <div class="orphaned-issues-content">
-                ${issuesHtml}
+            <div class="repository-content">
+                ${issues.map(issue => renderOrphanedIssue(issue, jiraSiteName, now)).join('')}
             </div>
         </div>
+    `;
+}
+
+// One row of the section, shaped like a pull request: the header (priority,
+// key, summary), then the details (assignee, last update, the stale warning)
+function renderOrphanedIssue(issue, jiraSiteName, now) {
+    const priority = issue.fields.priority;
+    const priorityHtml = priority ?
+        `<img src="${priority.iconUrl}" alt="${priority.name}" class="jira-priority-icon" title="${priority.name}">` : '';
+    const updated = issue.fields.updated || '';
+    // NaN for a missing or unparsable date: never stale
+    const days = Math.floor((now - Date.parse(updated)) / dayMs);
+    const staleHtml = days >= staleAfterDays ? `
+        <div class="warnings">
+            <ul>
+                <li><i class="fas fa-exclamation-triangle red" title="No update for ${days} days"></i> No update for ${days} days</li>
+            </ul>
+        </div>
+    ` : '';
+    return `
+        <div class="orphaned-issue status-in-review" data-issue-key="${issue.key}">
+            <div class="pull-request-content">
+                <div class="pull-request-header">
+                    ${priorityHtml}
+                    <a href="https://${jiraSiteName}.atlassian.net/browse/${issue.key}" target="_blank"
+                       data-issue-key="${issue.key}"
+                       data-issue-summary="${issue.fields.summary}"
+                       class="jira-issue-link">
+                       ${issue.key}
+                    </a>
+                    <span class="orphaned-issue-summary">${issue.fields.summary}</span>
+                </div>
+                <div class="pull-request-details">
+                    <div class="participants">
+                        ${renderAssignee(issue.fields.assignee)}
+                        <span class="created-date" title="Last updated">${updated.substring(0, 10)}</span>
+                    </div>
+                    ${staleHtml}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// The assignee of an issue as Jira describes it (displayName, avatarUrls by
+// size), with the author icon of the tree; "Unassigned" without one
+function renderAssignee(assignee) {
+    if (!assignee || !assignee.displayName) {
+        return '<span class="orphaned-issue-unassigned">Unassigned</span>';
+    }
+    const avatars = assignee.avatarUrls || {};
+    const avatar = avatars['24x24'] || avatars['48x48'] || '';
+    return `
+        <span class="image-container" data-author="${assignee.displayName}" title="Assignee: ${assignee.displayName}">
+            <img src="${avatar}" alt="${assignee.displayName}">
+            <i class="fas fa-user icon"></i>
+        </span>
     `;
 }
 
