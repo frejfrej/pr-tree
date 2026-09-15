@@ -83,6 +83,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.10.2
+    * The SYNC select has an accessible name ("SYNC"), like the project and Work selects; a screen reader no longer announces it by its current option only (#62)
 * Version 2.10.1
     * The toggle buttons of the repositories, the root branches, the stacked pull requests and the orphaned issues section are real buttons with a name ("Toggle products.secollab") and an `aria-expanded` state kept up to date by every collapse and expand, so a screen reader announces them, and the focus ring is visible on the coloured repository header; Enter and Space on a focused button collapse and expand like a click (#66)
     * Every text from Bitbucket and Jira (pull request titles, branch and repository names, issue summaries and statuses, display names, priority names, URLs) is HTML-escaped when the tree and the orphaned issues section are rendered, and the issue popover shows the summary as text; a `"` or `<` in a Jira summary or a display name no longer breaks the markup (#65)
