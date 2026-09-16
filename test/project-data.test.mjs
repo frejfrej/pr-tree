@@ -348,6 +348,18 @@ test('a Jira failure: the sprints of a project are skipped and logged, a failed 
     assert.deepEqual(orphans.logs.error, ['Error fetching orphaned issues: Request failed with status code 403']);
 });
 
+test('a boards response without a list skips the project\'s sprints and the build goes on', async () => {
+    const { buildProjectData, logs } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] },
+        boards: { OTHER: [{ id: 3, name: 'Board 3' }] },
+        sprints: { 3: [{ id: 9, name: 'Sprint 9' }] },
+        intercept: url => (url.includes('projectKeyOrId=PROJ') ? new Response('{"total":0}', { status: 200 }) : undefined)
+    }));
+    const data = await buildProjectData('P', project);
+    assert.deepEqual(data.sprints, [{ id: 9, name: 'Sprint 9' }]);
+    assert.deepEqual(logs.error, []);
+});
+
 test('a failed sprints request of one board skips that board only and is logged; a long Jira error body is cut at 200 characters', async () => {
     const skipped = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },

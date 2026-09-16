@@ -173,7 +173,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             try {
                 const boardsData = await jiraJson(`https://${jiraSiteName}.atlassian.net/rest/agile/1.0/board?projectKeyOrId=${project}&type=scrum`);
                 log.performance(`Fetched ${boardsData.total} boards for project ${project}`);
-                boards = boardsData.values;
+                boards = boardsData.values || []; // a body without boards skips the project too, not the build
             } catch (error) {
                 log.error(`Error fetching sprints for project ${project}: ${error.message}`);
                 continue;
