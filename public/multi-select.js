@@ -10,9 +10,10 @@ const instances = new Map();
 // Text and attribute values are both double-quoted here; quotes are escaped too
 const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
-// The dropdown of every multi-select; the element in index.html is an empty
-// <div class="multi-select" id="..."> and gets this markup at construction
-const dropdownMarkup = `
+// The trigger and the dropdown of every multi-select; the element in index.html
+// is an empty <div class="multi-select" id="..."> and gets this markup at
+// construction (styles.css reserves its height until then)
+const multiSelectMarkup = `
     <div class="multi-select-trigger" tabindex="0">
         <span class="multi-select-display">Show all</span>
         <i class="fas fa-chevron-down multi-select-arrow"></i>
@@ -41,7 +42,7 @@ export class MultiSelect {
         this.onChange = options.onChange || null;
         this.searchText = '';
 
-        this.element.innerHTML = dropdownMarkup;
+        this.element.innerHTML = multiSelectMarkup;
         this.trigger = this.element.querySelector('.multi-select-trigger');
         this.dropdown = this.element.querySelector('.multi-select-dropdown');
         this.display = this.element.querySelector('.multi-select-display');

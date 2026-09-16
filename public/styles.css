@@ -506,6 +506,10 @@ select:disabled {
 /* 5. Multi-select --------------------------------------------------------- */
 .multi-select {
     position: relative;
+    /* The height of the trigger, reserved while the element is still empty
+       (multi-select.js writes the markup once the module runs), so the
+       sidebar does not jump at load */
+    min-height: 40px;
 }
 
 .multi-select-trigger {
@@ -519,6 +523,7 @@ select:disabled {
     background-color: var(--surface-color);
     color: var(--text-color);
     font-size: 14px;
+    line-height: 22px; /* 22px + the padding and borders: the 40px reserved above */
     cursor: pointer;
     outline: none;
     transition: border-color 0.2s ease;
