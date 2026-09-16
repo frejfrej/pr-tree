@@ -26,6 +26,8 @@
  * unit-tested with node:test.
  */
 
+import { otherReviewers, statusClass } from './pull-request-status.js';
+
 /**
  * The text as HTML: the five characters that can end an attribute or start a
  * tag are escaped, so it can be interpolated anywhere. null and undefined
@@ -191,52 +193,38 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
-    let hasOtherParticipants = false;
-    let allOtherParticipantsApproved = true;
 
-    for (const participant of pullRequest.participants) {
-        // Exclude author and Rovo Dev agent
-        if (participant.user.account_id !== pullRequest.author.account_id &&
-            participant.user.display_name !== 'Rovo Dev') {
-            hasOtherParticipants = true;
-            if (participant.approved) {
-                approvedDetails += renderParticipant(participant.user, "approved");
-            } else if (participant.state === "changes_requested") {
-                requestedChangesDetails += renderParticipant(participant.user, "requestedChanges");
-                allOtherParticipantsApproved = false;
-            } else {
-                notYetDecidedDetails += renderParticipant(participant.user, "toReview");
-                allOtherParticipantsApproved = false;
-            }
+    // The reviewers: every participant but the author and Rovo Dev
+    const reviewers = otherReviewers(pullRequest);
+    for (const participant of reviewers) {
+        if (participant.approved) {
+            approvedDetails += renderParticipant(participant.user, "approved");
+        } else if (participant.state === "changes_requested") {
+            requestedChangesDetails += renderParticipant(participant.user, "requestedChanges");
+        } else {
+            notYetDecidedDetails += renderParticipant(participant.user, "toReview");
         }
     }
 
-    let noOtherParticipantsAlert = !hasOtherParticipants ?
+    let noOtherParticipantsAlert = reviewers.length === 0 ?
         `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
 
+    // The linked issues, in the order of the map; null for a pull request the map does not know
     const jiraIssues = jiraIssuesMap["" + pullRequest.id];
+    const linkedIssues = jiraIssues
+        ? jiraIssues.map(issue => jiraIssuesDetails.find(details => details.key === issue)).filter(issueDetails => issueDetails)
+        : null;
+    // The band: one computation with the filter index (pull-request-status.js)
+    const bandClass = statusClass(pullRequest, linkedIssues);
 
-    let statusClass = "";
     let alertsHtml = "";
     let jiraIssuesHtml = "";
-    if (jiraIssues) {
-        const jiraIssuesDetailsForPullRequest = jiraIssues.map(issue => jiraIssuesDetails.find(details => details.key === issue)).filter(issueDetails => issueDetails);
-        const jiraIssuesStatuses = jiraIssuesDetailsForPullRequest.map(issueDetails => issueDetails.fields.status.name);
-
-        if (jiraIssuesStatuses.includes("In Progress")) {
-            statusClass = "status-in-progress";
-        } else if (jiraIssuesStatuses.includes("In Review")) {
-            statusClass = hasOtherParticipants && allOtherParticipantsApproved ? "status-in-review-all-approved" : "status-in-review";
-        } else if (jiraIssuesStatuses.every(status => status === "Resolved" || status === "Closed")) {
-            statusClass = "status-resolved";
-        }
-
-        const uniqueJiraIssuesStatuses = new Set(jiraIssuesStatuses);
+    if (linkedIssues) {
+        const uniqueJiraIssuesStatuses = new Set(linkedIssues.map(issueDetails => issueDetails.fields.status.name));
         let sameStatusIcon = uniqueJiraIssuesStatuses.size > 1 ?
             `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
-        jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
-            const priority = issueDetails.fields.priority;
+        jiraIssuesHtml = linkedIssues.map(issueDetails => {
             return `<li>${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
                        data-issue-key="${escapeHtml(issueDetails.key)}"
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
@@ -286,7 +274,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     const renderedDescription = pullRequest.rendered.description.html || 'No description provided.';
 
     let html = `
-        <div class="pull-request ${statusClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${pullRequest.id}">
+        <div class="pull-request ${bandClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${pullRequest.id}">
             ${countersHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">

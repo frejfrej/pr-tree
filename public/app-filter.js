@@ -1,5 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
+import { statusClass } from './pull-request-status.js';
 
 // The multi-selects compared with the set of the index entry named like the
 // filter; the participants have the Work select and their own rule
@@ -14,6 +15,9 @@ const issueFilters = multiSelectFilters.filter(filter => filter.key !== 'partici
  * attention are decided from the index, and the counters of its ancestors are
  * summed on the way back up. Nothing here searches arrays or the DOM per
  * pull request, so a pass costs the same on a flat list and on a deep stack.
+ * The SYNC statuses come from app-sync.js through app.js (filterBranches takes
+ * them), the status band from the index: the pass reads nothing back from the
+ * rendered tree.
  */
 
 let filterIndex = null;
@@ -154,11 +158,11 @@ function splitIssueKey(key) {
  * reviewers"), assignee attention ("Ready for assignees") or either ("Ready for
  * participants"); "All work", "All reviews" and "All issues" keep every PR of
  * the participants, whether it waits for them or not.
- * @param {{ assignees: Set<string>, pendingReviewers: Set<string> }} entry - an entry of buildFilterIndex().pullRequestsById
- * @param {{ statusInProgress: boolean, statusInReview: boolean, participants: string[] }} state - the Jira statuses shown and the selected participants
+ * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean }} entry - an entry of buildFilterIndex().pullRequestsById
+ * @param {string[]} participants - the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
-export function computeAttention({ assignees, pendingReviewers }, { statusInProgress, statusInReview, participants }) {
+export function computeAttention({ assignees, pendingReviewers, statusInProgress, statusInReview }, participants) {
     const assignee = statusInProgress === true && participants.some(name => assignees.has(name));
     const reviewer = statusInReview === true && participants.some(name => pendingReviewers.has(name));
     return { assignee, reviewer, any: assignee || reviewer };
@@ -234,9 +238,16 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         }
         // Every participant but the author reviews the pull request: these are the reviewers
         const otherParticipants = pullRequest.participants.filter(participant => participant.user.uuid !== pullRequest.author.uuid);
+        // The band the tree paints (pull-request-status.js): what the attention rule reads
+        const band = statusClass(pullRequest, linkedIssues);
         const entry = {
             pullRequest,
             linkedIssues,
+            statusInProgress: band === 'status-in-progress',
+            statusInReview: band === 'status-in-review',
+            // The key of this pull request in a SYNC statuses response (app-sync.js
+            // paints from the same key; a missing hash gives one no response holds)
+            syncKey: `${pullRequest.source?.repository?.name}/${pullRequest.destination?.commit?.hash}..${pullRequest.source?.commit?.hash}`,
             // What the text filter searches: title, source branch and issue keys
             searchText: [pullRequest.title, pullRequest.source?.branch?.name, ...issueKeys]
                 .filter(Boolean).join(' ').toLowerCase(),
@@ -315,13 +326,13 @@ function matchesIssueFilters(entry, filters) {
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
  * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync };
  *   work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees' and only matters with participants selected
- * @param {object} rendered - what the tree shows for this pull request:
- *   statusInProgress, statusInReview (from the Jira statuses), hasSyncLabel and hasOkBadge (the painted SYNC badges)
+ * @param {object} [syncStatus] - the SYNC status of the pull request from the last load
+ *   ({ conflicts, files?, reason? } or { error, reason }); undefined while none is loaded or known
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
-export function evaluatePullRequest(entry, filters, { statusInProgress, statusInReview, hasSyncLabel, hasOkBadge }) {
+export function evaluatePullRequest(entry, filters, syncStatus) {
     const { participants = [], work = 'all', sync } = filters;
-    const attention = computeAttention(entry, { statusInProgress, statusInReview, participants });
+    const attention = computeAttention(entry, participants);
 
     // Participants: without a selection, everybody's pull requests; with one, every
     // pull request a selected participant reviews ("All reviews"), has a linked
@@ -337,11 +348,13 @@ export function evaluatePullRequest(entry, filters, { statusInProgress, statusIn
                     work === 'reviews' ? reviews() :
                         work === 'issues' ? issues() :
                             reviews() || issues());
-    // 'OK' means computed without conflict; 'unchecked' is a pull request with neither badge
+    // What the badges show: SYNC for a result with conflicts, OK for one without,
+    // neither ("unchecked") for no result or a failure
+    const checked = Boolean(syncStatus) && !syncStatus.error;
     const syncMatch = sync === 'Show all' ||
-        (sync === 'requested' && hasSyncLabel) ||
-        (sync === 'OK' && hasOkBadge) ||
-        (sync === 'unchecked' && !hasSyncLabel && !hasOkBadge);
+        (sync === 'requested' && checked && Boolean(syncStatus.conflicts)) ||
+        (sync === 'OK' && checked && !syncStatus.conflicts) ||
+        (sync === 'unchecked' && !checked);
 
     return {
         visible: matchesIssueFilters(entry, filters) && participantMatch && syncMatch,
@@ -385,27 +398,17 @@ export function evaluateOrphanedIssue(entry, filters) {
  * The orphaned issues section, rendered as a repository block, is walked
  * apart: its rows are evaluated by issue key, its counter refreshed, and it
  * is hidden while no row is left; the attention of its visible rows is
- * counted.
+ * counted. Everything a decision needs comes from the index and the loaded
+ * SYNC statuses, nothing from what the tree shows.
  * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync }
+ * @param {Record<string, object> | null} [syncStatuses] - the statuses of the last SYNC load by "repo/destHash..sourceHash", null while none is loaded
  * @returns {number} how many pull requests and orphaned issues are left shown and need attention
  */
-export function filterBranches(filters) {
+export function filterBranches(filters, syncStatuses = null) {
     const pass = {
         filters,
+        syncStatuses,
         index: filterIndex || buildFilterIndex({}),
-        // The SYNC filter relies on the rendered badges: collect them once
-        pullRequestsWithSyncLabel: new Set(
-            Array.from(document.querySelectorAll('.pull-request .conflicts-count'))
-                .map(badge => badge.closest('.pull-request'))
-                .filter(pullRequest => pullRequest)
-                .map(pullRequest => pullRequest.dataset.id)
-        ),
-        pullRequestsWithOkBadge: new Set(
-            Array.from(document.querySelectorAll('.pull-request .conflicts-ok'))
-                .map(badge => badge.closest('.pull-request'))
-                .filter(pullRequest => pullRequest)
-                .map(pullRequest => pullRequest.dataset.id)
-        ),
         shownAttention: 0
     };
 
@@ -468,14 +471,10 @@ function filterPullRequest(pullRequestElement, pass) {
     const entry = pass.index.pullRequestsById.get(Number(pullRequestElement.dataset.id));
     let isVisible = false;
     if (entry) {
-        // Attention is computed from the index before visibility, so the Work filter
-        // never depends on what a previous pass rendered
-        const { visible, attention } = evaluatePullRequest(entry, pass.filters, {
-            statusInProgress: pullRequestElement.classList.contains('status-in-progress'),
-            statusInReview: pullRequestElement.classList.contains('status-in-review'),
-            hasSyncLabel: pass.pullRequestsWithSyncLabel.has(pullRequestElement.dataset.id),
-            hasOkBadge: pass.pullRequestsWithOkBadge.has(pullRequestElement.dataset.id)
-        });
+        // Attention and the SYNC match come from the index and the loaded statuses,
+        // never from what a previous pass painted
+        const syncStatus = pass.syncStatuses ? pass.syncStatuses[entry.syncKey] : undefined;
+        const { visible, attention } = evaluatePullRequest(entry, pass.filters, syncStatus);
         isVisible = visible;
         pullRequestElement.classList.toggle('needs-attention', attention.any);
         if (visible && attention.any) {

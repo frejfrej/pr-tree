@@ -174,9 +174,8 @@ test('the filter index built on the SECOLLAB fixture links every pull request', 
     const inSprint = [...pullRequestsById.values()].filter(entry => entry.sprints.size > 0);
     assert.ok(inSprint.length > 10, `${inSprint.length} pull requests in a sprint`);
     const noFilter = { participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all' };
-    const rendered = { statusInProgress: false, statusInReview: false, hasSyncLabel: false };
     for (const entry of pullRequestsById.values()) {
-        assert.equal(evaluatePullRequest(entry, noFilter, rendered).visible, true);
+        assert.equal(evaluatePullRequest(entry, noFilter).visible, true);
     }
 });
 

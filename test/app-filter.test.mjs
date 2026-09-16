@@ -8,44 +8,44 @@ const bob = { uuid: 'bob-uuid', display_name: 'Bob' };
 const rovoDev = { uuid: 'rovo-uuid', display_name: 'Rovo Dev' };
 
 // An index entry as buildFilterIndex makes it: the assignees of the linked
-// issues and the reviewers who have not approved
-function entry({ assignees = [], pendingReviewers = [] } = {}) {
-    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers) };
+// issues, the reviewers who have not approved, and the status band
+function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false } = {}) {
+    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview };
 }
 
-const inReview = { statusInProgress: false, statusInReview: true };
-const inProgress = { statusInProgress: true, statusInReview: false };
+const inReview = { statusInReview: true };
+const inProgress = { statusInProgress: true };
 
 test('reviewer attention when a selected participant has not approved an in-review PR', () => {
-    const attention = computeAttention(entry({ pendingReviewers: ['Jane'] }), { ...inReview, participants: ['Jane'] });
+    const attention = computeAttention(entry({ pendingReviewers: ['Jane'], ...inReview }), ['Jane']);
     assert.deepEqual(attention, { assignee: false, reviewer: true, any: true });
 });
 
 test('no reviewer attention once the selected participant approved', () => {
     // Jane approved: she is a reviewer of the pull request but not a pending one
-    const attention = computeAttention(entry({ pendingReviewers: ['Bob'] }), { ...inReview, participants: ['Jane'] });
+    const attention = computeAttention(entry({ pendingReviewers: ['Bob'], ...inReview }), ['Jane']);
     assert.deepEqual(attention, { assignee: false, reviewer: false, any: false });
 });
 
 test('reviewer attention matches any of several selected participants', () => {
-    assert.equal(computeAttention(entry({ pendingReviewers: ['Bob'] }), { ...inReview, participants: ['Jane', 'Bob'] }).reviewer, true);
+    assert.equal(computeAttention(entry({ pendingReviewers: ['Bob'], ...inReview }), ['Jane', 'Bob']).reviewer, true);
 });
 
 test('reviewer attention only applies to PRs in review', () => {
-    assert.equal(computeAttention(entry({ pendingReviewers: ['Jane'] }), { ...inProgress, participants: ['Jane'] }).reviewer, false);
+    assert.equal(computeAttention(entry({ pendingReviewers: ['Jane'], ...inProgress }), ['Jane']).reviewer, false);
 });
 
 test('assignee attention when a selected participant owns an issue of an in-progress PR', () => {
-    const attention = computeAttention(entry({ assignees: ['Jane'] }), { ...inProgress, participants: ['Jane'] });
+    const attention = computeAttention(entry({ assignees: ['Jane'], ...inProgress }), ['Jane']);
     assert.deepEqual(attention, { assignee: true, reviewer: false, any: true });
 });
 
 test('assignee attention only applies to PRs in progress', () => {
-    assert.equal(computeAttention(entry({ assignees: ['Jane'] }), { ...inReview, participants: ['Jane'] }).assignee, false);
+    assert.equal(computeAttention(entry({ assignees: ['Jane'], ...inReview }), ['Jane']).assignee, false);
 });
 
 test('no attention without a selected participant', () => {
-    const attention = computeAttention(entry({ assignees: ['Jane'], pendingReviewers: ['Jane'] }), { statusInProgress: true, statusInReview: true, participants: [] });
+    const attention = computeAttention(entry({ assignees: ['Jane'], pendingReviewers: ['Jane'], statusInProgress: true, statusInReview: true }), []);
     assert.deepEqual(attention, { assignee: false, reviewer: false, any: false });
 });
 
@@ -87,14 +87,19 @@ const sampleApiResult = {
     ],
     jiraIssuesMap: { 10: ['PROJ-1', 'PROJ-2', 'PROJ-404'], 11: [] },
     jiraIssuesDetails: [
-        { key: 'PROJ-1', fields: { assignee: { displayName: 'Jane' }, fixVersions: [{ id: 100, name: '1.0' }] } },
-        { key: 'PROJ-2', fields: { assignee: null, fixVersions: [] } }
+        { key: 'PROJ-1', fields: { assignee: { displayName: 'Jane' }, status: { name: 'In Review' }, fixVersions: [{ id: 100, name: '1.0' }] } },
+        { key: 'PROJ-2', fields: { assignee: null, status: { name: 'In Review' }, fixVersions: [] } }
     ],
     sprintIssues: { 5240: ['PROJ-2', 'PROJ-9'], 5241: ['PROJ-9'] }
 };
 
-const rendered = { statusInProgress: false, statusInReview: true, hasSyncLabel: false, hasOkBadge: false };
 const noFilter = { participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all' };
+
+// The entry of pull request 10 with its linked issues in the given status (its reviewers: Jane pending, Bob approved)
+function entryInStatus(status) {
+    const details = sampleApiResult.jiraIssuesDetails.map(issue => ({ ...issue, fields: { ...issue.fields, status: { name: status } } }));
+    return buildFilterIndex({ ...sampleApiResult, jiraIssuesDetails: details }).pullRequestsById.get(10);
+}
 
 test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versions per pull request', () => {
     const { pullRequestsById } = buildFilterIndex(sampleApiResult);
@@ -105,10 +110,22 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
     assert.deepEqual([...entry.pendingReviewers], ['Jane']); // Bob approved
     assert.deepEqual([...entry.sprints], ['5240']);
     assert.deepEqual([...entry.fixVersions], ['100']);
+    assert.equal(entry.statusInReview, true); // PROJ-1 and PROJ-2 are in review, Jane has not approved
+    assert.equal(entry.statusInProgress, false);
+    assert.equal(entry.syncKey, 'undefined/undefined..undefined'); // no repository nor commits in the sample: never a status
     const bare = pullRequestsById.get(11);
     assert.equal(bare.linkedIssues.length, 0);
     assert.equal(bare.assignees.size, 0);
     assert.deepEqual([...bare.reviewers], ['Rovo Dev']);
+    assert.equal(bare.statusInReview, false);
+});
+
+test('buildFilterIndex keys each pull request like the SYNC statuses response: repo/destHash..sourceHash', () => {
+    const { pullRequestsById } = buildFilterIndex({
+        pullRequests: [{ id: 13, title: 'x', author, participants: [], source: { branch: { name: 'f' }, commit: { hash: 'abc' }, repository: { name: 'repo-one' } }, destination: { branch: { name: 'main' }, commit: { hash: 'def' } } }],
+        jiraIssuesMap: {}, jiraIssuesDetails: [], sprintIssues: {}
+    });
+    assert.equal(pullRequestsById.get(13).syncKey, 'repo-one/def..abc');
 });
 
 test('buildFilterIndex lists the participants: assignees and reviewers, sorted, without Rovo Dev', () => {
@@ -159,15 +176,13 @@ test('buildFilterIndex returns the option lists of the multi-selects under the r
 });
 
 test('evaluatePullRequest shows everything without filters', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    assert.equal(evaluatePullRequest(pullRequestsById.get(10), noFilter, rendered).visible, true);
-    assert.equal(evaluatePullRequest(pullRequestsById.get(11), noFilter, rendered).visible, true);
+    assert.equal(evaluatePullRequest(entryInStatus('In Review'), noFilter).visible, true);
+    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsById.get(11), noFilter).visible, true);
 });
 
 test('evaluatePullRequest matches any selected value of each filter, and every filter must match', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10);
-    const evaluate = filters => evaluatePullRequest(entry, { ...noFilter, ...filters }, rendered).visible;
+    const entry = entryInStatus('In Review');
+    const evaluate = filters => evaluatePullRequest(entry, { ...noFilter, ...filters }).visible;
     assert.equal(evaluate({ sprints: ['5240'] }), true);
     assert.equal(evaluate({ sprints: [5240] }), true); // ids may come as numbers
     assert.equal(evaluate({ sprints: ['5241'] }), false);
@@ -177,45 +192,41 @@ test('evaluatePullRequest matches any selected value of each filter, and every f
     assert.equal(evaluate({ participants: ['Jane'], sprints: ['5241'] }), false);
 });
 
-test('evaluatePullRequest SYNC filter follows the rendered badges: SYNC, OK, or neither', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10);
-    const syncBadge = { ...rendered, hasSyncLabel: true };
-    const okBadge = { ...rendered, hasOkBadge: true };
-    const noBadge = rendered;
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, syncBadge).visible, true);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, okBadge).visible, false);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'requested' }, noBadge).visible, false);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, okBadge).visible, true);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, syncBadge).visible, false);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'OK' }, noBadge).visible, false);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, noBadge).visible, true);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, okBadge).visible, false);
-    assert.equal(evaluatePullRequest(entry, { ...noFilter, sync: 'unchecked' }, syncBadge).visible, false);
+test('evaluatePullRequest SYNC filter reads the loaded status: SYNC for conflicts, OK for none, unchecked for a failure or no status', () => {
+    const entry = entryInStatus('In Review');
+    const conflicts = { conflicts: true, files: ['a.txt'] };
+    const partial = { conflicts: true, files: ['a.txt'], reason: 'timeout' }; // still a SYNC badge
+    const clean = { conflicts: false };
+    const failed = { error: true, reason: 'timeout' };
+    const evaluate = (sync, status) => evaluatePullRequest(entry, { ...noFilter, sync }, status).visible;
+    assert.deepEqual([conflicts, partial, clean, failed, undefined].map(status => evaluate('requested', status)), [true, true, false, false, false]);
+    assert.deepEqual([conflicts, partial, clean, failed, undefined].map(status => evaluate('OK', status)), [false, false, true, false, false]);
+    assert.deepEqual([conflicts, partial, clean, failed, undefined].map(status => evaluate('unchecked', status)), [false, false, false, true, true]);
+    assert.deepEqual([conflicts, clean, failed, undefined].map(status => evaluate('Show all', status)), [true, true, true, true]);
 });
 
 test('evaluatePullRequest All work keeps every pull request of the participants, waiting for them or not', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10); // Jane reviews it and has not approved, Bob approved; PROJ-1 is assigned to Jane
-    const inProgress = { ...rendered, statusInProgress: true, statusInReview: false };
-    const neither = { ...rendered, statusInReview: false };
-    const evaluate = (filters, state) => evaluatePullRequest(entry, { ...noFilter, ...filters }, state);
+    // Jane reviews pull request 10 and has not approved, Bob approved; PROJ-1 is assigned to Jane
+    const reviewed = entryInStatus('In Review');
+    const progressing = entryInStatus('In Progress');
+    const neither = entryInStatus('Ready');
+    const evaluate = (filters, entry = reviewed) => evaluatePullRequest(entry, { ...noFilter, ...filters });
     // The attention still says whether the pull request waits for them (the highlight)
-    assert.deepEqual(evaluate({ participants: ['Jane'] }, rendered), { visible: true, attention: { assignee: false, reviewer: true, any: true } });
-    assert.deepEqual(evaluate({ participants: ['Jane'] }, inProgress), { visible: true, attention: { assignee: true, reviewer: false, any: true } });
+    assert.deepEqual(evaluate({ participants: ['Jane'] }), { visible: true, attention: { assignee: false, reviewer: true, any: true } });
+    assert.deepEqual(evaluate({ participants: ['Jane'] }, progressing), { visible: true, attention: { assignee: true, reviewer: false, any: true } });
     assert.deepEqual(evaluate({ participants: ['Jane'] }, neither), { visible: true, attention: { assignee: false, reviewer: false, any: false } }); // neither in review nor in progress: still Jane's
-    assert.deepEqual(evaluate({ participants: ['Bob'] }, rendered), { visible: true, attention: { assignee: false, reviewer: false, any: false } }); // Bob approved: nothing waits for him, still his review
-    assert.equal(evaluate({ participants: ['Bob'] }, inProgress).visible, true);
-    assert.equal(evaluate({ participants: ['Zoé'] }, rendered).visible, false); // neither a reviewer nor an assignee
-    assert.equal(evaluate({ participants: ['Zoé', 'Bob'] }, rendered).visible, true); // any selected participant
-    assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, participants: ['Jane'] }, rendered).visible, false); // only Rovo Dev reviews it
+    assert.deepEqual(evaluate({ participants: ['Bob'] }), { visible: true, attention: { assignee: false, reviewer: false, any: false } }); // Bob approved: nothing waits for him, still his review
+    assert.equal(evaluate({ participants: ['Bob'] }, progressing).visible, true);
+    assert.equal(evaluate({ participants: ['Zoé'] }).visible, false); // neither a reviewer nor an assignee
+    assert.equal(evaluate({ participants: ['Zoé', 'Bob'] }).visible, true); // any selected participant
+    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsById.get(11), { ...noFilter, participants: ['Jane'] }).visible, false); // only Rovo Dev reviews it
 });
 
 test('evaluatePullRequest All reviews keeps the pull requests the participants review, All issues those with a linked issue assigned to them', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10); // Jane reviews it and has not approved, Bob approved; PROJ-1 is assigned to Jane
-    const neither = { ...rendered, statusInReview: false };
-    const evaluate = (work, participants, state = rendered) => evaluatePullRequest(entry, { ...noFilter, work, participants }, state).visible;
+    // Jane reviews pull request 10 and has not approved, Bob approved; PROJ-1 is assigned to Jane
+    const reviewed = entryInStatus('In Review');
+    const neither = entryInStatus('Ready');
+    const evaluate = (work, participants, entry = reviewed) => evaluatePullRequest(entry, { ...noFilter, work, participants }).visible;
     assert.equal(evaluate('reviews', ['Jane']), true);
     assert.equal(evaluate('reviews', ['Bob']), true); // approved, still his review
     assert.equal(evaluate('reviews', ['Bob'], neither), true); // whatever the status
@@ -224,40 +235,38 @@ test('evaluatePullRequest All reviews keeps the pull requests the participants r
     assert.equal(evaluate('issues', ['Jane'], neither), true); // whatever the status
     assert.equal(evaluate('issues', ['Bob']), false); // no linked issue assigned to Bob
     assert.equal(evaluate('issues', ['Zoé', 'Jane']), true); // any selected participant
-    assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, work: 'reviews', participants: ['Jane'] }, rendered).visible, false); // only Rovo Dev reviews it
+    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsById.get(11), { ...noFilter, work: 'reviews', participants: ['Jane'] }).visible, false); // only Rovo Dev reviews it
 });
 
 test('evaluatePullRequest Ready for participants keeps the pull requests waiting for them, as reviewers or as assignees', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10);
-    const inProgress = { ...rendered, statusInProgress: true, statusInReview: false };
-    const neither = { ...rendered, statusInReview: false };
-    const evaluate = (filters, state) => evaluatePullRequest(entry, { ...noFilter, work: 'ready', ...filters }, state);
+    const reviewed = entryInStatus('In Review');
+    const progressing = entryInStatus('In Progress');
+    const neither = entryInStatus('Ready');
+    const evaluate = (filters, entry = reviewed) => evaluatePullRequest(entry, { ...noFilter, work: 'ready', ...filters });
     // Either attention
-    assert.deepEqual(evaluate({ participants: ['Jane'] }, rendered), { visible: true, attention: { assignee: false, reviewer: true, any: true } });
-    assert.deepEqual(evaluate({ participants: ['Jane'] }, inProgress), { visible: true, attention: { assignee: true, reviewer: false, any: true } });
+    assert.deepEqual(evaluate({ participants: ['Jane'] }), { visible: true, attention: { assignee: false, reviewer: true, any: true } });
+    assert.deepEqual(evaluate({ participants: ['Jane'] }, progressing), { visible: true, attention: { assignee: true, reviewer: false, any: true } });
     assert.equal(evaluate({ participants: ['Jane'] }, neither).visible, false); // neither in review nor in progress
-    assert.equal(evaluate({ participants: ['Bob'] }, rendered).visible, false); // Bob approved: nothing waits for him
-    assert.equal(evaluate({ participants: ['Bob'] }, inProgress).visible, false); // no linked issue assigned to Bob
-    assert.equal(evaluate({ participants: ['Bob', 'Jane'] }, rendered).visible, true); // any selected participant
+    assert.equal(evaluate({ participants: ['Bob'] }).visible, false); // Bob approved: nothing waits for him
+    assert.equal(evaluate({ participants: ['Bob'] }, progressing).visible, false); // no linked issue assigned to Bob
+    assert.equal(evaluate({ participants: ['Bob', 'Jane'] }).visible, true); // any selected participant
 });
 
 test('evaluatePullRequest Ready for reviewers keeps reviewer attention only, Ready for assignees assignee attention only', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10);
-    const inProgress = { ...rendered, statusInProgress: true, statusInReview: false };
-    const evaluate = (work, state) => evaluatePullRequest(entry, { ...noFilter, participants: ['Jane'], work }, state).visible;
-    assert.equal(evaluate('reviewers', rendered), true);
-    assert.equal(evaluate('reviewers', inProgress), false); // assignee attention does not satisfy Ready for reviewers
-    assert.equal(evaluate('assignees', inProgress), true);
-    assert.equal(evaluate('assignees', rendered), false); // in review: no assignee attention
+    const reviewed = entryInStatus('In Review');
+    const progressing = entryInStatus('In Progress');
+    const evaluate = (work, entry) => evaluatePullRequest(entry, { ...noFilter, participants: ['Jane'], work }).visible;
+    assert.equal(evaluate('reviewers', reviewed), true);
+    assert.equal(evaluate('reviewers', progressing), false); // assignee attention does not satisfy Ready for reviewers
+    assert.equal(evaluate('assignees', progressing), true);
+    assert.equal(evaluate('assignees', reviewed), false); // in review: no assignee attention
 });
 
 test('evaluatePullRequest without a participant ignores the work value', () => {
     const { pullRequestsById } = buildFilterIndex(sampleApiResult);
     for (const work of ['all', 'reviews', 'issues', 'ready', 'reviewers', 'assignees']) {
-        assert.equal(evaluatePullRequest(pullRequestsById.get(10), { ...noFilter, work }, rendered).visible, true);
-        assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, work }, rendered).visible, true);
+        assert.equal(evaluatePullRequest(entryInStatus('In Review'), { ...noFilter, work }).visible, true);
+        assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, work }).visible, true);
     }
 });
 
@@ -408,8 +417,8 @@ test('buildFilterIndex searches the title, the source branch and the issue keys 
 });
 
 test('evaluatePullRequest text filter is case-insensitive and needs every word', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const evaluate = text => evaluatePullRequest(pullRequestsById.get(10), { ...noFilter, text }, rendered).visible;
+    const entry = entryInStatus('In Review');
+    const evaluate = text => evaluatePullRequest(entry, { ...noFilter, text }).visible;
     assert.equal(evaluate(''), true);
     assert.equal(evaluate('BANNER'), true);
     assert.equal(evaluate('proj-404'), true); // a key of jiraIssuesMap without details (the keys are searched even when the title changes)
@@ -496,7 +505,7 @@ test('buildFilterIndex collects the epics of every pull request and the list of 
 
 test('evaluatePullRequest epic filter matches any selected epic', () => {
     const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
-    const evaluate = (id, epics) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, epics }, rendered).visible;
+    const evaluate = (id, epics) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, epics }).visible;
     assert.equal(evaluate(20, ['PROJ-100']), true);
     assert.equal(evaluate(21, ['PROJ-100']), true);
     assert.equal(evaluate(22, ['PROJ-100']), false);
@@ -544,7 +553,7 @@ test('buildFilterIndex collects the stories of every pull request and the list o
 
 test('evaluatePullRequest story filter matches any selected story', () => {
     const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
-    const evaluate = (id, stories) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, stories }, rendered).visible;
+    const evaluate = (id, stories) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, stories }).visible;
     assert.equal(evaluate(20, ['PROJ-200']), true);
     assert.equal(evaluate(21, ['PROJ-200']), true);
     assert.equal(evaluate(22, ['PROJ-200']), false);
@@ -555,7 +564,7 @@ test('evaluatePullRequest story filter matches any selected story', () => {
 
 test('epic and story filters combine as AND, and a story linked together with its own sub-task counts once', () => {
     const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
-    const evaluate = (id, filters) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, ...filters }, rendered).visible;
+    const evaluate = (id, filters) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, ...filters }).visible;
     assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-200'] }), true);
     assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false);
     assert.equal(evaluate(22, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false); // the story matches, the epic does not

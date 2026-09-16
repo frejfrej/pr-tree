@@ -4,7 +4,8 @@
  * to the SYNC filter, never automatically (the server computes them, which is
  * expensive); they are painted onto the conflicts counters of the rendered
  * tree and kept, so an automatic re-render repaints them without a new fetch.
- * The SYNC filter (app-filter.js) relies on the painted badges.
+ * The SYNC filter (app-filter.js) reads the loaded statuses, which app.js
+ * passes to the filter pass (loadedSyncStatuses).
  *
  * The module owns the loaded statuses and the SYNC controls. The selected
  * project and the selected SYNC filter belong to app.js and are read through
@@ -49,6 +50,11 @@ export function initializeSyncControls(options) {
 /** Whether statuses are loaded; the SYNC filter is only meaningful then */
 export function syncStatusesLoaded() {
     return Boolean(currentSyncStatuses);
+}
+
+/** The statuses of the last load, by "repo/destHash..sourceHash"; null while none is loaded */
+export function loadedSyncStatuses() {
+    return currentSyncStatuses ? currentSyncStatuses.statuses : null;
 }
 
 /**

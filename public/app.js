@@ -1,6 +1,6 @@
 import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
-import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, applySyncStatuses, updateSyncControls } from './app-sync.js';
+import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
@@ -20,7 +20,7 @@ let reloadInterval = 100;
 // counters (inside filterBranches), the active-filter badge, the clear button
 // and the attention count in the tab title.
 function applyFilters() {
-    const attentionCount = filterBranches(filters);
+    const attentionCount = filterBranches(filters, loadedSyncStatuses());
     updateActiveFilterBadge(countActiveFilters(filters));
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
@@ -375,8 +375,8 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Restore toggle states after rendering
     restoreToggleStates(toggleStates);
 
-    // Re-apply the last loaded SYNC statuses (without fetching them again)
-    // before filters run, so the SYNC filter can rely on the rendered badges
+    // Re-paint the last loaded SYNC statuses (without fetching them again); the
+    // filters read the statuses themselves, so the order does not matter
     applySyncStatuses();
     // Reflect the current SYNC load state (statuses are only fetched on demand)
     updateSyncControls();
