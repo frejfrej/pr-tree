@@ -101,6 +101,12 @@ test('the filters survive a round trip through the URL', () => {
     assert.deepEqual(filtersFromUrl(url.search), filters);
 });
 
+test('urlWithFilters writes the parameters in sidebar order, so a link of 2.10 reads the same', () => {
+    const filters = { text: 't', participants: ['a', 'b'], work: 'reviewers', sprints: ['1'], fixVersions: ['2'], epics: ['e'], stories: ['s'], sync: 'OK' };
+    assert.equal(urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters }).search,
+        '?project=P&q=t&sprint=1&fixVersion=2&epic=e&story=s&participant=a&participant=b&work=reviewers&sync=OK');
+});
+
 test('filterUrlParams covers every parameter urlWithFilters writes, plus the former people parameters', () => {
     const filters = { text: 't', participants: ['a'], work: 'reviewers', sprints: ['1'], fixVersions: ['2'], epics: ['e'], stories: ['s'], sync: 'OK' };
     const written = [...urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters }).searchParams.keys()].filter(key => key !== 'project');

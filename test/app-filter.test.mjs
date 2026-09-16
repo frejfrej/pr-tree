@@ -72,6 +72,7 @@ test('countActiveFilters counts filters, not selected values', () => {
 // ------------------------------------------------------------------ index and evaluation
 
 import { buildFilterIndex, evaluatePullRequest, evaluateOrphanedIssue, initializeFilter } from '../public/app-filter.js';
+import { multiSelectFilters } from '../public/filter-registry.js';
 
 const sampleApiResult = {
     pullRequests: [
@@ -297,6 +298,17 @@ test('buildFilterIndex resolves a parent that is itself an orphaned issue (the s
     assert.deepEqual([...index.pullRequestsById.get(12).epics], ['PROJ-600']); // the epic of the sub-task, through the orphaned story
     assert.deepEqual([...index.orphanedIssuesByKey.get('PROJ-30').epics], ['PROJ-600']);
     assert.deepEqual([...index.epics.keys()], ['PROJ-600']);
+});
+
+test('every multi-select but the participants is matched against a set of its own name on the entries of both kinds', () => {
+    // What matchesIssueFilters relies on: a registry key is a Set on a pull request entry and on an orphaned issue entry
+    const index = buildFilterIndex(orphanedApiResult);
+    const pullRequest = index.pullRequestsById.get(10);
+    const orphaned = index.orphanedIssuesByKey.get('PROJ-21');
+    for (const { key } of multiSelectFilters.filter(filter => filter.key !== 'participants')) {
+        assert.ok(pullRequest[key] instanceof Set, `${key} of a pull request`);
+        assert.ok(orphaned[key] instanceof Set, `${key} of an orphaned issue`);
+    }
 });
 
 test('evaluateOrphanedIssue applies the text, sprint, fix version, epic and story filters and ignores SYNC', () => {
