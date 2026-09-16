@@ -112,7 +112,7 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
 });
 
 test('buildFilterIndex lists the participants: assignees and reviewers, sorted, without Rovo Dev', () => {
-    assert.deepEqual(buildFilterIndex(sampleApiResult).participants, ['Bob', 'Jane']);
+    assert.deepEqual(buildFilterIndex(sampleApiResult).participants.map(option => option.value), ['Bob', 'Jane']);
     const index = buildFilterIndex({
         pullRequests: [{
             id: 12, title: 'PROJ-3 search', source: { branch: { name: 'feature/PROJ-3' } },
@@ -124,7 +124,7 @@ test('buildFilterIndex lists the participants: assignees and reviewers, sorted, 
     });
     // An assignee who reviews nothing and a reviewer who approved everything are participants; accented names sort
     // with their letter; a participant without a display name is skipped
-    assert.deepEqual(index.participants, ['Émile', 'Zoé']);
+    assert.deepEqual(index.participants.map(option => option.value), ['Émile', 'Zoé']);
 });
 
 test('buildFilterIndex tolerates an empty result', () => {
@@ -132,6 +132,30 @@ test('buildFilterIndex tolerates an empty result', () => {
     assert.equal(index.pullRequestsById.size, 0);
     assert.deepEqual(index.participants, []);
     assert.equal(index.orphanedIssuesByKey.size, 0);
+});
+
+test('buildFilterIndex returns the option lists of the multi-selects under the registry keys, in display order', () => {
+    const index = buildFilterIndex({
+        ...sampleApiResult,
+        sprints: [{ id: 5241, name: 'Sprint 143' }, { id: 5240, name: 'Sprint 142' }, { id: 100, name: 'Foundation 12' }],
+        jiraIssuesDetails: [
+            { key: 'PROJ-1', fields: { assignee: { displayName: 'Jane' }, fixVersions: [{ id: 100, name: '2.0' }, { id: 101, name: '1.0' }] } },
+            { key: 'PROJ-2', fields: { assignee: null, fixVersions: [{ id: 100, name: '2.0' }] } }, // the same version once
+            { key: 'ALPHA-7', fields: { fixVersions: [{ id: 300, name: '9.0' }] } } // a parent-only issue counts, sorted by project first
+        ],
+        orphanedIssues: [{ key: 'PROJ-9', fields: { summary: 'Nine', assignee: null, fixVersions: [{ id: 200, name: '3.0' }] } }]
+    });
+    assert.deepEqual(index.sprints, [{ value: '100', label: 'Foundation 12' }, { value: '5240', label: 'Sprint 142' }, { value: '5241', label: 'Sprint 143' }]);
+    assert.deepEqual(index.fixVersions, [
+        { value: '300', label: '9.0 (ALPHA)' },
+        { value: '101', label: '1.0 (PROJ)' },
+        { value: '100', label: '2.0 (PROJ)' },
+        { value: '200', label: '3.0 (PROJ)' } // the orphaned issues bring theirs
+    ]);
+    assert.deepEqual(index.participants, [{ value: 'Bob', label: 'Bob' }, { value: 'Jane', label: 'Jane' }]);
+    assert.deepEqual(index.epics, []);
+    assert.deepEqual(buildFilterIndex({}).sprints, []);
+    assert.deepEqual(buildFilterIndex({}).fixVersions, []);
 });
 
 test('evaluatePullRequest shows everything without filters', () => {
@@ -276,9 +300,9 @@ test('buildFilterIndex indexes the orphaned issues: text, assignee, sprints, fix
     assert.equal(epic.stories.size, 0);
     assert.equal(index.orphanedIssuesByKey.get('PROJ-25').searchText, 'proj-25'); // no summary: the key alone
     // The lists the filters offer include what the orphaned issues bring (PROJ-1 and PROJ-2 are the stories of the pull requests)
-    assert.deepEqual([...index.epics.keys()], ['PROJ-500', 'PROJ-24']);
-    assert.deepEqual([...index.stories.keys()].sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23', 'PROJ-25']);
-    assert.deepEqual(index.participants, ['Bob', 'Jane']); // Bob reviews a pull request already; Rovo Dev stays excluded
+    assert.deepEqual(index.epics.map(option => option.value), ['PROJ-500', 'PROJ-24']);
+    assert.deepEqual(index.stories.map(option => option.value).sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23', 'PROJ-25']);
+    assert.deepEqual(index.participants.map(option => option.value), ['Bob', 'Jane']); // Bob reviews a pull request already; Rovo Dev stays excluded
     assert.equal(index.pullRequestsById.size, 2); // the pull requests are indexed as before
 });
 
@@ -297,7 +321,7 @@ test('buildFilterIndex resolves a parent that is itself an orphaned issue (the s
     });
     assert.deepEqual([...index.pullRequestsById.get(12).epics], ['PROJ-600']); // the epic of the sub-task, through the orphaned story
     assert.deepEqual([...index.orphanedIssuesByKey.get('PROJ-30').epics], ['PROJ-600']);
-    assert.deepEqual([...index.epics.keys()], ['PROJ-600']);
+    assert.deepEqual(index.epics.map(option => option.value), ['PROJ-600']);
 });
 
 test('every multi-select but the participants is matched against a set of its own name on the entries of both kinds', () => {
@@ -466,8 +490,8 @@ test('buildFilterIndex collects the epics of every pull request and the list of 
     assert.deepEqual([...pullRequestsById.get(22).epics], []);
     assert.deepEqual([...pullRequestsById.get(23).epics], ['PROJ-100']); // linked to the epic itself
     assert.deepEqual([...pullRequestsById.get(24).epics], ['PROJ-100', 'PROJ-101']); // two issues under two epics
-    assert.deepEqual([...epics.values()], [{ key: 'PROJ-100', summary: 'Assistive AI' }, { key: 'PROJ-101', summary: 'UX' }]);
-    assert.equal(buildFilterIndex({}).epics.size, 0);
+    assert.deepEqual(epics, [{ value: 'PROJ-101', label: 'PROJ-101 UX' }, { value: 'PROJ-100', label: 'PROJ-100 Assistive AI' }]); // newest first
+    assert.equal(buildFilterIndex({}).epics.length, 0);
 });
 
 test('evaluatePullRequest epic filter matches any selected epic', () => {
@@ -514,8 +538,8 @@ test('buildFilterIndex collects the stories of every pull request and the list o
     assert.deepEqual([...pullRequestsById.get(22).stories], ['PROJ-201']);
     assert.deepEqual([...pullRequestsById.get(23).stories], []); // an epic is not a story
     assert.deepEqual([...pullRequestsById.get(24).stories], ['PROJ-200', 'PROJ-203']); // two issues, two stories
-    assert.deepEqual([...stories.keys()], ['PROJ-200', 'PROJ-201', 'PROJ-203']);
-    assert.equal(buildFilterIndex({}).stories.size, 0);
+    assert.deepEqual(stories.map(option => option.value), ['PROJ-203', 'PROJ-201', 'PROJ-200']); // newest first
+    assert.equal(buildFilterIndex({}).stories.length, 0);
 });
 
 test('evaluatePullRequest story filter matches any selected story', () => {

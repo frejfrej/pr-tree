@@ -183,12 +183,13 @@ test('the filter index built on the SECOLLAB fixture links every pull request', 
 test('the filter index of the SECOLLAB fixture lists the fictional team as participants', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     const { pullRequestsById, participants } = buildFilterIndex(data);
-    assert.ok(participants.length >= 5, `${participants.length} participants`);
-    assert.deepEqual(participants, [...participants].sort((a, b) => a.localeCompare(b)));
+    const names = participants.map(option => option.value);
+    assert.ok(names.length >= 5, `${names.length} participants`);
+    assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
     const entries = [...pullRequestsById.values()];
     assert.ok(entries.some(entry => entry.reviewers.has('Rovo Dev')), 'the fixture has Rovo Dev reviewing');
-    assert.ok(!participants.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
-    for (const name of participants) {
+    assert.ok(!names.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
+    for (const name of names) {
         assert.ok(entries.some(entry => entry.assignees.has(name) || entry.reviewers.has(name)), `${name} is an assignee or a reviewer`);
     }
 });
@@ -211,7 +212,7 @@ test('the SECOLLAB fixture carries epics and parent-only issues with their hiera
     assert.ok(parentOnly.some(issue => issue.fields.issuetype.name === 'Epic'), 'epics are fetched as parents');
     assert.ok(parentOnly.some(issue => issue.fields.parent), 'a parent-only story carries its epic');
     const { pullRequestsById, epics } = buildFilterIndex(data);
-    assert.ok(epics.size >= 3, `${epics.size} epics`);
+    assert.ok(epics.length >= 3, `${epics.length} epics`);
     const linkedToSubtask = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
     assert.ok(linkedToSubtask.length > 0);
     assert.ok(linkedToSubtask.some(entry => entry.epics.size > 0), 'a pull request linked to a sub-task reaches its epic');
@@ -222,7 +223,7 @@ test('the filter index resolves a story for every pull request linked to an issu
     const { pullRequestsById, stories } = buildFilterIndex(data);
     const linked = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.length > 0);
     assert.ok(linked.every(entry => entry.stories.size > 0));
-    assert.ok(stories.size > 50, `${stories.size} stories`);
+    assert.ok(stories.length > 50, `${stories.length} stories`);
     const withSubtask = linked.find(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
     const subtask = withSubtask.linkedIssues.find(issue => issue.fields.issuetype.subtask);
     assert.ok(withSubtask.stories.has(subtask.fields.parent.key), 'the story of a sub-task is its parent');

@@ -1,4 +1,4 @@
-import { initializeFilter, filterBranches, countActiveFilters, issueOptions } from './app-filter.js';
+import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
@@ -324,14 +324,6 @@ function initializeTextFilter() {
     }
 }
 
-// Fills the participant multi-select from the index (the assignees and the
-// reviewers, sorted); the selection is restored from the URL afterwards, like
-// every other filter
-function populateParticipantFilter(participants) {
-    const multiSelect = getMultiSelect('participantSelect');
-    if (multiSelect) multiSelect.setOptions(participants.map(name => ({ value: name, label: name })));
-}
-
 // Function to format the refresh time
 function formatRefreshTime(isoString) {
     const date = new Date(isoString);
@@ -388,11 +380,11 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     applySyncStatuses();
     // Reflect the current SYNC load state (statuses are only fetched on demand)
     updateSyncControls();
-    populateSprintFilter(currentApiResult.sprints);
-    populateFixVersionFilter([...currentApiResult.jiraIssuesDetails, ...(currentApiResult.orphanedIssues || [])]);
-    populateIssueFilter('epicSelect', filterIndex.epics);
-    populateIssueFilter('storySelect', filterIndex.stories);
-    populateParticipantFilter(filterIndex.participants);
+    // The option lists come from the index, under the registry keys
+    for (const { key, elementId } of multiSelectFilters) {
+        const multiSelect = getMultiSelect(elementId);
+        if (multiSelect) multiSelect.setOptions(filterIndex[key]);
+    }
 
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
     restoreFiltersFromUrl({ preferTypedText });
@@ -481,56 +473,6 @@ document.addEventListener('visibilitychange', function() {
         }
     }
 });
-
-function populateSprintFilter(sprints) {
-    const sprintMultiSelect = getMultiSelect('sprintSelect');
-    if (!sprintMultiSelect) return;
-
-    // Sort sprints by name
-    const sortedSprints = sprints.sort((a, b) => a.name.localeCompare(b.name));
-
-    const sprintOptions = sortedSprints.map(sprint => ({
-        value: String(sprint.id),
-        label: sprint.name
-    }));
-    sprintMultiSelect.setOptions(sprintOptions);
-}
-
-function populateFixVersionFilter(jiraIssuesDetails) {
-    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
-    if (!fixVersionMultiSelect) return;
-
-    // Extract all unique fix versions from jira issues, including project
-    const fixVersions = new Map();
-    jiraIssuesDetails.forEach(issue => {
-        if (issue.fields.fixVersions && issue.fields.fixVersions.length > 0) {
-            const project = issue.key.split('-')[0];
-            issue.fields.fixVersions.forEach(version => {
-                // Use version.id as key to avoid duplicates
-                if (!fixVersions.has(version.id)) {
-                    fixVersions.set(version.id, { id: version.id, name: version.name, project: project });
-                }
-            });
-        }
-    });
-
-    // Convert to array and sort by project then name
-    const sortedFixVersions = Array.from(fixVersions.values())
-        .sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
-
-    const fixVersionOptions = sortedFixVersions.map(version => ({
-        value: String(version.id),
-        label: `${version.name} (${version.project})`
-    }));
-    fixVersionMultiSelect.setOptions(fixVersionOptions);
-}
-
-// Fills an issue multi-select (epics or stories) from the index; the selection
-// is restored from the URL afterwards, like every other filter
-function populateIssueFilter(elementId, issues) {
-    const multiSelect = getMultiSelect(elementId);
-    if (multiSelect) multiSelect.setOptions(issueOptions(issues.values()));
-}
 
 // Initialize multi-select components
 function initializeMultiSelects() {

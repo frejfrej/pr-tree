@@ -169,15 +169,38 @@ export function computeAttention({ assignees, pendingReviewers }, { statusInProg
 // The Atlassian agent reviews pull requests too: never a person to filter on
 const excludedParticipant = 'Rovo Dev';
 
+// The sprint options: sorted by name, valued by id
+function sprintOptions(sprints) {
+    return [...sprints]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(sprint => ({ value: String(sprint.id), label: sprint.name }));
+}
+
+// The fix version options of the given issues: unique by id, sorted by Jira
+// project (the prefix of the issue key) then by name, labelled "Name (PROJECT)"
+function fixVersionOptions(issues) {
+    const versions = new Map();
+    for (const issue of issues) {
+        const project = issue.key.split('-')[0];
+        for (const version of issue.fields.fixVersions || []) {
+            if (!versions.has(version.id)) versions.set(version.id, { id: version.id, name: version.name, project });
+        }
+    }
+    return [...versions.values()]
+        .sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name))
+        .map(version => ({ value: String(version.id), label: `${version.name} (${version.project})` }));
+}
+
 /**
  * Indexes the API result for the filters: one entry per pull request with its
  * linked issues, the text the text filter searches and the sets the other
  * filters compare against; one entry per orphaned issue (in review, no pull
- * request) with the same sets; and the lists the epic, story and participant
- * filters offer, the orphaned issues included. Pure.
- * @returns {{ pullRequestsById: Map<number, object>, orphanedIssuesByKey: Map<string, object>, epics: Map<string, { key, summary }>, stories: Map<string, { key, summary }>, participants: string[] }}
+ * request) with the same sets; and, under the keys of the filter registry, the
+ * option list of each multi-select in display order, the orphaned issues
+ * included. Pure.
+ * @returns {{ pullRequestsById: Map<number, object>, orphanedIssuesByKey: Map<string, object>, sprints: { value, label }[], fixVersions: { value, label }[], epics: { value, label }[], stories: { value, label }[], participants: { value, label }[] }}
  */
-export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprintIssues = {}, orphanedIssues = [] }) {
+export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprints = [], sprintIssues = {}, orphanedIssues = [] }) {
     // The parents are looked up among the details (where the server puts the
     // parents it fetched) and among the orphaned issues (a parent that is an
     // orphaned issue itself is not fetched again); a key in both lists, which
@@ -265,9 +288,12 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     return {
         pullRequestsById,
         orphanedIssuesByKey,
-        epics,
-        stories,
-        participants: [...participants].sort((a, b) => a.localeCompare(b))
+        // The option lists of the multi-selects, under the registry keys, in display order
+        sprints: sprintOptions(sprints),
+        fixVersions: fixVersionOptions([...jiraIssuesDetails, ...orphanedIssues]),
+        epics: issueOptions(epics.values()),
+        stories: issueOptions(stories.values()),
+        participants: [...participants].sort((a, b) => a.localeCompare(b)).map(name => ({ value: name, label: name }))
     };
 }
 
