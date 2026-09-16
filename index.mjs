@@ -12,7 +12,7 @@ import {
 } from './cache.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from './fixtures/index.mjs';
 import { RateLimitError, createAtlassianFetch } from './atlassian-fetch.mjs';
-import { createSyncStatuses } from './sync-statuses.mjs';
+import { createSyncStatuses, isCurrentCacheKey } from './sync-statuses.mjs';
 import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 
@@ -78,8 +78,11 @@ app.use((req, res, next) => {
 
 // A conflict result never changes for a pair of commits: the results are kept
 // on disk and survive restarts (sync-cache.mjs); failures and partial results
-// are computed again at the next load
+// are computed again at the next load. The keys start with the version of the
+// conflict rule (sync-statuses.mjs builds them): the entries of an older
+// version are never looked up again, and go the next time the file is written.
 const syncCache = openSyncCache(path.join(__dirname, 'sync-cache.json'), {
+    keep: isCurrentCacheKey,
     onError: error => log(`sync-cache.json ignored: ${error.message}`, errorLogStream)
 });
 log(`sync-cache.json: ${syncCache.size} conflict results loaded`, accessLogStream);

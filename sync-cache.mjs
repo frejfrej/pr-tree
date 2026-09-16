@@ -5,9 +5,11 @@ import { rename, writeFile } from 'fs/promises';
  * The conflicts of pull requests by "repo/destHash..sourceHash", kept on disk
  * across server restarts: a result only depends on the two commits, so it
  * never changes. Entries computed more than maxAgeDays ago are dropped when
- * the file is written (merged pull requests leave their hashes behind). Only
- * successful results are meant to be stored; a failure is retried by the
- * caller at the next load.
+ * the file is written (merged pull requests leave their hashes behind), and
+ * so are the entries whose key the `keep` option rejects: the keys are opaque
+ * here, and the caller says which ones it still looks up (the server prefixes
+ * them with the version of the conflict rule). Only successful results are
+ * meant to be stored; a failure is retried by the caller at the next load.
  */
 
 export const syncCacheVersion = 1;
@@ -21,8 +23,9 @@ const dayMs = 24 * 60 * 60 * 1000;
  * @param {number} [options.maxAgeDays=90] - entries older than this are dropped at save
  * @param {() => number} [options.now] - clock, for the tests
  * @param {(error: Error) => void} [options.onError] - called when the file cannot be used
+ * @param {(key: string) => boolean} [options.keep] - entries whose key it rejects are dropped at save (default: every key is kept)
  */
-export function openSyncCache(filePath, { maxAgeDays = 90, now = () => Date.now(), onError = () => {} } = {}) {
+export function openSyncCache(filePath, { maxAgeDays = 90, now = () => Date.now(), onError = () => {}, keep = () => true } = {}) {
     const entries = new Map();
     let dirty = false;
     let saving = Promise.resolve(false);
@@ -40,10 +43,12 @@ export function openSyncCache(filePath, { maxAgeDays = 90, now = () => Date.now(
         if (error.code !== 'ENOENT') onError(error);
     }
 
+    // The entries too old to matter (an unparsable date goes too) and those
+    // the caller no longer looks up
     function prune() {
         const oldest = now() - maxAgeDays * dayMs;
         for (const [key, entry] of entries) {
-            if (!(Date.parse(entry.computedAt) >= oldest)) entries.delete(key); // an unparsable date goes too
+            if (!(Date.parse(entry.computedAt) >= oldest) || !keep(key)) entries.delete(key);
         }
     }
 

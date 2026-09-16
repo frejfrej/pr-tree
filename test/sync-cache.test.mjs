@@ -59,6 +59,24 @@ test('entries older than the maximum age are dropped when the file is written', 
     assert.deepEqual(reopened.get('repo/new..new'), { conflicts: false });
 });
 
+test('entries whose key the keep option rejects are dropped when the file is written, not before', async () => {
+    const file = tempFile();
+    writeFileSync(file, JSON.stringify({
+        version: syncCacheVersion,
+        entries: { '1:repo/a..b': { conflicts: false, computedAt: new Date().toISOString() } }
+    }));
+    const keep = key => key.startsWith('2:');
+    const cache = openSyncCache(file, { keep });
+    assert.equal(cache.size, 1); // still loaded: dropped at the next write only
+    assert.deepEqual(cache.get('1:repo/a..b'), { conflicts: false });
+    cache.set('2:repo/a..b', { conflicts: true, files: ['x'] });
+    assert.equal(await cache.save(), true);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), ['2:repo/a..b']);
+    const reopened = openSyncCache(file, { keep });
+    assert.equal(reopened.size, 1);
+    assert.deepEqual(reopened.get('2:repo/a..b'), { conflicts: true, files: ['x'] });
+});
+
 test('a corrupt file or another version opens empty and is reported', () => {
     const file = tempFile();
     const errors = [];

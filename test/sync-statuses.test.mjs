@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createSyncStatuses, filesPerPatchRequest, maxFilesToCheck } from '../sync-statuses.mjs';
+import { createSyncStatuses, filesPerPatchRequest, maxFilesToCheck, isCurrentCacheKey } from '../sync-statuses.mjs';
 import { conflictRuleVersion } from '../conflicts.mjs';
 import { openSyncCache } from '../sync-cache.mjs';
 import { RateLimitError } from '../atlassian-fetch.mjs';
@@ -322,12 +322,14 @@ test('a complete result is stored under the rule-version prefix, and found again
     assert.deepEqual(restarted.logs.performance, ['Sync statuses of PROJ - 1 pull requests, 0 computed, 0 not checked, 0 partly checked']);
 });
 
-test('a result stored under another version of the conflict rule is not reused', async () => {
-    const cache = openSyncCache(tempFile());
+test('a result stored under another version of the conflict rule is not reused, and goes at the next write', async () => {
+    const file = tempFile();
+    const cache = openSyncCache(file, { keep: isCurrentCacheKey }); // what the server passes
     cache.set(`${conflictRuleVersion - 1}:${key}`, { conflicts: false });
     const { computeSyncStatuses, requests } = setUp(fakeBitbucket({ ...bothSides, ...sameLine }), { cache });
     assert.deepEqual(await computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { conflicts: true, files: ['f.txt'] } });
     assert.equal(requests.length, 4);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [cacheKey]); // the older entry went with the save
 });
 
 test('a partial or failed result is not stored', async () => {

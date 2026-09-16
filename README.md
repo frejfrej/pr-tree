@@ -83,6 +83,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.10.3
+    * `sync-cache.json` drops the conflict results computed under an older version of the conflict rule the next time it is written, instead of carrying them for 90 days (#51)
 * Version 2.10.2
     * The SYNC select has an accessible name ("SYNC"), like the project and Work selects; a screen reader no longer announces it by its current option only (#62)
 * Version 2.10.1

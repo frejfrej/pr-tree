@@ -16,7 +16,7 @@
 - Orphaned issue detection (Jira issues in review without PRs)
 
 ### Version
-Current version: **2.10.2** (as of 2026-09-16)
+Current version: **2.10.3** (as of 2026-09-16)
 
 ## Technology Stack
 
@@ -91,7 +91,7 @@ pr-tree/
 - TTL configuration:
   - Project data: 120 seconds (default)
   - Projects list: 300 seconds (5 minutes)
-- The per-pull-request conflict results are not in node-cache: they live in `sync-cache.json` (`sync-cache.mjs`), for good (pruned 90 days after they were computed)
+- The per-pull-request conflict results are not in node-cache: they live in `sync-cache.json` (`sync-cache.mjs`), for good (pruned 90 days after they were computed, or at the first write after a bump of the conflict rule)
 - `getCachedSyncStatuses` shares a computation in progress per project (two loads of one project at once compute once; a failure is not cached)
 - The sprints are fetched with the project data and cached with it (no separate cache)
 - Cache statistics endpoint support
@@ -115,7 +115,7 @@ pr-tree/
 - `createSyncStatuses({ fetch, workspace, bbAuth, log: { error, performance }, syncCache, timeoutMs = 30000, maxConcurrent = 4, now })`: the SYNC computation of a server, one limiter and one cache; nothing here talks to Bitbucket by itself (the server passes `atlassianFetch`, the tests a fake answering by URL); returns `computeConflicts(repoName, spec)` and `computeSyncStatuses(projectName, pullRequests)`
 - `computeConflicts` fetches the diffstats of both sides (with their line counts, following `next`), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request (`filesPerPatchRequest`), the paths of one file in the same request so a rename is seen whole, both sides in parallel), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches
 - A failed request or a `checkPatch` mismatch is caught: when the diffstats already proved a conflict, the limit or a later failure gives a partial SYNC (`{ conflicts: true, files, reason }`: the known files, and the reason the rest was not checked) instead of a full failure
-- `computeSyncStatuses` is the per-pull-request block of the route: each result is looked up in `sync-cache.json` under `<conflictRuleVersion>:<repo>/<dest>..<source>` before any request, computed otherwise through the limiter, and stored only when complete (never a failure or a partial result); a pull request without a commit hash on a side gets no entry; the cache is saved once at the end (a failed write is logged); the reasons sent to the client are short (`failureReason`: `shortMessage` without the URL, or the fixed sentence of a rate-limit pause, which is not logged as an error); the summary log line counts the pull requests computed, not checked and partly checked
+- `computeSyncStatuses` is the per-pull-request block of the route: each result is looked up in `sync-cache.json` under `<conflictRuleVersion>:<repo>/<dest>..<source>` before any request (the prefix is built here; `isCurrentCacheKey(key)`, exported, is what index.mjs passes as the `keep` option of the cache), computed otherwise through the limiter, and stored only when complete (never a failure or a partial result); a pull request without a commit hash on a side gets no entry; the cache is saved once at the end (a failed write is logged); the reasons sent to the client are short (`failureReason`: `shortMessage` without the URL, or the fixed sentence of a rate-limit pause, which is not logged as an error); the summary log line counts the pull requests computed, not checked and partly checked
 - Tested against a fake Bitbucket in `test/sync-statuses.test.mjs` (real `Response` objects, the real `openSyncCache` on a temporary file): what is fetched, what the client is shown, what reaches the disk
 
 **atlassian-fetch.mjs**
@@ -125,7 +125,7 @@ pr-tree/
 - Tested in `test/atlassian-fetch.test.mjs` with a fake `fetch` and a clock variable: the pause from either API and its extension by a later 429, the drained 429 body, the failure messages, `failureReason`, the fields and TTL of the responses during a pause
 
 **sync-cache.mjs**
-- `openSyncCache(filePath, { maxAgeDays, now, onError })`: `size`, `get(key)`, `set(key, result)`, `save()`; the file is `{ version: 1, entries: { "2:repo-name/destHash..sourceHash": { conflicts, files, computedAt } } }` (the module treats keys as opaque strings; the `2:` prefix is the conflict rule version the server puts in front of `repo/dest..source`), read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned of entries older than 90 days at save
+- `openSyncCache(filePath, { maxAgeDays, now, onError, keep })`: `size`, `get(key)`, `set(key, result)`, `save()`; the file is `{ version: 1, entries: { "2:repo-name/destHash..sourceHash": { conflicts, files, computedAt } } }` (the module treats keys as opaque strings; the `2:` prefix is the conflict rule version the server puts in front of `repo/dest..source`), read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned at save of the entries older than 90 days and of those whose key `keep(key)` rejects (the server passes `isCurrentCacheKey` from sync-statuses.mjs, so the results of an older rule version go at the first write after a bump)
 - `save()` serializes at call time and queues its write after the writes in flight; it resolves to whether it wrote and only ever rejects (a failed write leaves the entries pending for the next save)
 - Only successful results are stored (the route stores nothing for `{ error: true }` or a partial result with a `reason`), so failures are retried at the next load; fixture mode reads the file but never writes it
 
@@ -236,7 +236,7 @@ Returns application version metadata.
 **Response:**
 ```json
 {
-  "version": "2.10.2",
+  "version": "2.10.3",
   "releaseDate": "2026-09-16",
   "author": "François-Régis Jaunatre",
   "license": "Copyright François-Régis Jaunatre"
@@ -558,7 +558,7 @@ Three streams available:
 11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
 12. **Module boundaries**: app-render.js stays free of filter state and of DOM access at import time (its tests import it in node); app-sync.js never imports app.js (it receives accessors), so there is no circular import; anything that needs both the state and a module goes through app.js
 13. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop the response when the project changed meanwhile; `loadSyncStatuses` compares the load generation `resetSyncStatuses` bumps (Back/Forward make quick switches easy); any new fetch that paints something must do the same
-14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (sync-statuses.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under the older version are simply never looked up again and age out with the rest after 90 days
+14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (sync-statuses.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under the older version are never looked up again and are dropped the next time the file is written (the `keep` option of `openSyncCache`)
 15. **Orphaned issues section**: it is a `.repository.orphaned-issues` block so the toggles apply, and the filter walk skips it in the repository loop; its rows are `.orphaned-issue`, never `.pull-request` (the tree pass, the SYNC badge collection and `captureToggleStates` select `.pull-request`); the parents of the orphaned issues are in `jiraIssuesDetails` like the linked issues' parents, except a parent that is an orphaned issue itself, which the index looks up among the orphaned issues
 
 ### Testing Approach

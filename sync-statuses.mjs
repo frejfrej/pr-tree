@@ -17,6 +17,16 @@ export const filesPerPatchRequest = 20;
 // checked, or only partly when the diffstats already proved a conflict
 export const maxFilesToCheck = 100;
 
+// The keys of sync-cache.json start with the version of the conflict rule: a
+// result computed under another version is never looked up again, and the
+// server drops it at the next write (the keep option of openSyncCache)
+const cacheKeyPrefix = `${conflictRuleVersion}:`;
+
+/** Whether a sync-cache.json key was stored under the current conflict rule */
+export function isCurrentCacheKey(key) {
+    return key.startsWith(cacheKeyPrefix);
+}
+
 // Serializes conflict computations: one SYNC load asks for every pull request of
 // a project at once, and each computation makes many Bitbucket calls of its own.
 function createLimiter(maxConcurrent) {
@@ -196,7 +206,7 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
 
             const key = `${repoName}/${spec}`;
             // A result stored under another version of the conflict rule is not reused
-            const cacheKey = `${conflictRuleVersion}:${key}`;
+            const cacheKey = cacheKeyPrefix + key;
             try {
                 let result = syncCache.get(cacheKey);
                 if (!result) {
