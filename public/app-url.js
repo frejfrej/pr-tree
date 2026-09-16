@@ -4,32 +4,30 @@
  * here reads the page. Multi-selects use repeated parameters (?participant=A&participant=B).
  */
 
+import { multiSelectFilters, defaultFilters } from './filter-registry.js';
+
 // Parameters written by the filters, and the former ones: assignee, reviewer,
 // readyReviewer, readyAssignee and ready were the people filters before 2.8.0,
 // never read any more, only ever removed when writing.
-export const filterUrlParams = ['q', 'sprint', 'fixVersion', 'epic', 'story', 'participant', 'work', 'sync', 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready'];
+export const filterUrlParams = ['q', ...multiSelectFilters.map(filter => filter.urlParam), 'work', 'sync', 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready'];
 
 // The values of the Work select besides 'all', its default
 const workValues = ['reviews', 'issues', 'ready', 'reviewers', 'assignees'];
 
 /**
- * The filters a query string describes, in the shape of currentFilters().
+ * The filters a query string describes, in the shape of defaultFilters().
  * @param {string} search - window.location.search, with or without the leading "?"
  * @returns {{ text: string, participants: string[], work: string, sprints: string[], fixVersions: string[], epics: string[], stories: string[], sync: string }} work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees'
  */
 export function filtersFromUrl(search) {
     const params = new URLSearchParams(search);
+    const filters = defaultFilters();
+    filters.text = params.get('q') || '';
     const work = params.get('work');
-    return {
-        text: params.get('q') || '',
-        participants: params.getAll('participant'),
-        work: workValues.includes(work) ? work : 'all',
-        sprints: params.getAll('sprint'),
-        fixVersions: params.getAll('fixVersion'),
-        epics: params.getAll('epic'),
-        stories: params.getAll('story'),
-        sync: params.get('sync') || 'Show all'
-    };
+    filters.work = workValues.includes(work) ? work : 'all';
+    filters.sync = params.get('sync') || 'Show all';
+    for (const { key, urlParam } of multiSelectFilters) filters[key] = params.getAll(urlParam);
+    return filters;
 }
 
 /**
@@ -50,7 +48,7 @@ export function projectFromUrl(search, projects) {
  * the previous ones (the former people parameters included); parameters that
  * are not filters are kept.
  * @param {URL} url - left untouched
- * @param {{ project: string | null, filters: object }} state - filters in the shape of currentFilters()
+ * @param {{ project: string | null, filters: object }} state - filters in the shape of defaultFilters()
  * @returns {URL}
  */
 export function urlWithFilters(url, { project, filters }) {
@@ -64,11 +62,7 @@ export function urlWithFilters(url, { project, filters }) {
     }
     const text = filters.text.trim();
     if (text !== '') params.set('q', text);
-    filters.sprints.forEach(value => params.append('sprint', value));
-    filters.fixVersions.forEach(value => params.append('fixVersion', value));
-    filters.epics.forEach(value => params.append('epic', value));
-    filters.stories.forEach(value => params.append('story', value));
-    filters.participants.forEach(value => params.append('participant', value));
+    for (const { key, urlParam } of multiSelectFilters) filters[key].forEach(value => params.append(urlParam, value));
     // The work value only means something with participants selected
     if (filters.participants.length > 0 && filters.work !== 'all') params.set('work', filters.work);
     if (filters.sync !== 'Show all') params.set('sync', filters.sync);

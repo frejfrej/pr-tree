@@ -1,4 +1,9 @@
 import { updateCounterDisplay } from './counter-utils.js';
+import { multiSelectFilters } from './filter-registry.js';
+
+// The multi-selects compared with the set of the index entry named like the
+// filter; the participants have the Work select and their own rule
+const issueFilters = multiSelectFilters.filter(filter => filter.key !== 'participants');
 
 /**
  * Filtering of the rendered pull-request tree.
@@ -23,14 +28,11 @@ export function initializeFilter(apiResult) {
  * Counts the filters that are not at their default value.
  * A multi-select with several values counts once.
  */
-export function countActiveFilters({ text = '', participants = [], work = 'all', sprints, fixVersions, epics = [], stories = [], sync }) {
+export function countActiveFilters(filters) {
+    const { text = '', participants = [], work = 'all', sync } = filters;
     return [
         parseTextQuery(text).length > 0,
-        sprints.length > 0,
-        fixVersions.length > 0,
-        epics.length > 0,
-        stories.length > 0,
-        participants.length > 0,
+        ...multiSelectFilters.map(({ key }) => (filters[key] || []).length > 0),
         participants.length > 0 && work !== 'all',
         sync !== 'Show all'
     ].filter(Boolean).length;
@@ -272,15 +274,14 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 // -------------------------------------------------------------- evaluation
 
 // The filters an indexed pull request and an indexed orphaned issue share:
-// the text, and any selected value of the sprint, fix version, epic and story
-// filters (an empty selection matches everything)
-function matchesIssueFilters(entry, { text = '', sprints = [], fixVersions = [], epics = [], stories = [] }) {
-    const textMatch = matchesText(entry.searchText, parseTextQuery(text));
-    const sprintMatch = sprints.length === 0 || sprints.some(sprintId => entry.sprints.has(String(sprintId)));
-    const fixVersionMatch = fixVersions.length === 0 || fixVersions.some(versionId => entry.fixVersions.has(String(versionId)));
-    const epicMatch = epics.length === 0 || epics.some(key => entry.epics.has(key));
-    const storyMatch = stories.length === 0 || stories.some(key => entry.stories.has(key));
-    return textMatch && sprintMatch && fixVersionMatch && epicMatch && storyMatch;
+// the text, and any selected value of each multi-select but the participants
+// (an empty selection matches everything)
+function matchesIssueFilters(entry, filters) {
+    if (!matchesText(entry.searchText, parseTextQuery(filters.text || ''))) return false;
+    return issueFilters.every(({ key }) => {
+        const selected = filters[key] || [];
+        return selected.length === 0 || selected.some(value => entry[key].has(String(value)));
+    });
 }
 
 /**
