@@ -120,6 +120,13 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
     assert.equal(bare.statusInReview, false);
 });
 
+test('buildFilterIndex: a pull request in review approved by every reviewer is not in review for the attention rule, as its band says', () => {
+    const allApproved = { ...sampleApiResult, pullRequests: [{ ...sampleApiResult.pullRequests[0], participants: [{ user: author, approved: false }, { user: jane, approved: true }, { user: bob, approved: true }] }] };
+    const entry = buildFilterIndex(allApproved).pullRequestsById.get(10);
+    assert.equal(entry.statusInReview, false); // the band is status-in-review-all-approved: nobody waits
+    assert.equal(computeAttention(entry, ['Jane']).reviewer, false);
+});
+
 test('buildFilterIndex keys each pull request like the SYNC statuses response: repo/destHash..sourceHash', () => {
     const { pullRequestsById } = buildFilterIndex({
         pullRequests: [{ id: 13, title: 'x', author, participants: [], source: { branch: { name: 'f' }, commit: { hash: 'abc' }, repository: { name: 'repo-one' } }, destination: { branch: { name: 'main' }, commit: { hash: 'def' } } }],

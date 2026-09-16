@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
-import { statusClass } from './pull-request-status.js';
+import { statusClass, atlassianAgent } from './pull-request-status.js';
 
 // The multi-selects compared with the set of the index entry named like the
 // filter; the participants have the Work select and their own rule
@@ -123,7 +123,7 @@ export function storyOf(issue) {
 /**
  * Options of an issue multi-select: "KEY Summary", valued by key, sorted by
  * Jira project then issue number descending (newest first). Pure.
- * @param {Iterable<{ key: string, summary: string }>} issues - records, e.g. index.epics.values()
+ * @param {Iterable<{ key: string, summary: string }>} issues - records, e.g. the epics buildFilterIndex collected
  * @returns {{ value: string, label: string }[]}
  */
 export function issueOptions(issues) {
@@ -169,9 +169,6 @@ export function computeAttention({ assignees, pendingReviewers, statusInProgress
 }
 
 // ------------------------------------------------------------------- index
-
-// The Atlassian agent reviews pull requests too: never a person to filter on
-const excludedParticipant = 'Rovo Dev';
 
 // The sprint options: sorted by name, valued by id
 function sprintOptions(sprints) {
@@ -239,6 +236,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         // Every participant but the author reviews the pull request: these are the reviewers
         const otherParticipants = pullRequest.participants.filter(participant => participant.user.uuid !== pullRequest.author.uuid);
         // The band the tree paints (pull-request-status.js): what the attention rule reads
+        // (the render looks the linked issues up among the details only; a
+        // linked issue is never an orphaned one, so both see the same list)
         const band = statusClass(pullRequest, linkedIssues);
         const entry = {
             pullRequest,
@@ -294,7 +293,7 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             stories: new Set(story ? [story.key] : [])
         });
     }
-    participants.delete(excludedParticipant);
+    participants.delete(atlassianAgent);
 
     return {
         pullRequestsById,

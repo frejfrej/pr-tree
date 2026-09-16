@@ -7,13 +7,13 @@
  */
 
 // The Atlassian agent reviews pull requests too: never a reviewer to count
-const excludedReviewer = 'Rovo Dev';
+export const atlassianAgent = 'Rovo Dev';
 
 /** The participants other than the author and Rovo Dev: the reviewers the tree shows */
 export function otherReviewers(pullRequest) {
     return pullRequest.participants.filter(participant =>
         participant.user.uuid !== pullRequest.author.uuid &&
-        participant.user.display_name !== excludedReviewer);
+        participant.user.display_name !== atlassianAgent);
 }
 
 /**
