@@ -2,7 +2,7 @@ import { initializeFilter, filterBranches, countActiveFilters } from './app-filt
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
-import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
+import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
@@ -486,6 +486,7 @@ document.addEventListener('DOMContentLoaded', function() {
     showEmptyState();
     loadProjects();
     initializePopovers();
+    document.getElementById('pull-requests').addEventListener('click', handleTreeClick);
     initializeWorkFilter();
     initializeSyncControls({
         getProject: () => currentProject,
@@ -495,8 +496,3 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     window.addEventListener('popstate', handlePopState);
 });
-
-// Export functions that need to be accessible globally
-window.toggleChildren = toggleChildren;
-window.toggleRootBranch = toggleRootBranch;
-window.toggleRepository = toggleRepository;

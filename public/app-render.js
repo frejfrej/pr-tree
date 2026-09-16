@@ -7,14 +7,14 @@
  * The tree is rendered per repository, the stacked pull requests found through
  * the destination map of that repository, so two repositories sharing a branch
  * name never show each other's pull requests under it.
- * The inline onclick handlers of the tree call the toggle functions that
- * app.js installs on window; the click of a repository or root branch is on
- * the whole header (the mouse), and the toggle button inside it, a real
- * button with a name and aria-expanded, reaches the same handler when the
- * keyboard activates it, since that click bubbles. toggleButton renders
- * every one of them, and tree-toggle.js keeps aria-expanded in step. The pull-request and issue links carry, as data
- * attributes, what the popovers show; initializePopovers reads them back, so
- * the writer and the reader of those attributes live together.
+ * The tree carries no inline handler: app.js installs one click listener on
+ * the pane (handleTreeClick in tree-toggle.js), which toggles the block a
+ * click lands on and leaves the links alone; toggleButton renders every
+ * chevron button, a real button with a name and aria-expanded, and
+ * tree-toggle.js keeps aria-expanded in step. The pull-request and issue
+ * links carry, as data attributes, what the popovers show;
+ * initializePopovers reads them back, so the writer and the reader of those
+ * attributes live together.
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
@@ -49,10 +49,10 @@ export function escapeHtml(text) {
 }
 
 // The chevron button of a collapsible block. `name` is the accessible name
-// (escaped); the chevrons are decoration. `onclick` is only given for the
-// pull-request button, the others rely on the click of their header.
-function toggleButton(name, onclick = '') {
-    return `<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle ${name}"${onclick ? ` onclick="${onclick}"` : ''}>
+// (escaped); the chevrons are decoration. No handler of its own: the click
+// listener of the pane toggles the block a click lands on.
+function toggleButton(name) {
+    return `<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle ${name}">
                         <i class="fas fa-chevron-down" aria-hidden="true"></i>
                         <i class="fas fa-chevron-right" aria-hidden="true"></i>
                     </button>`;
@@ -97,7 +97,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
         const pullRequestCount = repoPullRequests.length;
         html += `
             <div class="repository">
-                <div class="repository-header" onclick="toggleRepository(this)">
+                <div class="repository-header">
                     ${toggleButton(escapeHtml(repoName))}
                     <h2 class="repository-name">${escapeHtml(repoName)}</h2>
                     <div class="repo-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
@@ -163,10 +163,10 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
 
             html += `
                 <div class="root-branch">
-                    <div class="root-branch-header" onclick="toggleRootBranch(this)">
+                    <div class="root-branch-header">
                         ${toggleButton(escapeHtml(rootBranch))}
                         <h3 class="root-branch-name">
-                            <a href="${escapeHtml(branchUrl)}" target="_blank" onclick="event.stopPropagation();" class="root-branch-link">
+                            <a href="${escapeHtml(branchUrl)}" target="_blank" class="root-branch-link">
                                 ${escapeHtml(rootBranch)}
                                 <i class="fas fa-external-link-alt external-link-icon"></i>
                             </a>
@@ -271,7 +271,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     const descendantCount = calculateDescendants(pullRequest, byDestination);
     const isRootPullRequest = level === 1;
 
-    const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests', 'toggleChildren(this)') : '';
+    const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests') : '';
 
     // Combine both counters in a container
     const spec = pullRequest.destination.commit?.hash + '..' + pullRequest.source.commit?.hash;
@@ -400,7 +400,7 @@ export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } 
     const count = issues.length;
     return `
         <div class="repository orphaned-issues">
-            <div class="repository-header" onclick="toggleRepository(this)">
+            <div class="repository-header">
                 ${toggleButton('Jira issues in review without a pull request')}
                 <h2 class="repository-name"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Jira issues in review without a pull request</h2>
                 <div class="repo-pr-counter" title="${count} issue${count !== 1 ? 's' : ''}">

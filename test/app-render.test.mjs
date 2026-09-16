@@ -110,7 +110,7 @@ test('renderRepositories nests a stacked pull request under its parent, most rec
     assert.ok(html.indexOf('data-id="4"') < html.indexOf('data-id="3"'));
     // The parent gets a toggle button and a visible child counter; the child, neither
     assert.ok(html.includes('title="1 descendant pull request"'));
-    assert.equal(count(html, 'onclick="toggleChildren(this)"'), 1);
+    assert.equal(count(html, 'onclick='), 0);
     assert.equal(count(html, 'class="child-counter visible"'), 3);
 });
 
@@ -205,7 +205,7 @@ test('renderOrphanedIssues renders nothing without issues, otherwise a repositor
     ], 'site', { now });
     // A repository block: the tree's toggle, collapse-all and toggle-state code applies to it
     assert.equal(count(html, 'class="repository orphaned-issues"'), 1);
-    assert.ok(html.includes('onclick="toggleRepository(this)"'));
+    assert.equal(count(html, 'onclick='), 0);
     assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle Jira issues in review without a pull request">'));
     assert.ok(html.includes('Jira issues in review without a pull request'));
     assert.match(html, /<div class="repo-pr-counter" title="2 issues">\s*2\s*<\/div>/);
@@ -325,16 +325,16 @@ test('renderOrphanedIssues escapes the summary, the names and the URLs of an iss
 });
 
 // The toggle buttons: real buttons with a name and a state, so the keyboard
-// reaches them and a screen reader knows what they open; the ones of the
-// repositories and root branches carry no handler (their click bubbles to the
-// header's), the one of a pull request carries its own
+// reaches them and a screen reader knows what they open; none carries a
+// handler, the click listener app.js installs on the pane toggles the block a
+// click lands on
 test('renderRepositories gives every collapsible block a named toggle button that says it is expanded', () => {
     const html = renderSample();
     assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle repo-one">'));
     assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle repo-two">'));
     assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle main">'));
     assert.ok(html.includes('<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle develop">'));
-    assert.equal(count(html, '<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle the stacked pull requests" onclick="toggleChildren(this)">'), 1); // PR 1 only
+    assert.equal(count(html, '<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle the stacked pull requests">'), 1); // PR 1 only
     assert.equal(count(html, '<button'), 5);
     assert.equal(count(html, 'class="toggle-button"'), 5);
     assert.equal(count(html, 'aria-expanded="true"'), 5);

@@ -6,6 +6,8 @@
  * set*Collapsed helpers, so the collapsed class, the children container, the
  * child counter and the aria-expanded of the toggle button always change
  * together. The chevrons are pure CSS, driven by the "collapsed" class.
+ * app.js installs handleTreeClick on the tree pane; the rendered tree carries
+ * no inline handler.
  */
 
 // The toggle button of a block announces whether the block is open
@@ -58,6 +60,32 @@ export function toggleRootBranch(button) {
 export function toggleChildren(button) {
     const pullRequest = button.closest('.pull-request');
     setPullRequestCollapsed(pullRequest, !pullRequest.classList.contains('collapsed'));
+}
+
+/**
+ * The click handler of the tree pane, installed once by app.js on the
+ * container in place of an inline handler per header. A click inside a link
+ * (the root-branch link) toggles nothing; the toggle button of a pull
+ * request toggles its stacked pull requests; anywhere else on a root-branch
+ * or a repository header toggles the branch or the repository, the button
+ * inside the header included (a keyboard activation dispatches a click on
+ * it, which lands here once).
+ */
+export function handleTreeClick(event) {
+    const target = event.target;
+    if (target.closest('a')) return;
+    const pullRequestButton = target.closest('.pull-request-header .toggle-button');
+    if (pullRequestButton) {
+        toggleChildren(pullRequestButton);
+        return;
+    }
+    const rootBranchHeader = target.closest('.root-branch-header');
+    if (rootBranchHeader) {
+        toggleRootBranch(rootBranchHeader);
+        return;
+    }
+    const repositoryHeader = target.closest('.repository-header');
+    if (repositoryHeader) toggleRepository(repositoryHeader);
 }
 
 function setAllCollapsed(collapsed) {
