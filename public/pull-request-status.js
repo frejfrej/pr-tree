@@ -6,7 +6,8 @@
  * Pure: no DOM.
  */
 
-// The Atlassian agent reviews pull requests too: never a reviewer to count
+// The Atlassian agent reviews pull requests too: never a reviewer to count,
+// never a person the participant filter offers
 export const atlassianAgent = 'Rovo Dev';
 
 /** The participants other than the author and Rovo Dev: the reviewers the tree shows */

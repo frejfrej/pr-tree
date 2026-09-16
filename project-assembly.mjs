@@ -70,6 +70,7 @@ export function calculateHash(data) {
  * The response of /api/pull-requests/:project without its lastRefreshTime:
  * the fix versions inherited over the linked issues, the orphaned issues then
  * the parents (in place), the parents appended to the details, the hash.
+ * The parts are returned as given, not copied: the caller owns them.
  * @param {object} parts
  * @param {object[]} parts.pullRequests
  * @param {Map<number, string[]>} parts.jiraIssuesMap - by pull request id (createJiraIssuesMap)

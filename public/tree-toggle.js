@@ -47,17 +47,18 @@ export function setPullRequestCollapsed(pullRequest, collapsed) {
     }
 }
 
-export function toggleRepository(button) {
+// The three toggles: what handleTreeClick calls for the block a click lands on
+function toggleRepository(button) {
     const repository = button.closest('.repository');
     setRepositoryCollapsed(repository, !repository.classList.contains('collapsed'));
 }
 
-export function toggleRootBranch(button) {
+function toggleRootBranch(button) {
     const rootBranch = button.closest('.root-branch');
     setRootBranchCollapsed(rootBranch, !rootBranch.classList.contains('collapsed'));
 }
 
-export function toggleChildren(button) {
+function toggleChildren(button) {
     const pullRequest = button.closest('.pull-request');
     setPullRequestCollapsed(pullRequest, !pullRequest.classList.contains('collapsed'));
 }
