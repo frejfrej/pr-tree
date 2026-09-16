@@ -4,6 +4,9 @@
  *
  * Nothing here depends on the filter state: the tree is rendered in full, and
  * the filter pass (app-filter.js) hides and counts on the rendered result.
+ * The tree is rendered per repository, the stacked pull requests found through
+ * the destination map of that repository, so two repositories sharing a branch
+ * name never show each other's pull requests under it.
  * The inline onclick handlers of the tree call the toggle functions that
  * app.js installs on window; the click of a repository or root branch is on
  * the whole header (the mouse), and the toggle button inside it, a real
@@ -56,11 +59,28 @@ function toggleButton(name, onclick = '') {
 }
 
 /**
+ * The pull requests by destination branch name: the stacked pull requests of
+ * a pull request are those whose destination is its source branch. Built per
+ * repository, so two repositories sharing a branch name do not see each
+ * other's pull requests.
+ * @returns {Map<string, object[]>}
+ */
+export function pullRequestsByDestination(pullRequests) {
+    const byDestination = new Map();
+    for (const pullRequest of pullRequests) {
+        const destination = pullRequest.destination.branch.name;
+        if (!byDestination.has(destination)) byDestination.set(destination, []);
+        byDestination.get(destination).push(pullRequest);
+    }
+    return byDestination;
+}
+
+/**
  * The tree as an HTML string: one block per repository, its root branches and
  * the pull requests nested under their parents, most recently updated first.
  * Ends with the hidden no-match message the filter pass shows when needed.
  */
-export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName) {
+export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName) {
     // Group pull requests by repository
     const pullRequestsByRepo = pullRequests.reduce((acc, pr) => {
         const repoName = pr.source.repository.name;
@@ -73,6 +93,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
+        const byDestination = pullRequestsByDestination(repoPullRequests);
         const pullRequestCount = repoPullRequests.length;
         html += `
             <div class="repository">
@@ -84,7 +105,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
                     </div>
                 </div>
                 <div class="repository-content">
-                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)}
+                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName)}
                 </div>
             </div>
         `;
@@ -110,12 +131,12 @@ export function findRootBranches(pullRequests) {
 }
 
 /** Total pull requests in a branch including all descendants */
-export function calculateTotalPullRequests(pullRequests, pullRequestsByDestination) {
+export function calculateTotalPullRequests(pullRequests, byDestination) {
     let total = pullRequests.length;
     for (const pullRequest of pullRequests) {
         const sourceBranch = pullRequest.source.branch.name;
-        if (pullRequestsByDestination.has(sourceBranch)) {
-            total += calculateTotalPullRequests(pullRequestsByDestination.get(sourceBranch), pullRequestsByDestination);
+        if (byDestination.has(sourceBranch)) {
+            total += calculateTotalPullRequests(byDestination.get(sourceBranch), byDestination);
         }
     }
     return total;
@@ -128,7 +149,7 @@ function getBranchUrl(branchName, pullRequest) {
 }
 
 // Function to recursively render the pull-requests
-function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
+function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
     let html = '';
     if (level === 0) {
         const rootBranches = findRootBranches(pullRequests);
@@ -136,7 +157,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             const rootPullRequests = pullRequests.filter(pullRequest => rootBranch === pullRequest.destination.branch.name);
             // Sort by updated_on date in descending order (most recent first)
             rootPullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
-            const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
+            const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, byDestination);
 
             const branchUrl = getBranchUrl(rootBranch, rootPullRequests[0]);
 
@@ -157,7 +178,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                     <div class="root-branch-content">
             `;
             rootPullRequests.forEach(rootPullRequest => {
-                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, 1);
+                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, 1);
             });
             html += `
                     </div>
@@ -168,28 +189,28 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
         // Sort by updated_on date in descending order (most recent first)
         pullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
         pullRequests.forEach(pullRequest => {
-            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level+1);
+            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level+1);
         });
     }
     return html;
 }
 
 /** How many pull requests are stacked, at any depth, on the given one */
-export function calculateDescendants(pullRequest, pullRequestsByDestination) {
+export function calculateDescendants(pullRequest, byDestination) {
     let count = 0;
     const sourceBranch = pullRequest.source.branch.name;
-    if (pullRequestsByDestination.has(sourceBranch)) {
-        const children = pullRequestsByDestination.get(sourceBranch);
+    if (byDestination.has(sourceBranch)) {
+        const children = byDestination.get(sourceBranch);
         count += children.length;
         for (const child of children) {
-            count += calculateDescendants(child, pullRequestsByDestination);
+            count += calculateDescendants(child, byDestination);
         }
     }
     return count;
 }
 
 // Function to recursively render a pull-request
-function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
+function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
@@ -246,8 +267,8 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     }
 
     const sourceBranch = pullRequest.source.branch.name;
-    const hasChildren = pullRequestsByDestination.has(sourceBranch);
-    const descendantCount = calculateDescendants(pullRequest, pullRequestsByDestination);
+    const hasChildren = byDestination.has(sourceBranch);
+    const descendantCount = calculateDescendants(pullRequest, byDestination);
     const isRootPullRequest = level === 1;
 
     const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests', 'toggleChildren(this)') : '';
@@ -317,7 +338,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </div>
     `;
     if (hasChildren) {
-        html += `<div class="children">${renderPullRequests(pullRequestsByDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level + 1)}</div>`;
+        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level + 1)}</div>`;
     }
     return html;
 }

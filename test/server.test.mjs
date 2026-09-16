@@ -111,7 +111,7 @@ test('the pull requests of a project have the documented shape, and the same dat
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^application\/json/);
     const data = await response.json();
-    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'pullRequestsByDestination', 'sprintIssues', 'sprints']);
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.ok(!Number.isNaN(Date.parse(data.lastRefreshTime)), 'lastRefreshTime is a date');
     assert.ok(Array.isArray(data.pullRequests) && data.pullRequests.length > 0);
     assert.ok(Array.isArray(data.jiraIssuesDetails) && Array.isArray(data.sprints) && Array.isArray(data.orphanedIssues));
@@ -119,7 +119,6 @@ test('the pull requests of a project have the documented shape, and the same dat
         // The commit counts come with the data; the issue keys of every pull request are in the map
         assert.ok('commitsAhead' in pullRequest && 'commitsBehind' in pullRequest, `pull request ${pullRequest.id}`);
         assert.ok(Array.isArray(data.jiraIssuesMap[pullRequest.id]), `pull request ${pullRequest.id} in jiraIssuesMap`);
-        assert.ok(data.pullRequestsByDestination[pullRequest.destination.branch.name].some(other => other.id === pullRequest.id), `pull request ${pullRequest.id} under its destination`);
     }
     for (const sprint of data.sprints) assert.ok(Array.isArray(data.sprintIssues[sprint.id]), `issues of sprint ${sprint.id}`);
     assert.match(data.dataHash, /^[0-9a-f]{32}$/);

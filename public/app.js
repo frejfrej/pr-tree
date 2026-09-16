@@ -362,7 +362,6 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
         currentApiResult.pullRequests,
         currentApiResult.jiraIssuesMap,
         currentApiResult.jiraIssuesDetails,
-        new Map(Object.entries(currentApiResult.pullRequestsByDestination)),
         currentApiResult.jiraSiteName
     );
 

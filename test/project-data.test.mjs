@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProjectData, extractJiraIssues, createJiraIssuesMap, fillPullRequestsMap, calculateHash } from '../project-data.mjs';
+import { createProjectData, extractJiraIssues, createJiraIssuesMap, calculateHash } from '../project-data.mjs';
 
 /**
  * The project data against a fake Atlassian: the documented rules of
@@ -123,16 +123,6 @@ test('extractJiraIssues finds the keys of the project regex in a title, in order
     assert.deepEqual([...map], [[1, ['PROJ-1', 'PROJ-1']], [2, []]]);
 });
 
-test('fillPullRequestsMap keys the pull requests by destination branch name across repositories (a known limitation)', () => {
-    const byDestination = new Map();
-    const a = pullRequest(1, { repo: 'repo-a', destination: 'master' });
-    const b = pullRequest(2, { repo: 'repo-b', destination: 'master' });
-    const c = pullRequest(3, { repo: 'repo-b', destination: 'develop' });
-    fillPullRequestsMap([a, b, c], byDestination);
-    assert.deepEqual([...byDestination.keys()], ['master', 'develop']);
-    assert.deepEqual(byDestination.get('master'), [a, b]); // the master of repo-a and the master of repo-b share the entry
-});
-
 test('calculateHash is stable for the same data and changes when a commit moves', () => {
     const data = () => ({
         pullRequests: [pullRequest(1)], jiraIssuesMap: new Map([[1, ['PROJ-1']]]), jiraIssuesDetails: [issue('PROJ-1')],
@@ -141,7 +131,7 @@ test('calculateHash is stable for the same data and changes when a commit moves'
     const hash = calculateHash(data());
     assert.match(hash, /^[0-9a-f]{32}$/);
     assert.equal(calculateHash(data()), hash);
-    assert.equal(calculateHash({ ...data(), lastRefreshTime: 'later', pullRequestsByDestination: {} }), hash); // not part of the hash
+    assert.equal(calculateHash({ ...data(), lastRefreshTime: 'later' }), hash); // not part of the hash
     const moved = data();
     moved.pullRequests[0].source.commit.hash = 's1-moved';
     assert.notEqual(calculateHash(moved), hash);
@@ -160,11 +150,10 @@ test('the pull requests of each repository are fetched 50 per page, following ne
     const data = await buildProjectData('P', project);
     assert.deepEqual(urlsMatching(requests, /pullrequests/), [pullRequestsUrl('repo-a'), `${pullRequestsUrl('repo-a')}&page=2`, pullRequestsUrl('repo-b')]);
     assert.deepEqual(requests[0].options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
-    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'pullRequestsByDestination', 'sprintIssues', 'sprints']);
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.deepEqual(data.pullRequests.map(pr => [pr.id, pr.commitsAhead, pr.commitsBehind]), [[1, 3, 1], [2, 3, 1], [3, 3, 1]]);
     assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['OTHER-7'], 3: ['PROJ-3'] });
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'OTHER-7']); // PROJ-3 is not in Jira
-    assert.deepEqual(Object.keys(data.pullRequestsByDestination), ['master', 'develop']);
     assert.equal(data.jiraSiteName, jiraSiteName);
     assert.deepEqual([data.sprints, data.sprintIssues, data.orphanedIssues], [[], {}, []]);
     assert.match(data.dataHash, /^[0-9a-f]{32}$/);

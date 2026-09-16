@@ -68,9 +68,13 @@ test('every pull request is in the response shape the frontend reads', () => {
 });
 
 function deepestStack(data) {
-    const byDestination = data.pullRequestsByDestination;
+    const byDestination = new Map();
+    for (const pr of data.pullRequests) {
+        if (!byDestination.has(pr.destination.branch.name)) byDestination.set(pr.destination.branch.name, []);
+        byDestination.get(pr.destination.branch.name).push(pr);
+    }
     const depth = pr => {
-        const children = byDestination[pr.source.branch.name];
+        const children = byDestination.get(pr.source.branch.name);
         return children ? 1 + Math.max(...children.map(depth)) : 1;
     };
     const roots = data.pullRequests.filter(pr => !data.pullRequests.some(other => other.source.branch.name === pr.destination.branch.name));
@@ -80,7 +84,7 @@ function deepestStack(data) {
 test('SECOLLAB carries the real 24-deep stack of pull requests under feat/ai_investigations', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     assert.equal(deepestStack(data), 24);
-    assert.equal(data.pullRequestsByDestination['feat/ai_investigations'].length, 1);
+    assert.equal(data.pullRequests.filter(pr => pr.destination.branch.name === 'feat/ai_investigations').length, 1);
     const chainRepo = data.pullRequests.filter(pr => pr.source.branch.name === 'ai-mcp-tool-layer');
     assert.equal(chainRepo[0].source.repository.name, 'products.secollab');
 });

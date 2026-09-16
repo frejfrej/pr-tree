@@ -2,7 +2,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
-import { renderRepositories, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
+import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -50,7 +50,7 @@ const jiraIssuesDetails = [
 ];
 
 function renderSample() {
-    return renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, 'site');
+    return renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, 'site');
 }
 
 // The classes of every pull request element, by id: { '1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
@@ -75,6 +75,13 @@ test('calculateTotalPullRequests and calculateDescendants count the whole stack'
     assert.equal(calculateTotalPullRequests([chain[0]], chainByDestination), 5);
 });
 
+test('pullRequestsByDestination groups by destination branch name, in order', () => {
+    const map = pullRequestsByDestination(pullRequests);
+    assert.deepEqual([...map.keys()], ['main', 'feat-a', 'develop']);
+    assert.deepEqual(map.get('develop'), [approved, recent]);
+    assert.equal(pullRequestsByDestination([]).size, 0);
+});
+
 test('renderRepositories renders one block per repository with its root branches and counters', () => {
     const html = renderSample();
     assert.equal(count(html, '<div class="repository">'), 2);
@@ -91,7 +98,7 @@ test('renderRepositories renders one block per repository with its root branches
 });
 
 test('renderRepositories renders nothing, not even the no-match message, without pull requests', () => {
-    assert.equal(renderRepositories([], {}, [], new Map(), 'site'), '');
+    assert.equal(renderRepositories([], {}, [], 'site'), '');
 });
 
 test('renderRepositories nests a stacked pull request under its parent, most recent siblings first', () => {
@@ -105,6 +112,17 @@ test('renderRepositories nests a stacked pull request under its parent, most rec
     assert.ok(html.includes('title="1 descendant pull request"'));
     assert.equal(count(html, 'onclick="toggleChildren(this)"'), 1);
     assert.equal(count(html, 'class="child-counter visible"'), 3);
+});
+
+test('renderRepositories groups per repository: two repositories sharing a branch name do not show each other\'s pull requests', () => {
+    // repo-one: main <- develop (PR 7); repo-two: develop <- feat-x (PR 8). Before 2.11.0 PR 8 was rendered under PR 7 too.
+    const trunk = pullRequest(7, { repo: 'repo-one', source: 'develop', destination: 'main' });
+    const feature = pullRequest(8, { repo: 'repo-two', source: 'feat-x', destination: 'develop' });
+    const html = renderRepositories([trunk, feature], {}, [], 'site');
+    assert.equal(count(html, 'class="pull-request '), 2);
+    assert.equal(count(html, '<div class="children">'), 0);
+    assert.equal(count(html, 'title="0 descendant pull requests"'), 2);
+    assert.equal(count(html, 'title="1 total pull request (including all descendants)"'), 2);
 });
 
 test('renderRepositories derives the status class from the linked issues and the reviews', () => {
@@ -121,7 +139,6 @@ test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion
     // PR 6: issues Resolved and Closed, Rovo Dev is its only other participant, no destination commit
     const resolved = pullRequest(6, { source: 'feat/f', destination: 'release/2026.09', participants: [{ user: rovoDev, approved: true, state: 'approved' }] });
     resolved.destination.commit = undefined;
-    const byDest = new Map([['release/2026.09', [reviewed, resolved]]]);
     const issuesMap = { '5': ['PROJ-5', 'PROJ-6'], '6': ['PROJ-7', 'PROJ-8'] };
     const details = [
         { key: 'PROJ-5', fields: { summary: 'Five', status: { name: 'In Review' }, priority: null } },
@@ -129,7 +146,7 @@ test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion
         { key: 'PROJ-7', fields: { summary: 'Seven', status: { name: 'Resolved' }, priority: null } },
         { key: 'PROJ-8', fields: { summary: 'Eight', status: { name: 'Closed' }, priority: null } }
     ];
-    const html = renderRepositories([reviewed, resolved], issuesMap, details, byDest, 'site');
+    const html = renderRepositories([reviewed, resolved], issuesMap, details, 'site');
     const classes = pullRequestClasses(html);
     assert.deepEqual(classes['5'], ['pull-request', 'status-in-review', 'pull-request-root']);
     assert.deepEqual(classes['6'], ['pull-request', 'status-resolved', 'pull-request-root']);
@@ -169,11 +186,11 @@ test('renderRepositories writes what the popovers and the SYNC badges read back'
 test('renderRepositories renders every pull request of the fixture projects once, deep stack included', () => {
     for (const [name, config] of Object.entries(projects)) {
         const data = generateProjectData(name, config);
-        const byDest = new Map(Object.entries(data.pullRequestsByDestination));
-        const html = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, byDest, data.jiraSiteName);
+        const html = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, data.jiraSiteName);
         assert.equal(count(html, 'class="pull-request '), data.pullRequests.length, name);
         assert.equal(count(html, '<div class="repository">'), new Set(data.pullRequests.map(pr => pr.source.repository.name)).size, name);
-        assert.equal(count(html, '<div class="children">'), data.pullRequests.filter(pr => byDest.has(pr.source.branch.name)).length, name);
+        // A children container per pull request stacked upon, within its own repository
+        assert.equal(count(html, '<div class="children">'), data.pullRequests.filter(pr => data.pullRequests.some(other => other.source.repository.name === pr.source.repository.name && other.destination.branch.name === pr.source.branch.name)).length, name);
         assert.equal(count(html, 'tree-no-match'), 1, name);
     }
 });
@@ -273,7 +290,7 @@ test('renderRepositories escapes every Bitbucket and Jira text it interpolates',
     const details = [
         { key: 'PROJ-7', fields: { summary: 'Summary "><b>bold</b> & more', status: { name: 'In <Review>' }, priority: { name: 'High "priority"', iconUrl: 'https://jira/high.svg?a="b"' } } }
     ];
-    const html = renderRepositories([pr], { '7': ['PROJ-7'] }, details, new Map([['main"><i>', [pr]]]), 'site');
+    const html = renderRepositories([pr], { '7': ['PROJ-7'] }, details, 'site');
     for (const raw of ['<script>', '<img src=x', '<b>bold</b>', '<i>', 'repo<"&>']) {
         assert.ok(!html.includes(raw), `raw ${raw} found in the rendered tree`);
     }
@@ -323,6 +340,6 @@ test('renderRepositories gives every collapsible block a named toggle button tha
     assert.equal(count(html, 'aria-expanded="true"'), 5);
     assert.equal(count(html, '<i class="fas fa-chevron-down" aria-hidden="true"></i>'), 5);
     // A hostile name stays inside the label
-    const hostile = renderRepositories([pullRequest(8, { repo: 'r"><b>', source: 'x', destination: 'y"z' })], {}, [], new Map([['y"z', []]]), 'site');
+    const hostile = renderRepositories([pullRequest(8, { repo: 'r"><b>', source: 'x', destination: 'y"z' })], {}, [], 'site');
     assert.ok(hostile.includes('aria-label="Toggle r&quot;&gt;&lt;b&gt;"') && hostile.includes('aria-label="Toggle y&quot;z"'));
 });

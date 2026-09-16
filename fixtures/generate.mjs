@@ -703,12 +703,6 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
         }
     }
 
-    const pullRequestsByDestination = {};
-    for (const pullRequest of pullRequests) {
-        const destination = pullRequest.destination.branch.name;
-        (pullRequestsByDestination[destination] ??= []).push(pullRequest);
-    }
-
     // Sprints: the linked issues of the project are spread over the sprints,
     // the remaining slots are filled with issues that have no pull request
     const sprints = sprintDefinitions.map(({ id, name }) => ({ id, name }));
@@ -737,7 +731,6 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
         pullRequests,
         jiraIssuesMap,
         jiraIssuesDetails,
-        pullRequestsByDestination,
         jiraSiteName,
         sprints,
         sprintIssues,

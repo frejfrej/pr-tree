@@ -5,9 +5,11 @@ import crypto from 'crypto';
  * pull requests of its repositories (Bitbucket), the Jira issues they link
  * with the parents those issues need, the active sprints and their issues,
  * the issues in review without a pull request, and the hash the frontend
- * compares to know whether anything changed. Nothing here reads config.js
- * or talks to Atlassian by itself: fetch (the server passes atlassianFetch),
- * the workspace, the site and the credentials, and the logs are injected.
+ * compares to know whether anything changed. Every pull request is sent once,
+ * in one list: the tree groups them per repository and by destination branch
+ * itself (app-render.js). Nothing here reads config.js or talks to Atlassian
+ * by itself: fetch (the server passes atlassianFetch), the workspace, the site
+ * and the credentials, and the logs are injected.
  * The fixture-mode branch and the project lookup stay in index.mjs.
  */
 
@@ -22,16 +24,6 @@ export function createJiraIssuesMap(pullRequests, jiraRegex) {
         jiraIssuesMap.set(pullRequest.id, jiraIssues);
     });
     return jiraIssuesMap;
-}
-
-export function fillPullRequestsMap(pullRequests, pullRequestsByDestination) {
-    pullRequests.forEach(pullRequest => {
-        const destinationBranch = pullRequest.destination.branch.name;
-        if (!pullRequestsByDestination.has(destinationBranch)) {
-            pullRequestsByDestination.set(destinationBranch, []);
-        }
-        pullRequestsByDestination.get(destinationBranch).push(pullRequest);
-    });
 }
 
 // Function to calculate hash of the response data
@@ -340,7 +332,6 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         log.access(`Processing pull requests for project: ${projectName}`);
 
         let allPullRequests = [];
-        let pullRequestsByDestination = new Map();
 
         for (const repoName of projectConfig.repositories) {
             const baseUrl = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
@@ -350,7 +341,6 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             log.access(`Retrieved ${pullRequests.length} pull requests for repository: ${repoName}`);
         }
 
-        fillPullRequestsMap(allPullRequests, pullRequestsByDestination);
         const jiraIssuesMap = createJiraIssuesMap(allPullRequests, projectConfig.jiraRegex);
         const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
         log.access(`Total JIRA issues found: ${allJiraIssues.length}`);
@@ -400,7 +390,6 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                 pullRequests: pullRequestsWithCommits,
                 jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
                 jiraIssuesDetails: jiraIssuesDetails,
-                pullRequestsByDestination: Object.fromEntries(pullRequestsByDestination.entries()),
                 jiraSiteName: jiraSiteName,
                 sprints: sprints,
                 sprintIssues: sprintIssues,
