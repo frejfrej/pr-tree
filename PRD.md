@@ -368,7 +368,7 @@ The application integrates with a Jira workflow where:
 **Components:**
 1. **Express Server** (index.mjs)
    - API endpoint routing
-   - Bitbucket/Jira API integration
+   - Bitbucket/Jira API integration (the fetchers in project-data.mjs, the pure post-processing in project-assembly.mjs, shared with the fixtures; the SYNC computation in sync-statuses.mjs)
    - Server-side caching layer
    - Static file serving
    - Logging infrastructure
@@ -383,7 +383,9 @@ The application integrates with a Jira workflow where:
    - State management and wiring in app.js
    - Tree rendering in app-render.js (pure HTML strings, unit-tested)
    - SYNC status loading and controls in app-sync.js
-   - Filtering logic in app-filter.js (index built per data load, single pass over the tree)
+   - Filtering logic in app-filter.js (index built per data load, single pass over the tree, nothing read back from the rendered tree)
+   - Filter registry in filter-registry.js (the multi-selects: state key, element, URL parameter), the status band of a pull request in pull-request-status.js
+   - Tree toggles and the pane's click handler in tree-toggle.js
    - Counter display in counter-utils.js
 
 4. **Fixtures** (fixtures/)
@@ -427,8 +429,7 @@ The application integrates with a Jira workflow where:
   lastRefreshTime: "ISO-8601 timestamp",
   pullRequests: [/* PR objects */],
   jiraIssuesMap: {/* PR ID -> Issue Keys */},
-  jiraIssuesDetails: [/* Full issue objects */],
-  pullRequestsByDestination: {/* Branch -> PRs */},
+  jiraIssuesDetails: [/* Full issue objects, the parents fetched appended */],
   jiraSiteName: "string",
   sprints: [/* Active sprint objects */],
   sprintIssues: {/* Sprint ID -> Issue Keys */},
