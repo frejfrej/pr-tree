@@ -23,6 +23,11 @@
     --error-color: #FF5630;
     --in-review-color: #0065FF;
     --danger-bg: #FFEBE6;
+    /* Fills of the SYNC badges: 4.5:1 or more with --on-accent-text (WCAG AA
+       for their 12px bold text), which the status colours above miss */
+    --badge-ok-bg: #1F845A;
+    --badge-sync-bg: #C9372C;
+    --badge-neutral-bg: #626F86;
     --on-accent-text: #FFFFFF;
     --shadow-color: rgba(9, 30, 66, 0.15);
     --focus-ring: rgba(0, 82, 204, 0.25);
@@ -63,6 +68,9 @@
     --error-color: #F87168;
     --in-review-color: #579DFF;
     --danger-bg: #42221F;
+    --badge-ok-bg: #4BCE97;
+    --badge-sync-bg: #F87168;
+    --badge-neutral-bg: #8C9BAB;
     --on-accent-text: #1D2125;
     --shadow-color: rgba(0, 0, 0, 0.5);
     --focus-ring: rgba(87, 157, 255, 0.35);
@@ -1014,14 +1022,14 @@ select:disabled {
     justify-content: center;
     padding: 2px 8px;
     border-radius: 12px;
-    background-color: var(--error-color);
+    background-color: var(--badge-sync-bg);
     color: var(--on-accent-text);
     font-size: 12px;
     font-weight: bold;
 }
 
 .conflicts-ok {
-    background-color: var(--success-color);
+    background-color: var(--badge-ok-bg);
 }
 
 .conflicts-spinner {
@@ -1040,7 +1048,7 @@ select:disabled {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background-color: var(--text-muted);
+    background-color: var(--badge-neutral-bg);
     color: var(--on-accent-text);
     font-size: 12px;
     font-weight: bold;
