@@ -28,6 +28,25 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // last sent reponse is cached for performance
     let lastResponse = null;
 
+    // One GET per API, with its credentials: the parsed body of an ok response,
+    // otherwise an error with the status, the body drained first so the socket
+    // is released. Jira's body says what was wrong with the JQL, so its first
+    // 200 characters follow the status; Bitbucket's is an HTML page, left out.
+    async function getJson(url, auth, keepBody) {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Accept': 'application/json'
+            }
+        });
+        if (response.ok) return response.json();
+        const body = await response.text().catch(() => '');
+        throw new Error(`Request failed with status code ${response.status}${keepBody && body ? `: ${body.slice(0, 200)}` : ''}`);
+    }
+    const bitbucketJson = url => getJson(url, bbAuth, false);
+    const jiraJson = url => getJson(url, jiraAuth, true);
+
     // Every page of a Jira search. The search endpoint pages with a token: no
     // total, no startAt (a page is the last one when isLast is true or no token
     // comes back with it). A failed page throws; the caller decides what to keep.
@@ -36,15 +55,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         do {
             const pageParam = nextPageToken ? `&nextPageToken=${encodeURIComponent(nextPageToken)}` : '';
             const url = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}${pageParam}`;
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Basic ${jiraAuth}`,
-                    'Accept': 'application/json'
-                }
-            });
-            if (!response.ok) throw new Error(`Request failed with status code ${response.status}`);
-            const data = await response.json();
+            const data = await jiraJson(url);
             nextPageToken = data.isLast === false && data.nextPageToken ? data.nextPageToken : null;
             yield { issues: data.issues, last: !nextPageToken };
         } while (nextPageToken);
@@ -70,58 +81,39 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         return orphanedIssues;
     }
 
+    // The number of commits of `sourceBranch` that `destinationBranch` does not have
+    // (up to 100); null when the request fails, which is logged
     async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
+        const url = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=100`;
         try {
-            const compareUrl = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=100`;
-            const compareResponse = await fetch(compareUrl, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Basic ${bbAuth}`,
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (compareResponse.ok) {
-                const compareData = await compareResponse.json();
-                return compareData.values.length;
-            } else {
-                log.error(`Failed to fetch commits ahead for ${sourceBranch} compared to ${destinationBranch} in ${repoName} (HTTP ${compareResponse.status} ${compareResponse.statusText}`);
-                return null;
-            }
+            const data = await bitbucketJson(url);
+            return data.values.length;
         } catch (error) {
-            log.error(`Error fetching commits ahead: ${error.message}`);
+            log.error(`Error fetching commits ahead for ${sourceBranch} compared to ${destinationBranch} in ${repoName}: ${error.message}`);
             return null;
         }
     }
 
+    // Every page of the open pull requests of a repository, following `next`,
+    // into the array given; a failed page fails the build (logged)
     async function fetchPullRequests(url, pullRequests) {
-        const startTime = Date.now();
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Basic ${bbAuth}`,
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
+        let next = url;
+        while (next) {
+            const pageUrl = next;
+            const startTime = Date.now();
+            try {
+                const data = await bitbucketJson(pageUrl);
                 if (data.values) {
                     pullRequests.push(...data.values);
                 }
-                if (data.next) {
-                    await fetchPullRequests(data.next, pullRequests);
-                }
-            } else {
-                throw new Error(`Request failed with status code ${response.status}`);
+                next = data.next || null;
+            } catch (error) {
+                log.error(`Error in fetchPullRequests: ${error.message}`);
+                throw error;
+            } finally {
+                const duration = Date.now() - startTime;
+                log.performance(`fetchPullRequests - URL: ${pageUrl} - Duration: ${duration}ms`);
             }
-        } catch (error) {
-            log.error(`Error in fetchPullRequests: ${error.message}`);
-            throw error;
-        } finally {
-            const duration = Date.now() - startTime;
-            log.performance(`fetchPullRequests - URL: ${url} - Duration: ${duration}ms`);
         }
     }
 
@@ -138,21 +130,8 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee,parent,issuetype`;
 
             try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Basic ${jiraAuth}`,
-                        'Accept': 'application/json'
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    jiraIssuesDetails.push(...data.issues);
-                } else {
-                    const data = await response.json();
-                    throw new Error(`Request failed with status code: ${response.status}, status text: ${response.statusText}, body: ${JSON.stringify(data)}`);
-                }
+                const data = await jiraJson(url);
+                jiraIssuesDetails.push(...data.issues);
             } catch (error) {
                 log.error(`Error in fetchJiraIssuesDetails: ${error.message}`);
                 throw error;
@@ -174,18 +153,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         const url = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=key,summary,issuetype,fixVersions,parent`;
         try {
             const startTime = Date.now();
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Basic ${jiraAuth}`,
-                    'Accept': 'application/json'
-                }
-            });
-            if (!response.ok) {
-                log.error(`Error fetching parent issues: Request failed with status code ${response.status}`);
-                return [];
-            }
-            const data = await response.json();
+            const data = await jiraJson(url);
             log.performance(`fetchJiraIssuesDetails - Parent issues fetch (${keys.length}) - Duration: ${Date.now() - startTime}ms`);
             return data.issues;
         } catch (error) {
@@ -194,45 +162,33 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         }
     }
 
+    // The active sprints of every scrum board of each Jira project, { id, name },
+    // a sprint shared by two boards once. A failed boards request skips the
+    // project's sprints, a failed sprints request skips that board; both logged
     async function fetchJiraSprints(jiraProjects) {
         const sprints = new Set();
 
         for (const project of jiraProjects) {
-            const boardsUrl = `https://${jiraSiteName}.atlassian.net/rest/agile/1.0/board?projectKeyOrId=${project}&type=scrum`;
-
+            let boards;
             try {
-                const boardsResponse = await fetch(boardsUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Basic ${jiraAuth}`,
-                        'Accept': 'application/json'
-                    }
-                });
-
-                if (boardsResponse.ok) {
-                    const boardsData = await boardsResponse.json();
-                    log.performance(`Fetched ${boardsData.total} boards for project ${project}`);
-                    for (const board of boardsData.values) {
-                        const sprintsUrl = `https://${jiraSiteName}.atlassian.net/rest/agile/1.0/board/${board.id}/sprint?state=active`;
-                        const sprintsResponse = await fetch(sprintsUrl, {
-                            method: 'GET',
-                            headers: {
-                                'Authorization': `Basic ${jiraAuth}`,
-                                'Accept': 'application/json'
-                            }
-                        });
-
-                        if (sprintsResponse.ok) {
-                            const sprintsData = await sprintsResponse.json();
-                            log.performance(`Fetched ${sprintsData.total} active sprints for board ${board.name}`);
-                            for (const sprint of sprintsData.values) {
-                                sprints.add(JSON.stringify({id: sprint.id, name: sprint.name}));
-                            }
-                        }
-                    }
-                }
+                const boardsData = await jiraJson(`https://${jiraSiteName}.atlassian.net/rest/agile/1.0/board?projectKeyOrId=${project}&type=scrum`);
+                log.performance(`Fetched ${boardsData.total} boards for project ${project}`);
+                boards = boardsData.values;
             } catch (error) {
                 log.error(`Error fetching sprints for project ${project}: ${error.message}`);
+                continue;
+            }
+
+            for (const board of boards) {
+                try {
+                    const sprintsData = await jiraJson(`https://${jiraSiteName}.atlassian.net/rest/agile/1.0/board/${board.id}/sprint?state=active`);
+                    log.performance(`Fetched ${sprintsData.total} active sprints for board ${board.name}`);
+                    for (const sprint of sprintsData.values) {
+                        sprints.add(JSON.stringify({ id: sprint.id, name: sprint.name }));
+                    }
+                } catch (error) {
+                    log.error(`Error fetching the sprints of board ${board.name} (project ${project}): ${error.message}`);
+                }
             }
         }
 

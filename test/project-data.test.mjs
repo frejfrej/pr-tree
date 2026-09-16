@@ -318,7 +318,7 @@ test('a failed commits request leaves the count null and is logged; a failed pul
     const { buildProjectData, logs } = setUp(failing);
     const data = await buildProjectData('P', project);
     assert.deepEqual([data.pullRequests[0].commitsAhead, data.pullRequests[0].commitsBehind], [null, 0]);
-    assert.ok(logs.error.some(line => line.startsWith('Failed to fetch commits ahead for feat-1 compared to master in repo-a (HTTP 500')), logs.error);
+    assert.deepEqual(logs.error, ['Error fetching commits ahead for feat-1 compared to master in repo-a: Request failed with status code 500']);
 
     const broken = setUp(fakeAtlassian({ intercept: url => (url.includes('/pullrequests') ? new Response('', { status: 401 }) : undefined) }));
     await assert.rejects(broken.buildProjectData('P', project), { message: 'Request failed with status code 401' });
@@ -348,6 +348,21 @@ test('a Jira failure: the sprints of a project are skipped and logged, a failed 
     assert.deepEqual(orphans.logs.error, ['Error fetching orphaned issues: Request failed with status code 403']);
 });
 
+test('a failed sprints request of one board skips that board only and is logged; a long Jira error body is cut at 200 characters', async () => {
+    const skipped = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] },
+        boards: { PROJ: [{ id: 1, name: 'Board 1' }, { id: 2, name: 'Board 2' }], OTHER: [{ id: 3, name: 'Board 3' }] },
+        sprints: { 1: [{ id: 7, name: 'Sprint 7' }], 2: [{ id: 8, name: 'Sprint 8' }], 3: [{ id: 9, name: 'Sprint 9' }] },
+        intercept: url => (url.includes('/board/2/sprint') ? new Response('', { status: 502 }) : undefined)
+    }));
+    const data = await skipped.buildProjectData('P', project);
+    assert.deepEqual(data.sprints, [{ id: 7, name: 'Sprint 7' }, { id: 9, name: 'Sprint 9' }]); // the other boards keep their sprints
+    assert.deepEqual(skipped.logs.error, ['Error fetching the sprints of board Board 2 (project PROJ): Request failed with status code 502']);
+
+    const long = setUp(fakeAtlassian({ intercept: url => (url.includes('In%20Review') ? new Response('x'.repeat(500), { status: 500 }) : undefined) }));
+    await assert.rejects(long.buildProjectData('P', project), { message: `Request failed with status code 500: ${'x'.repeat(200)}` });
+});
+
 test('a commits request that throws gives a null count; a failed Jira batch fails the build with the body; a failed parents fetch is logged and the build goes on', async () => {
     const thrown = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },
@@ -355,14 +370,14 @@ test('a commits request that throws gives a null count; a failed Jira batch fail
     }));
     const data = await thrown.buildProjectData('P', project);
     assert.deepEqual([data.pullRequests[0].commitsAhead, data.pullRequests[0].commitsBehind], [0, null]);
-    assert.deepEqual(thrown.logs.error, ['Error fetching commits ahead: socket hang up']);
+    assert.deepEqual(thrown.logs.error, ['Error fetching commits ahead for master compared to feat-1 in repo-a: socket hang up']);
 
     const batch = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },
         intercept: url => (url.includes('issueKey%20in') ? new Response('{"errorMessages":["bad jql"]}', { status: 400, statusText: 'Bad Request' }) : undefined)
     }));
-    await assert.rejects(batch.buildProjectData('P', project), { message: 'Request failed with status code: 400, status text: Bad Request, body: {"errorMessages":["bad jql"]}' });
-    assert.deepEqual(batch.logs.error, ['Error in fetchJiraIssuesDetails: Request failed with status code: 400, status text: Bad Request, body: {"errorMessages":["bad jql"]}']);
+    await assert.rejects(batch.buildProjectData('P', project), { message: 'Request failed with status code 400: {"errorMessages":["bad jql"]}' });
+    assert.deepEqual(batch.logs.error, ['Error in fetchJiraIssuesDetails: Request failed with status code 400: {"errorMessages":["bad jql"]}']);
 
     const parents = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },
