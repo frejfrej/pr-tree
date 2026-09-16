@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProjectData, extractJiraIssues, createJiraIssuesMap, calculateHash } from '../project-data.mjs';
+import { createProjectData } from '../project-data.mjs';
 
 /**
  * The project data against a fake Atlassian: the documented rules of
@@ -116,30 +116,6 @@ function setUp(atlassian) {
 const urlsMatching = (requests, pattern) => requests.map(request => request.url).filter(url => pattern.test(url));
 const jqlOf = url => new URL(url).searchParams.get('jql');
 
-test('extractJiraIssues finds the keys of the project regex in a title, in order', () => {
-    assert.deepEqual(extractJiraIssues('PROJ-12 and OTHER-3 but not FOO-4 or proj-5', project.jiraRegex), ['PROJ-12', 'OTHER-3']);
-    assert.deepEqual(extractJiraIssues('no key', project.jiraRegex), []);
-    const map = createJiraIssuesMap([pullRequest(1, { title: 'PROJ-1 PROJ-1 twice' }), pullRequest(2, { title: 'nothing' })], project.jiraRegex);
-    assert.deepEqual([...map], [[1, ['PROJ-1', 'PROJ-1']], [2, []]]);
-});
-
-test('calculateHash is stable for the same data and changes when a commit moves', () => {
-    const data = () => ({
-        pullRequests: [pullRequest(1)], jiraIssuesMap: new Map([[1, ['PROJ-1']]]), jiraIssuesDetails: [issue('PROJ-1')],
-        sprints: [{ id: 1, name: 'S1' }], sprintIssues: { 1: ['PROJ-1'] }, orphanedIssues: []
-    });
-    const hash = calculateHash(data());
-    assert.match(hash, /^[0-9a-f]{32}$/);
-    assert.equal(calculateHash(data()), hash);
-    assert.equal(calculateHash({ ...data(), lastRefreshTime: 'later' }), hash); // not part of the hash
-    const moved = data();
-    moved.pullRequests[0].source.commit.hash = 's1-moved';
-    assert.notEqual(calculateHash(moved), hash);
-    const orphan = data();
-    orphan.orphanedIssues.push(issue('PROJ-9'));
-    assert.notEqual(calculateHash(orphan), hash);
-});
-
 test('the pull requests of each repository are fetched 50 per page, following next, and the response has the documented shape', async () => {
     const a1 = pullRequest(1, { repo: 'repo-a' }), a2 = pullRequest(2, { repo: 'repo-a', title: 'OTHER-7 no proj key' }), b3 = pullRequest(3, { repo: 'repo-b', destination: 'develop' });
     const { buildProjectData, requests, logs } = setUp(fakeAtlassian({
@@ -194,9 +170,10 @@ test('an issue without fix versions inherits the fix versions of its parent, epi
         issue('PROJ-13', { type: 'Sub-task', parent: 'PROJ-14', fixVersions: [] }) // its parent has none either
     ];
     const parents = [issue('PROJ-1', { type: 'Epic', fixVersions: [v2] }), issue('PROJ-14', { type: 'Story', fixVersions: [] })];
-    const { fetchJiraIssuesDetails } = setUp(fakeAtlassian({ issues, parents }));
-    const details = await fetchJiraIssuesDetails(['PROJ-10', 'PROJ-11', 'PROJ-12', 'PROJ-13'], ['PROJ']);
-    const versions = Object.fromEntries(details.map(i => [i.key, i.fields.fixVersions.map(v => v.name)]));
+    const pullRequests = [10, 11, 12, 13].map(n => pullRequest(n, { title: `PROJ-${n} change` }));
+    const { buildProjectData } = setUp(fakeAtlassian({ pullRequests: { 'repo-a': [pullRequests] }, issues, parents }));
+    const data = await buildProjectData('P', project);
+    const versions = Object.fromEntries(data.jiraIssuesDetails.map(i => [i.key, i.fields.fixVersions.map(v => v.name)]));
     assert.deepEqual(versions, { 'PROJ-10': ['2.0'], 'PROJ-11': ['2.0'], 'PROJ-12': ['3.0'], 'PROJ-13': [], 'PROJ-1': ['2.0'], 'PROJ-14': [] });
 });
 

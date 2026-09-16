@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { createJiraIssuesMap, missingParentKeys, assembleProjectData } from './project-assembly.mjs';
 
 /**
  * The data of a project as /api/pull-requests/:project answers it: the open
@@ -9,36 +9,11 @@ import crypto from 'crypto';
  * in one list: the tree groups them per repository and by destination branch
  * itself (app-render.js). Nothing here reads config.js or talks to Atlassian
  * by itself: fetch (the server passes atlassianFetch), the workspace, the site
- * and the credentials, and the logs are injected.
+ * and the credentials, and the logs are injected; the pure post-processing
+ * (the issue map, the parents to fetch, the inheritance, the hash, the
+ * response shape) is project-assembly.mjs, shared with the fixture generator.
  * The fixture-mode branch and the project lookup stay in index.mjs.
  */
-
-export function extractJiraIssues(title, jiraRegex) {
-    return title.match(jiraRegex) || [];
-}
-
-export function createJiraIssuesMap(pullRequests, jiraRegex) {
-    const jiraIssuesMap = new Map();
-    pullRequests.forEach(pullRequest => {
-        const jiraIssues = extractJiraIssues(pullRequest.title, jiraRegex);
-        jiraIssuesMap.set(pullRequest.id, jiraIssues);
-    });
-    return jiraIssuesMap;
-}
-
-// Function to calculate hash of the response data
-export function calculateHash(data) {
-    const hash = crypto.createHash('md5');
-    hash.update(JSON.stringify({
-        pullRequests: data.pullRequests,
-        jiraIssuesMap: data.jiraIssuesMap,
-        jiraIssuesDetails: data.jiraIssuesDetails,
-        sprints: data.sprints,
-        sprintIssues: data.sprintIssues,
-        orphanedIssues: data.orphanedIssues
-    }));
-    return hash.digest('hex');
-}
 
 /**
  * @param {object} options
@@ -150,11 +125,8 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         }
     }
 
-    // The linked issues in batches of 50, then their parents; `moreIssues`
-    // (the orphaned issues, already fetched with the same fields) have their
-    // parents fetched in the same request and inherit fix versions the same
-    // way, in place; they are not part of the result
-    async function fetchJiraIssuesDetails(jiraIssues, jiraProjects, moreIssues = []) {
+    // The linked issues in batches of 50 (their parents are fetchParentIssues' job)
+    async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const jiraBaseUrl = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql`;
 
         let pageSize = 50;
@@ -190,65 +162,36 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             }
         }
 
-        jiraIssuesDetails.push(...await completeParents([...jiraIssuesDetails, ...moreIssues]));
         return jiraIssuesDetails;
     }
 
-    // Fetches, in one request, the parents named by `issues` that are not in
-    // `issues` (their fix versions, inherited by sub-tasks, and their summary,
-    // type and parent for the epic and story filters), then lets the issues
-    // without fix versions inherit their parent's: one pass in array order
-    // (`issues`, then the parents fetched), so a version can travel
-    // epic -> story -> sub-task when the story comes first. Returns the parents fetched.
-    async function completeParents(issues) {
-        const jiraBaseUrl = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql`;
-        const known = new Set(issues.map(issue => issue.key));
-        const missingParentKeys = [];
-        for (const issue of issues) {
-            const parentKey = issue.fields.parent && issue.fields.parent.key;
-            if (parentKey && !known.has(parentKey) && !missingParentKeys.includes(parentKey)) {
-                missingParentKeys.push(parentKey);
-            }
-        }
-
-        const parents = [];
-        if (missingParentKeys.length > 0) {
-            const parentJql = `key IN (${missingParentKeys.join(',')})`;
-            const parentUrl = `${jiraBaseUrl}?jql=${encodeURIComponent(parentJql)}&fields=key,summary,issuetype,fixVersions,parent`;
-            try {
-                const startTime = Date.now();
-                const response = await fetch(parentUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Basic ${jiraAuth}`,
-                        'Accept': 'application/json'
-                    }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    parents.push(...data.issues);
-                } else {
-                    log.error(`Error fetching parent issues: Request failed with status code ${response.status}`);
+    // The parents of the linked and orphaned issues (summary, type, fix versions
+    // and parent: what the epic and story filters and the inheritance need), in
+    // one request; a failure is logged and gives no parents, the build goes on
+    async function fetchParentIssues(keys) {
+        if (keys.length === 0) return [];
+        const jql = `key IN (${keys.join(',')})`;
+        const url = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=key,summary,issuetype,fixVersions,parent`;
+        try {
+            const startTime = Date.now();
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${jiraAuth}`,
+                    'Accept': 'application/json'
                 }
-                const duration = Date.now() - startTime;
-                log.performance(`fetchJiraIssuesDetails - Parent issues fetch (${missingParentKeys.length}) - Duration: ${duration}ms`);
-            } catch (error) {
-                log.error(`Error fetching parent issues: ${error.message}`);
+            });
+            if (!response.ok) {
+                log.error(`Error fetching parent issues: Request failed with status code ${response.status}`);
+                return [];
             }
+            const data = await response.json();
+            log.performance(`fetchJiraIssuesDetails - Parent issues fetch (${keys.length}) - Duration: ${Date.now() - startTime}ms`);
+            return data.issues;
+        } catch (error) {
+            log.error(`Error fetching parent issues: ${error.message}`);
+            return [];
         }
-
-        const all = [...issues, ...parents];
-        const byKey = new Map(all.map(issue => [issue.key, issue]));
-        for (const issue of all) {
-            if (issue.fields.parent &&
-                (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
-                const parent = byKey.get(issue.fields.parent.key);
-                if (parent && parent.fields.fixVersions && parent.fields.fixVersions.length > 0) {
-                    issue.fields.fixVersions = parent.fields.fixVersions;
-                }
-            }
-        }
-        return parents;
     }
 
     async function fetchJiraSprints(jiraProjects) {
@@ -331,11 +274,10 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     async function buildProjectData(projectName, projectConfig) {
         log.access(`Processing pull requests for project: ${projectName}`);
 
-        let allPullRequests = [];
-
+        const allPullRequests = [];
         for (const repoName of projectConfig.repositories) {
             const baseUrl = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
-            let pullRequests = [];
+            const pullRequests = [];
             await fetchPullRequests(baseUrl, pullRequests);
             allPullRequests.push(...pullRequests);
             log.access(`Retrieved ${pullRequests.length} pull requests for repository: ${repoName}`);
@@ -345,73 +287,39 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
         log.access(`Total JIRA issues found: ${allJiraIssues.length}`);
 
-        // The issues in review no pull request links, before the details so that their
-        // parents are fetched with the parents of the linked issues; fetchJiraIssuesDetails
-        // inherits their fix versions in place and does not return them
+        // The issues in review no pull request links, before the details so that
+        // one request fetches their parents with the parents of the linked issues
         const orphanedIssues = await fetchInReviewIssuesWithoutPR(projectConfig.jiraProjects, allJiraIssues);
+        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
+        const parents = await fetchParentIssues(missingParentKeys([...jiraIssuesDetails, ...orphanedIssues]));
 
-        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects, orphanedIssues);
-
-        // Fetch sprints
         const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
         log.access(`Retrieved ${sprints.length} sprints for project: ${projectName}`);
-
-        // Fetch sprint issues
         const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
         log.access(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`);
 
-        // calculate dataHash and determine if the data is new based on the last saved response
-        let dataHash = calculateHash({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, sprints, sprintIssues, orphanedIssues })
+        const assembled = assembleProjectData({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, jiraSiteName });
 
-        let response;
-        if (lastResponse?.dataHash !== dataHash) {
-            // if the hash is new, retrieve ahead and behind commit counts
-            // Fetch commit differences for each pull request
-            const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
-                const commitsAhead = await fetchCommitsDiff(
-                    pr.source.repository.name,
-                    pr.source.branch.name,
-                    pr.destination.branch.name
-                );
-                const commitsBehind = await fetchCommitsDiff(
-                    pr.source.repository.name,
-                    pr.destination.branch.name,
-                    pr.source.branch.name
-                );
-                return {
-                    ...pr,
-                    commitsAhead: commitsAhead,
-                    commitsBehind: commitsBehind
-                };
-            }));
-
-            response = {
-                lastRefreshTime: new Date().toISOString(),
-                pullRequests: pullRequestsWithCommits,
-                jiraIssuesMap: Object.fromEntries(jiraIssuesMap.entries()),
-                jiraIssuesDetails: jiraIssuesDetails,
-                jiraSiteName: jiraSiteName,
-                sprints: sprints,
-                sprintIssues: sprintIssues,
-                orphanedIssues: orphanedIssues,
-                dataHash: dataHash
-            };
-
-            lastResponse = response;
-
-        } else {
-            // response is the same, just update the lastRefreshTime
-            response = lastResponse;
-            response.lastRefreshTime = new Date().toISOString();
+        // Nothing changed since the last response built: serve it again with a new time,
+        // without the two commit requests per pull request
+        if (lastResponse?.dataHash === assembled.dataHash) {
+            lastResponse.lastRefreshTime = new Date().toISOString();
+            return lastResponse;
         }
-
-        return response;
+        const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
+            const commitsAhead = await fetchCommitsDiff(pr.source.repository.name, pr.source.branch.name, pr.destination.branch.name);
+            const commitsBehind = await fetchCommitsDiff(pr.source.repository.name, pr.destination.branch.name, pr.source.branch.name);
+            return { ...pr, commitsAhead, commitsBehind };
+        }));
+        lastResponse = { lastRefreshTime: new Date().toISOString(), ...assembled, pullRequests: pullRequestsWithCommits };
+        return lastResponse;
     }
 
     return {
         buildProjectData,
         fetchPullRequests,
         fetchJiraIssuesDetails,
+        fetchParentIssues,
         fetchJiraSprints,
         fetchSprintIssues,
         fetchInReviewIssuesWithoutPR,
