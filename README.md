@@ -84,7 +84,7 @@
 
 ## Changelog:
 * Version 2.10.3
-    * `sync-cache.json` drops the conflict results computed under an older version of the conflict rule the next time it is written, instead of carrying them for 90 days (#51)
+    * `sync-cache.json` drops the conflict results computed under another version of the conflict rule (older or newer) the next time it is written, instead of carrying them for 90 days (#51)
 * Version 2.10.2
     * The SYNC select has an accessible name ("SYNC"), like the project and Work selects; a screen reader no longer announces it by its current option only (#62)
 * Version 2.10.1
