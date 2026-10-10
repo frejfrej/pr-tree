@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 ## Bitbucket Pull-Requests Tree
 
-**Version:** 1.12.0
-**Last Updated:** 2025-11-18
+**Version:** 2.11.1
+**Last Updated:** 2026-10-10
 **Author:** François-Régis Jaunatre
 **Status:** Active Development
 
@@ -169,7 +169,7 @@ The application integrates with a Jira workflow where:
 - F4.1: Filter by participant: the assignees of the linked Jira issues and the reviewers of the pull requests, one multi-select
 - F4.2: Filter by work, with participants selected: "All work" (the default) keeps every pull request they review or have a linked issue assigned to, "All reviews" and "All issues" one kind only; "Ready for participants" only the pull requests waiting for them as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only
 - F4.3: Filter by sprint (based on associated Jira issues)
-- F4.4: Filter by sync status (needs sync / up to date)
+- F4.4: Filter by SYNC status (SYNC required / SYNC ok / Not checked), once the statuses are loaded
 - F4.5: "Ready for reviewers" shows only PRs where:
   - Associated Jira issue has "In Review" status
   - AND a selected participant reviews the PR and has not yet approved (indicated by red highlighting/action required)
@@ -354,7 +354,7 @@ The application integrates with a Jira workflow where:
 
 ### 6.7 Compatibility
 - **NFR-C1**: Support Chrome, Firefox, Edge, Safari (latest 2 versions)
-- **NFR-C2**: Require Node.js 16+ for server runtime
+- **NFR-C2**: Require Node.js 20.11+ for server runtime (22.5+ for the coverage report)
 - **NFR-C3**: Compatible with Bitbucket API v2.0
 - **NFR-C4**: Compatible with Jira API v3 and Agile API v1.0
 
@@ -368,14 +368,16 @@ The application integrates with a Jira workflow where:
 **Components:**
 1. **Express Server** (index.mjs)
    - API endpoint routing
-   - Bitbucket/Jira API integration (the fetchers in project-data.mjs, the pure post-processing in project-assembly.mjs, shared with the fixtures; the SYNC computation in sync-statuses.mjs)
+   - Bitbucket/Jira API integration (the fetchers in project-data.mjs, the pure post-processing in project-assembly.mjs, shared with the fixtures; the SYNC computation in sync-statuses.mjs, the conflict rule in conflicts.mjs)
+   - Every Atlassian request through one wrapper (atlassian-fetch.mjs): a 429 from either API pauses all requests for 10 minutes
    - Server-side caching layer
    - Static file serving
    - Logging infrastructure
 
 2. **Cache Layer** (cache.mjs)
    - In-memory caching with node-cache
-   - Configurable TTL per data type
+   - Configurable TTL per data type, raised to cover a rate-limit pause
+   - Conflict results on disk (sync-cache.mjs, `sync-cache.json`)
    - Cache statistics endpoint
 
 3. **Frontend** (public/)
@@ -383,6 +385,7 @@ The application integrates with a Jira workflow where:
    - State management and wiring in app.js
    - Tree rendering in app-render.js (pure HTML strings, unit-tested)
    - SYNC status loading and controls in app-sync.js
+   - URL parameters in app-url.js, banner, sidebar, theme, help and shortcuts in app-shell.js, the multi-select component in multi-select.js
    - Filtering logic in app-filter.js (index built per data load, single pass over the tree, nothing read back from the rendered tree)
    - Filter registry in filter-registry.js (the multi-selects: state key, element, URL parameter), the status band of a pull request in pull-request-status.js
    - Tree toggles and the pane's click handler in tree-toggle.js
@@ -395,10 +398,11 @@ The application integrates with a Jira workflow where:
 ### 7.2 Technology Stack
 
 #### Backend
-- **Runtime:** Node.js (ES Modules)
+- **Runtime:** Node.js 20.11 or later (ES Modules)
 - **Framework:** Express.js v5.2.1
 - **HTTP Client:** the `fetch` built into Node.js 20.11 or later
 - **Caching:** node-cache v5.1.2
+- **Tests:** node:test (no test dependency)
 
 #### Frontend
 - **Core:** HTML5, CSS3, Vanilla JavaScript (ES6)
@@ -444,11 +448,17 @@ The application integrates with a Jira workflow where:
 - Project data: 120 seconds
 - Projects list: 300 seconds
 - Conflicts: kept on disk (`sync-cache.json`) across restarts; a result older than 90 days, or computed under another version of the conflict rule, is dropped the next time the file is written
+- SYNC statuses: 300 seconds for the response; each pull request's result is read from `sync-cache.json` first
+- Everything else is in memory and lost on restart
 
 **Hash-Based Change Detection:**
 - Compute MD5 hash of PR + Jira data
 - Only fetch commit counts when hash changes
 - Prevents Bitbucket API rate limiting (HTTP 429)
+
+**Rate-Limit Pause:**
+- After an HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429
+- Every cache TTL is raised to cover the pause, so cached data keeps being served; responses built during the pause carry `rateLimited: true`
 
 ### 7.5 API Endpoints
 
@@ -460,16 +470,18 @@ The application integrates with a Jira workflow where:
 | `/api/sync-statuses/:project` | GET | 300s | SYNC (conflict) status of every open pull request, loaded on demand |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
+During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached, and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
+
 ### 7.6 Logging Infrastructure
 
 **Log Files:**
 - `access.log`: Request logs (timestamp, method, path, IP)
-- `error.log`: Error messages and stack traces
+- `error.log`: Error messages (failed API calls, HTTP 429 received)
 - `performance.log`: Operation duration metrics
 
 **Log Format:**
 ```
-[YYYY-MM-DD HH:mm:ss] Message
+YYYY-MM-DDTHH:mm:ss.sssZ - Message
 ```
 
 ---
@@ -645,7 +657,7 @@ The application integrates with a Jira workflow where:
 
 ### 11.2 Technical Constraints
 - **Single-User Application**: No multi-user authentication/authorization
-- **In-Memory Cache**: Lost on server restart
+- **In-Memory Cache**: Lost on server restart, except the conflict results (`sync-cache.json`)
 - **Localhost Deployment**: Not designed for production internet deployment
 - **No HTTPS**: Security concerns for remote deployment
 - **API Rate Limits**: Bitbucket/Jira rate limiting affects refresh frequency
@@ -802,9 +814,8 @@ The following are explicitly **not** part of current requirements:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-11-18 | François-Régis Jaunatre | Initial PRD creation |
+| 2.11.1 | 2026-10-10 | François-Régis Jaunatre | Header on the product version; architecture, stack, caching, endpoints and logs checked against the code |
 
 ---
 
-**Document Status:** Draft
-**Next Review Date:** 2025-12-01
-**Approved By:** [Pending]
+**Document Status:** Maintained: the pull request that changes a requirement updates this document

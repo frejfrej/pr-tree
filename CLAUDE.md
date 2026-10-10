@@ -1,665 +1,113 @@
 # CLAUDE.md - AI Assistant Guide
 
-## Project Overview
+What the code cannot tell: where things are, how to work on them, the conventions, and the mistakes already made once. What each module does is in its header comment; read it before changing the module.
 
-**Bitbucket Pull-Requests Tree** is a web-based dashboard for visualizing and managing Bitbucket pull requests with integrated Jira issue tracking. It provides a comprehensive view of PR status, related issues, conflicts, and team workflow.
+## Project
 
-### Key Features
-- Multi-project support with dropdown selection
-- Pull request visualization ordered by most recently updated
-- Jira issue integration with status tracking
-- Advanced filtering (text, sprint, fix version, epic, story, participants, work, sync status)
-- Real-time conflict detection
-- Commit ahead/behind tracking
-- Smart reload (auto-updates every 2 minutes when data changes)
-- Server-side caching to reduce API load
-- Orphaned issue detection (Jira issues in review without PRs)
+**Bitbucket Pull-Requests Tree** is a localhost dashboard of the open Bitbucket pull requests of a project, as a tree of stacked pull requests per repository, with their Jira issues, sprints, fix versions, epics and stories, reviewers, commit counts and conflicts (SYNC), the Jira issues in review without a pull request, and filters over all of it. Single user, developer workstation, not meant for production.
 
-### Version
-Current version: **2.11.1** (as of 2026-10-10)
+- **Backend**: Node.js 20.11 or later (22.5 for `npm run test:coverage`), ES modules (`.mjs`), Express 5, node-cache, the built-in `fetch`; `config.js` and `projects.js` are CommonJS
+- **Frontend**: vanilla ES modules in `public/`, no framework, no build step; Font Awesome 5.15.3 and Marked.js (the help modal renders README.md) from CDNs
+- **Tests**: `node:test`, no test dependency, no DOM (fake elements where a DOM write is tested)
+- **APIs**: Bitbucket 2.0, Jira REST 3 (`/search/jql`), Jira Agile 1.0 (boards, sprints)
 
-## Technology Stack
-
-### Backend
-- **Runtime**: Node.js with ES Modules (.mjs)
-- **Framework**: Express.js (v5.2.1)
-- **HTTP Client**: the `fetch` built into Node.js (20.11 or later)
-- **Caching**: node-cache (v5.1.2)
-- **Authentication**: Basic Auth (Base64 encoded) for Bitbucket and Jira APIs
-
-### Frontend
-- **HTML5** with semantic structure
-- **Vanilla JavaScript** (ES6 modules)
-- **CSS3** with custom properties for theming
-- **External Libraries**:
-  - Font Awesome 5.15.3 (icons)
-  - Marked.js (markdown rendering for help)
-- **No framework** - pure JavaScript for performance
-
-## Project Structure
+## Where things are
 
 ```
-pr-tree/
-├── index.mjs              # Main Express server & API endpoints
-├── cache.mjs              # Server-side caching logic (NodeCache wrapper)
-├── conflicts.mjs          # Conflicts decided from the patches of both sides (pure)
-├── sync-statuses.mjs      # The SYNC computation of a project (fetch, cache and logs injected: createSyncStatuses)
-├── project-data.mjs       # The Bitbucket and Jira fetchers and the /api/pull-requests response (fetch and logs injected: createProjectData)
-├── project-assembly.mjs   # The pure post-processing of a project's data, shared with the fixture generator (assembleProjectData)
-├── atlassian-fetch.mjs    # The wrapper of every Atlassian request: the pause after a 429, failure messages (fetch and clock injected)
-├── sync-cache.mjs         # Conflict results kept in sync-cache.json across restarts
-├── config.js              # Configuration file (git-ignored, user-specific)
-├── config.js.default      # Configuration template
-├── projects.js            # Project definitions & Jira regex patterns
-├── package.json           # Dependencies & version metadata
-├── .gitignore             # Excludes config.js, node_modules, logs
-├── fixtures/              # Fixture mode: generated data served instead of Atlassian (npm run start:fixtures)
-│   ├── generate.mjs       # Deterministic generator modelled on the real projects
-│   └── index.mjs          # Command-line/env options, config replacement, data source
-├── test/                  # node:test unit tests (npm test)
-├── README.md              # User-facing documentation
-└── public/                # Frontend assets
-    ├── index.html         # App shell: banner, filter sidebar, tree pane, help modal
-    ├── styles.css         # Application styles (colour tokens, light and dark themes)
-    ├── app.js             # Data loading, filter state, URL and history, wiring of the other modules
-    ├── app-render.js      # The tree and the orphaned issues as HTML strings (pure), popovers
-    ├── app-sync.js        # SYNC statuses: on-demand load, badges, SYNC controls and their state
-    ├── app-filter.js      # Filter index, pure evaluation, single-pass tree filtering and counters
-    ├── app-url.js         # The project and the filters as URL parameters, pure (projectFromUrl, filtersFromUrl, urlWithFilters)
-    ├── filter-registry.js # The five multi-select filters (key, element, URL parameter) and the default filters, pure
-    ├── pull-request-status.js # The status band of a pull request, computed once for the render and the filter index, pure
-    ├── app-shell.js       # Banner (theme, help, version badge), sidebar, keyboard shortcuts, tab title
-    ├── tree-toggle.js     # Collapse/expand helpers, the tree's click handler, toggle-state capture/restore
-    ├── multi-select.js    # Multi-select dropdown component (builds its own markup)
-    └── counter-utils.js   # Display of a filtered/total counter
+index.mjs              Express server: routes, logs, wiring of the modules below, fixture-mode guard
+atlassian-fetch.mjs    Wrapper of every Atlassian request: the 10-minute pause after a 429, failure messages
+project-data.mjs       Bitbucket and Jira fetchers, the /api/pull-requests/:project response
+project-assembly.mjs   Pure post-processing of a project's data, shared with the fixture generator
+sync-statuses.mjs      SYNC computation of a project (diffstats, patches, limiter, sync-cache.json)
+conflicts.mjs          Pure conflict rule from the patches of both sides; conflictRuleVersion
+sync-cache.mjs         Conflict results on disk (sync-cache.json), keyed by rule version
+cache.mjs              node-cache wrapper: TTLs, shared SYNC computations, TTLs raised during a pause
+config.js.default      Template of config.js (git-ignored, credentials); its comments say which token goes where
+projects.js            Projects: repositories, Jira projects, regex of the issue keys in pull-request titles
+fixtures/generate.mjs  Deterministic data modelled on the real projects (volumes, the 24-deep SECOLLAB stack)
+fixtures/index.mjs     Fixture-mode options, config replacement, data source
+public/index.html      App shell: banner, filter sidebar, tree pane, help modal; inline theme script
+public/styles.css      Styles and colour tokens, light and dark themes
+public/app.js          State, data loading, URL and history, periodic refresh, wiring of the other modules
+public/app-render.js   The tree and the orphaned issues as HTML strings (pure), popovers
+public/app-filter.js   Filter index, pure evaluation, the single-pass filter walk and counters
+public/app-sync.js     SYNC statuses: on-demand load, badges, SYNC controls
+public/app-url.js      Project and filters as URL parameters (pure)
+public/app-shell.js    Banner, sidebar, theme, help, keyboard shortcuts, tab title
+public/filter-registry.js      The five multi-select filters (key, element, URL parameter), defaultFilters()
+public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
+public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders
+public/multi-select.js Multi-select dropdown component (builds its own markup)
+public/counter-utils.js        filtered/total counter display
+test/                  One *.test.mjs per module; server.test.mjs runs the fixture server
+docs/superpowers/      Design record: one spec (specs/) and one plan (plans/) per change, dated
+README.md              User documentation and the changelog (served to the help modal)
+PRD.md                 Product requirements (F1-F9 features, F4.x filters, NFRs); kept up to date
 ```
 
-### Key Files Explained
-
-#### Backend Files
-
-**index.mjs** (246 lines)
-- Main Express application server
-- API endpoint definitions (`/api/version`, `/api/projects`, `/api/pull-requests/:project`, `/api/sync-statuses/:project`, `/api/cache/stats`)
-- The SYNC computation is in `sync-statuses.mjs`: `createSyncStatuses` is called once at startup with `atlassianFetch` as its `fetch`, the workspace and credentials, the error and performance logs and the opened `sync-cache.json`; `/api/sync-statuses/:project` keeps the fixture branch, passes the pull requests of the project data to `computeSyncStatuses`, and adds the rate-limit fields of the response and its TTL
-- `atlassianFetch` here is the fixture-mode guard in front of `atlassian.fetch`, the wrapper `createAtlassianFetch` (atlassian-fetch.mjs) built once at startup with the global `fetch` and an `onRateLimit` callback that raises the cache TTLs (`raiseAllCacheTtls`) and writes the "HTTP 429 received" line to error.log; the routes read the pause from `atlassian.rateLimitedUntil()` (the 503 of the pull-requests route, the rate-limit answer of the sync route) and `atlassian.pause()` (the `rateLimited`/`rateLimitedUntil` fields and the TTL of a sync-statuses response)
-- The project data is in `project-data.mjs`: `createProjectData` is called once at startup with `atlassianFetch` as its `fetch`, the workspace, the Jira site, both credentials and the three logs; `buildProjectData(projectName)` here keeps the project lookup ("Project not found") and the fixture branch, then delegates to the module with the project's configuration
-- Comprehensive logging system (access.log, error.log, performance.log)
-- Static file serving for the public directory; `README.md` is served through a dedicated route (the help modal fetches it) and nothing else of the project directory is reachable over HTTP
-- A SIGTERM ends the process normally (`process.exit(0)`): the server test stops the fixture server that way, and a process killed by the signal would write no coverage for `npm run test:coverage`
-
-**cache.mjs** (108 lines)
-- Abstraction layer over node-cache
-- Provides typed caching functions for different data types
-- TTL configuration:
-  - Project data: 120 seconds (default)
-  - Projects list: 300 seconds (5 minutes)
-- The per-pull-request conflict results are not in node-cache: they live in `sync-cache.json` (`sync-cache.mjs`), for good (pruned 90 days after they were computed, or at the first write after a bump of the conflict rule)
-- `getCachedSyncStatuses` shares a computation in progress per project (two loads of one project at once compute once; a failure is not cached)
-- The sprints are fetched with the project data and cached with it (no separate cache)
-- Cache statistics endpoint support
-
-**conflicts.mjs**
-- Pure: `parseUnifiedDiff(text)` turns a git unified diff into files keyed by base path (the `a/` path of the `diff --git` header, or the `rename from` path for a renamed file; C-quoted paths are decoded, and a `diff --git` header is split correctly even when a path contains ` b/`) with change regions `{ start, end, lines }` in merge-base line coordinates, `newHash` (the post-image blob of the `index` line) and `linesAdded`/`linesRemoved`; content lines keep their CR and a missing final newline marks the line; it throws on a malformed or truncated patch (a hunk longer or shorter than its header, hunks out of order or overlapping, a foreign line, a file header without a hunk, a file listed twice) rather than let it pass for a clean merge
-- `conflictingFiles(sideA, sideB)` applies git's rule, in order: deleted on both sides is clean, deleted on one side conflicts, added on both sides with different modes conflicts (git's add/add, or distinct types for a symlink), the same post-image blob on both sides is clean, a binary whose content changed on both sides conflicts (an added file always counts as changed, even an empty one, so it conflicts against a changed binary), otherwise overlapping or touching regions conflict unless they are the same change (a linear sweep; an added file is an insertion into an empty base)
-- `decideFromDiffstat(sourceFiles, destFiles)` decides from the diffstat statuses: removed on both sides is nothing, removed on one side is a conflict, renamed to different paths on both sides is a conflict, two different files ending at one path (rename/add, two renames onto one path) are a conflict, and so is a path that is a file on one side and a directory on the other (file/directory: only an added or renamed file counts, so a file renamed away before its old path became a directory merges cleanly); the other files touched on both sides need the patches
-- `conflictRuleVersion` (exported): bumped whenever a change to `parseUnifiedDiff`, `conflictingFiles` or `decideFromDiffstat` here, or to `computeConflicts`, `checkPatch` or the diffstat mapping in sync-statuses.mjs, can change a decision; the server opens `sync-cache.json` with it (`ruleVersion`), which prefixes every key with it, so results computed under another rule are never reused
-- Known approximations: git merges with the histogram diff, so patches made with another diff algorithm can place hunks differently on repetitive files; a directory renamed on one side while the other adds a file in the old directory is not detected; `.gitattributes` merge drivers are ignored (a `merge=binary` driver makes git conflict even on changes that do not touch); a change of file type is reported not checked
-- Unit-tested with synthetic patches (`test/conflicts.test.mjs`); when the rule changes, check it against `git merge-file` or `git merge-tree` on generated cases (the fuzzers used while 2.7.0 was written are not in the repository) and bump `conflictRuleVersion`
-
-**project-data.mjs**
-- `createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jiraAuth, log: { access, error, performance } })`: the Bitbucket and Jira fetchers of a server and the response of `/api/pull-requests/:project`; nothing here reads config.js or talks to Atlassian by itself; returns `buildProjectData(projectName, projectConfig)` and the fetchers (`fetchPullRequests`, `fetchJiraIssuesDetails`, `fetchParentIssues`, `fetchJiraSprints`, `fetchSprintIssues`, `fetchInReviewIssuesWithoutPR`, `fetchCommitsDiff`), exposed for the tests; every request goes through `bitbucketJson(url)` or `jiraJson(url)` (a GET with the credentials of the API; the parsed body of an ok response, otherwise `Request failed with status code <status>`, the Jira helper appending the first 200 characters of the body, where Jira's `errorMessages` say what was wrong with the JQL)
-- `buildProjectData` fetches the open pull requests of each repository 50 per page (following `next`, a loop), builds the issue map (`createJiraIssuesMap` of project-assembly.mjs, the project regex on the titles), fetches the orphaned issues, the linked issues, the parents named by both (`fetchParentIssues(missingParentKeys(...))`: one `key IN` search for summary, issue type, fix versions and parent, every page of it through `searchIssuePages` (a single request stopped at Jira's default page of 50); a failure is logged and gives no parents), the sprints and the sprint issues, assembles the response (`assembleProjectData` of project-assembly.mjs: the fix versions inherited in place over the details, the orphaned issues then the parents, the parents appended to the details, the hash) and fetches the commit counts ahead and behind (`fetchCommitsDiff`, two requests per pull request, `null` on a failure) only when the hash differs from the last response built; otherwise the last response is served again with a new `lastRefreshTime` (one last response per server, whatever the project)
-- `fetchJiraIssuesDetails(jiraIssues, jiraProjects)` fetches, in batches of 50, the linked issues (summary, status, priority, fix versions, assignee, parent, issue type); the orphaned search runs first so that one parents request serves both lists; a parent that is itself an orphaned issue is not fetched again nor added to the details (the frontend looks parents up among the orphaned issues too); sub-tasks inherit the fix versions of their parent, and the frontend resolves epics and stories from `parent`
-- `fetchJiraSprints` asks the scrum boards of each Jira project then the active sprints of each board (`{ id, name }`, a sprint shared by two boards once; a failed boards request skips the project's sprints, a failed sprints request of one board that board, both logged); `fetchSprintIssues` reads the keys of each sprint 100 at a time (a failed page ends that sprint's list, the pages read are kept); `fetchInReviewIssuesWithoutPR` lists the issues in review of the Jira projects, 100 at a time, with the fields of the linked issues plus `updated`, and keeps those no pull request links (a failure fails the build, like a failed pull-request page); the fetchers that go on after a failure (parents, boards, sprints of a board, sprint issues, commit counts) still rethrow a `RateLimitError` (`rethrowRateLimit`): a rate-limit pause ends the build, which the route answers with a 503, rather than cache a response without its parents, sprints or counts for the whole pause; the three searches go through `searchIssuePages(jql, fields)`, an async generator paged with the `nextPageToken` of the search endpoint until `isLast` (the endpoint returns no `total` and ignores `startAt`; reading a `total` is what truncated sprints to 100 issues, and the orphaned issues to the default page of 50, before 2.7.2)
-- Tested against a fake Atlassian in `test/project-data.test.mjs` (the URLs, JQL and fields of every request, the response shape, the batches and parents, the inherited fix versions, the orphaned issues, the sprints, the hash and the commit counts, the failure rules of every fetcher)
-
-**project-assembly.mjs**
-- Pure, shared by `buildProjectData` and the fixture generator so the two responses have one shape and one hash: `extractJiraIssues(title, jiraRegex)`, `createJiraIssuesMap(pullRequests, jiraRegex)` (a Map by pull request id), `missingParentKeys(issues)` (the parent keys named by the issues and present in none of them, once each, in first-seen order), `inheritFixVersions(issues)` (in place, in array order: an issue without fix versions takes its parent's, so a version travels epic -> story -> sub-task when the story comes first), `calculateHash(data)` (MD5 of the pull requests, the issue map as a plain object, the details, the sprints, the sprint issues and the orphaned issues) and `assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, jiraSiteName })`, the response without `lastRefreshTime` (the parts returned as given, not copied); tested in `test/project-assembly.test.mjs`
-
-**sync-statuses.mjs**
-- `createSyncStatuses({ fetch, workspace, bbAuth, log: { error, performance }, syncCache, timeoutMs = 30000, maxConcurrent = 4, now })`: the SYNC computation of a server, one limiter and one cache; nothing here talks to Bitbucket by itself (the server passes `atlassianFetch`, the tests a fake answering by URL); returns `computeConflicts(repoName, spec)` and `computeSyncStatuses(projectName, pullRequests)`
-- `computeConflicts` fetches the diffstats of both sides (with their line counts, following `next`), decides what their statuses can (`decideFromDiffstat`), fetches one patch per side restricted to the files left to check (`diff/{side}..{other}?topic=true&path=...`, 20 files per request (`filesPerPatchRequest`), the paths of one file in the same request so a rename is seen whole, both sides in parallel), requires every checked file to be in both patches with the diffstat's line counts (`checkPatch`), then asks `conflictingFiles`; more than 100 files to check (`maxFilesToCheck`) skips the patches
-- A failed request or a `checkPatch` mismatch is caught: when the diffstats already proved a conflict, the limit or a later failure gives a partial SYNC (`{ conflicts: true, files, reason }`: the known files, and the reason the rest was not checked) instead of a full failure
-- `computeSyncStatuses` is the per-pull-request block of the route: each result is looked up in `sync-cache.json` under `<repo>/<dest>..<source>` before any request (the cache adds the rule-version prefix), computed otherwise through the limiter, and stored only when complete (never a failure or a partial result); a pull request without a commit hash on a side gets no entry; the cache is saved once at the end (a failed write is logged); the reasons sent to the client are short (`failureReason`: `shortMessage` without the URL, or the fixed sentence of a rate-limit pause, which is not logged as an error); the summary log line counts the pull requests computed, not checked and partly checked
-- Tested against a fake Bitbucket in `test/sync-statuses.test.mjs` (real `Response` objects, the real `openSyncCache` on a temporary file): what is fetched, what the client is shown, what reaches the disk
-
-**atlassian-fetch.mjs**
-- `createAtlassianFetch({ fetch, now, backoffSeconds = 600, onRateLimit })` returns `fetch(url, options)`, the wrapper every Atlassian request goes through: while a pause is on it throws `RateLimitError` without calling `fetch`; a 429 from either API drains the body (the socket is released), sets the end of the pause to `backoffSeconds` after now, calls `onRateLimit(url, until)` and throws `RateLimitError`; a network failure is rethrown with its cause (`error.cause.message` or `.code`) and the URL in `message`, the same without the URL in `shortMessage`, the original as `cause`; any other response is returned as it is (the callers read `ok`)
-- `rateLimitedUntil()` (the end of the last pause in epoch ms, 0 before any 429, kept once past) and `pause()` (`{ rateLimited, rateLimitedUntil: ISO or null, remainingMs }`, what the responses say during a pause) are read by the routes
-- `RateLimitError` (thrown while Atlassian requests are paused after an HTTP 429) and `failureReason(error)` (what the user is told when a request failed: the fixed sentence for a `RateLimitError`, `shortMessage` or `message` otherwise)
-- Tested in `test/atlassian-fetch.test.mjs` with a fake `fetch` and a clock variable: the pause from either API and its extension by a later 429, the drained 429 body, the failure messages, `failureReason`, the fields and TTL of the responses during a pause
-
-**sync-cache.mjs**
-- `openSyncCache(filePath, { ruleVersion, maxAgeDays, now, onError })`: `size` (the results of the current rule version), `get(key)`, `set(key, result)`, `save()`, keyed by `repo/destHash..sourceHash`; `ruleVersion` is required (a `TypeError` otherwise; index.mjs passes `conflictRuleVersion`); the file is `{ version: 1, entries: { "2:repo-name/destHash..sourceHash": { conflicts, files, computedAt } } }` (the module puts the `2:` prefix, the rule version, in front of every key and only sees the entries of its own version), read once at open (a missing file is an empty cache, an unreadable one or another version is reported through `onError` and ignored, entries that are not objects are dropped), written through a temporary file then a rename, pruned at save of the entries older than 90 days and of those of any other rule version, older or newer (the results of the previous rule go at the first write after a bump; a checkout of a branch at another version drops them too, since the file is shared by every checkout of the directory)
-- `save()` serializes at call time and queues its write after the writes in flight; it resolves to whether it wrote and only ever rejects (a failed write leaves the entries pending for the next save)
-- Only successful results are stored (the route stores nothing for `{ error: true }` or a partial result with a `reason`), so failures are retried at the next load; fixture mode reads the file but never writes it
-
-**projects.js**
-- Module.exports object containing project configurations
-- Each project has:
-  - `repositories`: Array of Bitbucket repository slugs
-  - `jiraProjects`: Array of Jira project keys
-  - `jiraRegex`: Regex pattern to extract Jira issue keys from PR titles
-- Example structure:
-  ```javascript
-  'PROJECT_NAME': {
-      repositories: ['repo1', 'repo2'],
-      jiraProjects: ['PROJ1', 'PROJ2'],
-      jiraRegex: /(PROJ1-\d+|PROJ2-\d+)/g
-  }
-  ```
-
-**config.js** (NOT committed)
-- Contains sensitive credentials
-- Structure (from config.js.default):
-  ```javascript
-  {
-    bitbucket: { username, password, workspace },
-    jira: { siteName, username, apiKey },
-    projects: require('./projects')
-  }
-  ```
-
-#### Frontend Files
-
-**public/app.js**
-- Main application state management (filters, project, last API result) and the wiring of the other modules (`DOMContentLoaded`)
-- Project selection and data loading; `renderEverything(apiResult)` builds the tree with app-render.js, renders the orphaned issues section (`renderOrphanedIssues(orphanedIssues, jiraSiteName)`), repaints the SYNC badges (app-sync.js), fills the five multi-selects from the index in one loop over the registry (`filterIndex[key]`), restores the filters from the URL and applies them
-- URL state persistence (filters saved to query params)
-- Periodic refresh logic (2-minute intervals, tab visibility detection)
-- Loading state management
-- Event handlers for user interactions; `handleSyncLoadEnd()` runs after every SYNC load: the SYNC filter is only meaningful while statuses are loaded, then the filters run again
-- One `filters` object in the shape of `defaultFilters()` (filter-registry.js) holds the text, the Work and SYNC values and the selection of each multi-select under its registry key; `readFilterControls`, `restoreFiltersFromUrl`, `resetFilterControls`, `clearFilterOptions` and `initializeMultiSelects` loop over `multiSelectFilters` (`key`, `elementId`); `applyFilters()` passes it with the loaded SYNC statuses (`loadedSyncStatuses()` of app-sync.js) to `filterBranches`
-- The tree pane has one click listener, `handleTreeClick` (tree-toggle.js), installed at load; nothing is put on `window`
-- `restoreFiltersFromUrl({ preferTypedText })`: the only path from the URL to the state and the controls (each multi-select keeps the values its options offer, SYNC follows the URL only while its statuses are loaded); run after every render once every option list is populated, and on Back/Forward; a switch from the URL (page load, Back/Forward) renders with `preferTypedText: false`: the URL wins over a focused search box unless the box holds the URL's query with extra whitespace (a query typed during a page load keeps its trailing space)
-- `selectProject(projectName, { fromUrl })`: project switch; the refresh time is cleared; from the dropdown the filters are reset and the URL pushed once, from the URL (page load, Back/Forward) the URL is left alone and the render restores its filters (`preferTypedText` is `!fromUrl`); after the render the URL is replaced with the validated filters; a late response for a project no longer selected is dropped; without a project ("Select a project", or Back to a URL without one) the filters and the option lists of the multi-selects are cleared (`clearFilterOptions`) whatever the URL says, so the page is back to its initial state
-- `handlePopState()`: Back/Forward; switches the project through `selectProject(name, { fromUrl: true })` or restores and applies the filters of the URL, then replaces the URL with the filters kept (a value the options no longer offer since a refresh is dropped from the entry)
-- `checkForUpdates()`: the periodic refresh; re-renders when the data hash changed; captures the project before its fetch (`fetchData(project)`) and drops a response arriving after a project switch, like `selectProject`; the `checking` class of the refresh icon marks a running check, and a check started meanwhile is skipped before the `try`, so its `finally` does not stop the icon of the running one
-- `availableProjects`: the project names from `/api/projects`, the list the dropdown is built from and `projectFromUrl` validates against
-- `updateWorkSelect()`: the Work select is disabled and back to "All work" while no participant is selected
-
-**public/app-render.js**
-- `renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName)` (pure): the tree as an HTML string; one `.repository` block per repository, its root branches, the pull requests nested in `.children` containers, most recently updated first; the stacked pull requests are found through `pullRequestsByDestination(pullRequests)` (exported), built for each repository, so two repositories sharing a branch name never show each other's pull requests; appends the hidden `.tree-no-match` message when there is at least one repository
-- `renderOrphanedIssues(issues, jiraSiteName, { now })` (pure): the "Jira issues in review without a pull request" section as a `.repository.orphaned-issues` block (header with the toggle, the title and a `.repo-pr-counter`, so tree-toggle.js applies to it and `captureToggleStates` keys it by its title) with one `.orphaned-issue.status-in-review` row per issue carrying `data-issue-key`: priority icon, key link (`.jira-issue-link` with the popover attributes), summary, assignee avatar (Jira `avatarUrls`, the icon alone without one) or "Unassigned", last update, and a `.warnings` line "No update for N days" when `updated` is 14 days or more before `now` (injected for the tests, `Date.now()` otherwise; Jira's `+0000` offset is normalised before parsing); an empty string without issues; the rows are never `.pull-request`, so the tree pass and the toggles of pull requests do not see them
-- `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`, `renderParticipant` (pure, exported for the tests; `renderParticipant` is only called by `renderPullRequest`, with one of four statuses); `renderPullRequests`, `renderPullRequest`, `getBranchUrl`, `toggleButton` are private
-- `toggleButton(name)` renders every chevron button: `type="button"`, `aria-label="Toggle <name>"` (the escaped repository or branch name, "the stacked pull requests", the title of the orphaned issues section), `aria-expanded="true"`, the chevrons `aria-hidden`; no inline handler anywhere in the tree: a click on a header, on the button inside it (a keyboard activation dispatches one) or on the pull-request button reaches `handleTreeClick` (tree-toggle.js), installed once by app.js on the tree pane, which toggles the block once and leaves the links alone
-- `escapeHtml(text)` (pure, exported): `& < > " '` as entities, `null` and `undefined` as an empty string; every Bitbucket and Jira text the module interpolates goes through it (titles, branch and repository names, summaries, statuses, display names, priority names, avatar and issue URLs, the `data-*` attributes), so a `"` or `<` written into Jira cannot end an attribute or open a tag; the one deliberate exception is the rendered title and description of a pull request, HTML made by Bitbucket, URL-encoded into `data-rendered-*` and shown as HTML by the popover
-- `initializePopovers()`: the pull-request and issue popovers; they read the data attributes `renderPullRequest` writes (`data-rendered-title`, `data-rendered-description`, `data-issue-key`, `data-issue-summary`), so the writer and the reader live together; the issue popover is built with `textContent` (never `innerHTML`), the pull-request popover shows Bitbucket's HTML
-- Knows nothing about the filter state; the status band of a pull request (`status-in-progress`, `status-in-review`, `status-in-review-all-approved`, `status-resolved`) and its reviewers come from pull-request-status.js, the same computation the filter index uses; no DOM access at import time, so the rendering is unit-tested
-
-**public/app-sync.js**
-- Owns the SYNC state: `currentSyncStatuses` (the last `/api/sync-statuses` response, null until loaded and again after a project switch), `syncStatusLoading`, `syncLoadFailed`; never imports app.js
-- `initializeSyncControls({ getProject, getSyncFilter, onFilterChange, onLoadEnd })`: wires the SYNC select and the load button; the accessors read the selected project and SYNC filter from app.js at call time, `onLoadEnd` runs after every load, successful or not
-- `loadSyncStatuses()`: the load button handler, one `/api/sync-statuses/:project` call with spinners on the badges meanwhile; never called automatically; a project switch during the load (`resetSyncStatuses` bumps `syncLoadGeneration`) drops its response and its failure, and the new project can load right away; a failed refresh keeps the previously loaded statuses
-- `applySyncStatuses()`: paints the stored statuses onto the `.conflicts-counter` elements as DOM badges, looked up by their `data-sync-key` (written by the render with `syncKey`, the key of the filter index too): green `OK` (`.conflicts-ok`), red `SYNC` (`.conflicts-count`, tooltip from `conflictsTitle`), grey `?` (`.conflicts-error`, the reason, or "unknown" when the key is absent), grey `!` for an invalid spec; nothing while statuses are not loaded; called after every render and after every load (the filters read the statuses themselves, so the order does not matter)
-- `conflictsTitle(files, reason)` (pure, exported for `test/app-sync.test.mjs`): the SYNC tooltip, the conflicting files one per line, the first five then "and N more"; a missing or malformed list gives "Conflicts found"; with a reason, a last line `Other files not checked: <reason>`
-- `updateSyncControls()`: the select (disabled until loaded, options rebuilt, selection put back from `getSyncFilter()`), the load button and the failure/rate-limit warning
-- `syncStatusesLoaded()`, `loadedSyncStatuses()` (the `statuses` object of the last load by `repo/destHash..sourceHash`, `null` while none: what app.js passes to `filterBranches`) and `resetSyncStatuses()`: what app.js needs to restore the SYNC filter from the URL, to filter on the statuses and to forget them, a failed load and a load in flight on a project switch
-
-**public/app-filter.js**
-- `buildFilterIndex(apiResult)` (pure): one entry per pull request with its linked issues, the `searchText` the text filter searches (title, source branch, issue keys, lower-cased) and the sets of assignees (of the linked issues), reviewers (`otherReviewers` of pull-request-status.js: every participant but the author and Rovo Dev), pending reviewers (those who have not approved), sprint ids and fix version ids the filters compare against, and the epic keys (`epics`) and story keys (`stories`); the entry also carries `statusInProgress` and `statusInReview` (from `statusClass` of pull-request-status.js, the band the tree paints) and `syncKey` (`syncKey(pullRequest)` of pull-request-status.js, `repo/destHash..sourceHash`, the key of the pull request in a SYNC statuses response, the one the render writes on its badge as `data-sync-key`); under each key of the filter registry (`sprints`, `fixVersions`, `epics`, `stories`, `participants`) the index holds the option list of the multi-select as `{ value, label }[]` in display order (sprints by name, the fix versions of the details and the orphaned issues unique by id, sorted by project then name and labelled `Name (PROJECT)`, epics and stories through `issueOptions`, the assignees and reviewers by name, Rovo Dev excluded); built once per data load by `initializeFilter()`, which returns it; it also returns `orphanedIssuesByKey`, one entry per orphaned issue (`issue`, `searchText`: key and summary, `assignees`: the assignee, `sprints`, `fixVersions`, `epics`, `stories`), whose epics, stories and assignees join the lists; the parent lookup of `epicOf` covers the details and the orphaned issues
-- `evaluatePullRequest(entry, filters, syncStatus)` (pure): visibility and attention of one pull request; with participants selected, the pull request is kept when one of them reviews it or has a linked issue assigned to it (`work` = `all`, the default, from the `reviewers` and `assignees` sets of the entry; `reviews` and `issues` one set only) or when it waits for one of them (`computeAttention`: `reviewer` in review and not approved by them, `assignee` in progress with a linked issue assigned to them), the other `work` values being `ready` (either attention), `reviewers` and `assignees`; the SYNC filter reads the status of the pull request in the last load (`syncStatus`, `undefined` while none is loaded or known): `requested` is a result with `conflicts` and no `error` (the SYNC badge), `OK` a result with neither (the OK badge), `unchecked` ("Not checked") anything else (no result, a failure, a missing hash: the `?` and `!` pull requests)
-- `evaluateOrphanedIssue(entry, filters)` (pure): visibility and attention of one orphaned issue; the text, sprint, fix version, epic and story matches are shared with `evaluatePullRequest` (`matchesIssueFilters`); `attention` is "assigned to a selected participant", and with participants selected the issue is kept when it has attention under every `work` value but `reviews` and `reviewers` (`reviewWorkValues`; an unknown value behaves like `all`, as for pull requests); SYNC is ignored
-- `filterBranches(filters, syncStatuses)`: takes the statuses of the last SYNC load (`loadedSyncStatuses()` of app-sync.js, `null` while none) and walks `.repository:not(.orphaned-issues)` (direct children only, each pull request visited once; hides, highlights, sums the counters of repositories, root branches and child counters on the way back up, hides the root branches and repositories left without a visible pull request) and the orphaned issues section apart (`filterOrphanedIssues`): each `.orphaned-issue` row evaluated by its `data-issue-key`, shown or hidden, `needs-attention` toggled, the section's counter refreshed (`updateCounterDisplay` with the noun `issue`) and the section hidden while no row is visible; the `.tree-no-match` message is shown while every repository is hidden, whatever the section does; returns the attention count of the pull requests and orphaned issues left visible
-- `issueLevel`, `epicOf`, `storyOf` (pure): the only code that interprets `issuetype` and `parent` (epic > standard issue > sub-task); a sub-task reaches its epic through its parent story, which the server fetches with its own `parent`
-- `parseTextQuery`, `matchesText`, `issueOptions`, `computeAttention`, `countActiveFilters` (pure); `computeAttention(entry, participants)` reads the band from the entry; `countActiveFilters` and `matchesIssueFilters` loop over the registry (every multi-select but the participants is matched against the set of its own name on the entry, the participants have the Work select and their own rule)
-
-**public/app-url.js**
-- `projectFromUrl(search, projects)` (pure): the project a query string names when it is one of the given ones (app.js passes `availableProjects`); `null` otherwise, an empty name included
-- `filtersFromUrl(search)` (pure): the filters a query string describes, in the shape of `defaultFilters()`, one loop over the registry (`urlParam`); `participant` is repeated, `work` is `reviews`, `issues`, `ready`, `reviewers` or `assignees` (anything else reads as `all`); `assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are never read
-- `urlWithFilters(url, { project, filters })` (pure): a copy of the URL with the project and the active filters only (`work` only with participants selected), in the registry order (`q`, `sprint`, `fixVersion`, `epic`, `story`, `participant`, `work`, `sync`); parameters that are not filters are kept, the people parameters of before 2.8.0 are removed
-
-**public/filter-registry.js**
-- `multiSelectFilters` (pure): the five multi-selects in sidebar order, each `{ key, elementId, urlParam }` (`sprints`/`sprintSelect`/`sprint`, `fixVersions`/`fixVersionSelect`/`fixVersion`, `epics`/`epicSelect`/`epic`, `stories`/`storySelect`/`story`, `participants`/`participantSelect`/`participant`); `key` names the filter in the filters object, the option list in the index and the set of an index entry; `defaultFilters()` is the filters object at its defaults; tested in `test/filter-registry.test.mjs` (which also checks the ids exist in index.html)
-
-**public/pull-request-status.js**
-- `statusClass(pullRequest, linkedIssues)` (pure): the band of a pull request, `status-in-progress` when a linked issue is in progress, else `status-in-review` or `status-in-review-all-approved` (reviewers present and every one approved) when one is in review, else `status-resolved` when every linked issue is resolved or closed (a pull request without any linked issue included), else none, and none for a pull request the issue map does not know (no list); `otherReviewers(pullRequest)`: the participants other than the author (by `uuid`) and `atlassianAgent` ("Rovo Dev"); `syncKey(pullRequest)`: `repo/destHash..sourceHash`, the key of a SYNC statuses response (`undefined` where a hash is missing, the `!` badge); called by the render and by the index, so the band painted and the band the attention rule reads are one computation, and the reviewers and the SYNC key one definition each; tested in `test/pull-request-status.test.mjs`
-
-**public/multi-select.js**
-- `MultiSelect` writes its markup (trigger, search box, options, Clear all / Select all) into an empty `<div class="multi-select" id="...">` at construction (`multiSelectMarkup(id)`, pure), and styles.css reserves the 40px of the trigger on the empty element so the sidebar does not jump at load; the trigger is a `role="button"` with `aria-expanded` kept by `open`/`close`, named by `aria-labelledby` from the visible label of the filter (the element with the id `<id>Label` in index.html) then the selection (`<id>Display`), so the name has no copy of the label text; the search box is named by the same label (`aria-labelledby="<id>Label"`); Escape from the search box closes the dropdown and puts the focus back on the trigger; `close()` returns at once on a closed instance (every click on the page closes every instance, and a re-render would rebuild its options and their listeners); tested with fake elements in `test/multi-select.test.mjs`; `createMultiSelect(id, { onChange })`, `getMultiSelect(id)`, `setOptions`, `setSelectedValues` (keeps the values the options offer), `getSelectedValues`, `clearAll(notify)`
-
-**public/counter-utils.js**
-- `updateCounterDisplay(element, visible, total, noun = 'pull request')`: the `n/total` text and tooltip of a counter (the noun is `issue` for the orphaned issues section, pluralised from the number it follows: "1 filtered issue out of 13 total"); the counts come from the filter pass; tested with a fake element in `test/counter-utils.test.mjs`
-
-**fixtures/generate.mjs** and **fixtures/index.mjs**
-- `generateProjectData(projectName, projectConfig, { scale, chainDepth })` returns exactly the `/api/pull-requests/:project` response shape, through the same `assembleProjectData` as the server (project-assembly.mjs): the generator makes the pull requests, the issue details it "fetches" from the issues it knows, the orphaned issues and the parents (`missingParentKeys`), then assembles; `generateSyncStatuses(projectData)` the `/api/sync-statuses/:project` one: OK statuses, conflicts (about one in ten of them partial, with a reason), and failures (about 4%, with a reason), each seeded by the pull request's key (repository and commits) so a pull request shared by two projects gets the same status
-- Volumes and structure follow the real projects (see the constants at the top of generate.mjs), including the 24-deep stack of `products.secollab` under `feat/ai_investigations` that made the old filtering explode
-- Epics per Jira project (`epicSummaries`, keys in numbering block 8): 40% of the standard issues have an epic parent, parents of sub-tasks are standard issues, parent-only entries carry summary, type, fix versions and parent like the server's; the orphaned issues carry type, fix versions, parent and `updated`, one in five is a sub-task of an in-progress story added as a parent-only entry, about a third are in a sprint
-- Seeded PRNG: the same repository always yields the same pull requests, so `dataHash` is stable and the smart reload stays quiet
-- `parseFixtureOptions()` reads `--fixtures`, `--fixture-scale=N`, `--fixture-chain-depth=N` or the `PR_TREE_FIXTURES*` environment variables; `fixtureConfig()` replaces config.js; `createFixtureSource()` is what index.mjs calls instead of Atlassian
-
-**public/app-shell.js**
-- Banner and sidebar chrome, independent of pull-request data; the version badge (`fetchAndDisplayVersion`, from `/api/version`) is filled by `initializeAppShell`
-- Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed; `/` shows the sidebar and focuses the search box, and so does Ctrl+F or Cmd+F (`isFindShortcut`, pure) unless the search box already has the focus or the help is open, where the browser's find runs; Escape is left to a text box that has content (it clears itself)
-- Theme toggle, stored under `prTree.theme`; the OS setting is followed until a choice is stored; an inline script in `index.html` applies both before the first paint
-- Help modal, active-filter badge, tree toolbar (collapse all / expand all), document title (`(attention) PROJECT · Bitbucket Pull-Requests Tree`)
-- No DOM access at import time, so its pure helpers are unit-tested
-
-**public/tree-toggle.js**
-- `setRepositoryCollapsed`, `setRootBranchCollapsed`, `setPullRequestCollapsed` are the only code paths that change a collapsed state; each also writes `aria-expanded` on the block's own toggle button (`setExpanded`; the repository and root-branch buttons are found with `:scope >` so a nested block's button is never taken, the pull-request button under `.pull-request-header`), so a re-render followed by `restoreToggleStates`, the toggles and collapse/expand all keep the state announced in step with the class; tested with fake elements in `test/tree-toggle.test.mjs`
-- `collapseAll` / `expandAll`, `captureToggleStates` / `restoreToggleStates` used across re-renders
-- `handleTreeClick(event)`: the one click listener of the tree pane (app.js installs it): a click inside a link toggles nothing, the toggle button of a pull request toggles its stacked pull requests, any other click on a root-branch or repository header toggles the block (the orphaned issues section included); the three toggles are private; tested with fake elements
-
-**public/index.html**
-- App shell: banner (project selector, refresh status, theme toggle, help, GitHub, version), filter sidebar, tree pane with the collapse/expand toolbar, help modal
-- Inline `<head>` script applies the stored theme and sidebar state before the first paint
-- Every filter has a visible label that names its control: a `<label for>` for the Work and SYNC selects, an element with the id `<elementId>Label` for a multi-select (its trigger's `aria-labelledby`); the label text sits in its own element so the info icon's tooltip stays out of the name
-
-## API Endpoints
-
-### GET /api/version
-Returns application version metadata.
-
-**Response:**
-```json
-{
-  "version": "2.11.1",
-  "releaseDate": "2026-10-10",
-  "author": "François-Régis Jaunatre",
-  "license": "Copyright François-Régis Jaunatre"
-}
-```
-
-### GET /api/projects
-Returns list of configured projects (cached 5 minutes).
-
-**Response:**
-```json
-["PROJECT1", "PROJECT2"]
-```
-
-### GET /api/pull-requests/:project
-Main data endpoint. Returns comprehensive project data (cached 2 minutes).
-
-**Parameters:**
-- `project`: Project name from projects.js
-
-**Response:**
-```json
-{
-  "lastRefreshTime": "2025-01-22T10:30:00.000Z",
-  "pullRequests": [...],          // PR objects with commitsAhead/commitsBehind
-  "jiraIssuesMap": {...},         // Map of PR ID to Jira issue keys
-  "jiraIssuesDetails": [...],     // Full Jira issue objects (the parents fetched appended)
-  "jiraSiteName": "...",
-  "sprints": [...],               // Active sprints
-  "sprintIssues": {...},          // Map of sprint ID to issue keys
-  "orphanedIssues": [...],        // Issues in review without PRs, with the fields of the linked issues plus updated
-  "dataHash": "..."               // MD5 hash for change detection
-}
-```
-
-**Special behavior:**
-- If dataHash unchanged from last response, only updates `lastRefreshTime`
-- Only fetches commit counts (ahead/behind) when hash changes
-- This prevents Bitbucket API rate limiting (HTTP 429)
-
-### GET /api/sync-statuses/:project
-Returns the SYNC (conflicts) status of every open PR of a project in a single response (cached 5 minutes; each pull request's result is read from `sync-cache.json` first, so only the pull requests whose commits moved cost Bitbucket requests). Only called by the frontend when the user clicks the load button next to the SYNC filter, never automatically.
-
-**Response:**
-```json
-{
-  "lastRefreshTime": "2026-08-12T10:30:00.000Z",
-  "rateLimited": false,
-  "rateLimitedUntil": null,
-  "statuses": {
-    "repo-name/destHash..sourceHash": { "conflicts": true, "files": ["src/package-lock.json"] },
-    "repo-name/otherDest..otherSource": { "conflicts": false },
-    "repo-name/thirdDest..thirdSource": { "error": true, "reason": "The operation was aborted due to timeout" },
-    "repo-name/fourthDest..fourthSource": { "conflicts": true, "files": ["pom.xml"], "reason": "Request failed with status code 502" }
-  }
-}
-```
-
-A SYNC entry with a `reason` is partial: the listed files conflict for sure, the other files could not be checked; it is not stored and is computed again at the next load.
-
-**Rate-limit behavior (applies to all endpoints):** every Atlassian request goes through `atlassianFetch()` in index.mjs, the fixture-mode guard in front of the wrapper of atlassian-fetch.mjs (`createAtlassianFetch`, which defines `RateLimitError` and `failureReason`). After any HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429; all cache TTLs are raised to cover that window (`raiseAllCacheTtls` in cache.mjs) so cached data keeps being served. Responses built during the pause carry `rateLimited: true` and are cached until the window closes; uncached endpoints return 503 with `rateLimitedUntil`.
-
-### GET /api/cache/stats
-Returns cache statistics.
-
-**Response:**
-```json
-{
-  "keys": 5,
-  "hits": 120,
-  "misses": 15,
-  "ksize": 5,
-  "vsize": 1024000
-}
-```
-
-## Architecture Patterns
-
-### Server-Side Caching Strategy
-The application implements a sophisticated caching system to minimize API calls:
-
-1. **Two-tier caching**: Server-side (node-cache) + pseudo-client cache (hash comparison)
-2. **Hash-based change detection**: MD5 hash of PR/Jira data prevents unnecessary re-fetching
-3. **Selective fetching**: Commit counts only fetched when hash changes
-4. **TTL-based expiration**: Different TTLs for different data types
-
-### Data Flow
-```
-Client Request → Express Route → Cache Check →
-  Cache Hit: Return cached data
-  Cache Miss: → Fetch from APIs → Store in cache → Return data
-```
-
-### Logging System
-Three separate log streams:
-- **access.log**: Request logs with timestamps, method, path, query, IP
-- **error.log**: Error messages from failed API calls or server errors
-- **performance.log**: Duration metrics for expensive operations
-
-Pattern:
-```javascript
-log(message, logStream);  // Logs to both console and file
-```
-
-### Frontend State Management
-State is managed through module-level variables in app.js:
-```javascript
-let availableProjects = [];    // the project names from /api/projects
-let currentProject = null;
-let filters = defaultFilters();  // { text, work, sync, sprints, fixVersions, epics, stories, participants } (filter-registry.js); work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees'
-let currentApiResult = null;
-```
-The SYNC statuses and their loading state live in app-sync.js (`currentSyncStatuses`, `syncStatusLoading`, `syncLoadFailed`, `syncLoadGeneration`); app.js asks `syncStatusesLoaded()` to restore the SYNC filter from the URL and calls `resetSyncStatuses()` on a project switch.
-
-State is synchronized with URL query parameters for deep linking:
-```
-?project=PROJ&q=banner&sprint=Sprint1&epic=PROJ-100&story=PROJ-200&participant=Jane&work=reviewers&sync=requested
-```
-(`assignee`, `reviewer`, `readyReviewer`, `readyAssignee` and `ready`, the people parameters before 2.8.0, are ignored and removed from the URL.)
-
-The page follows the URL on Back and Forward: `handlePopState()` restores the filters (`restoreFiltersFromUrl`), applies them and replaces the URL with the filters kept, or switches the project when the `project` parameter changed; nothing in that path pushes a history entry. Each user action is one history entry: a filter change pushes, typing replaces, a manual project switch pushes once (a switch to "Select a project" too: the filters are cleared and the URL is bare), and a page load or a switch from the URL replaces the URL after the render (the address bar catches up with the validated filters).
-
-Every filter pass goes through `applyFilters()` in app.js: it calls `filterBranches(filters, loadedSyncStatuses())` (app-filter.js, the statuses from app-sync.js), then updates the active-filter badge and the tab title. `renderEverything(apiResult)` receives the data from its caller and applies the filters once every filter control has been populated and restored from the URL. `handleFilterChange()` reads the controls (`readFilterControls()`), applies and pushes the URL; the search box goes through `handleTextFilterInput()`, which replaces the URL instead of pushing it.
-
-### Filtering Architecture
-Single pass in app-filter.js:
-1. `initializeFilter(apiResult)` builds the index once per data load (Maps and Sets, no array search later)
-2. `filterBranches(filters, syncStatuses)` walks repositories → root branches → direct child pull requests → their `.children` container, recursively (the `.repository:not(.orphaned-issues)` blocks); every pull request is visited exactly once
-3. Children are evaluated first; a filtered-out parent stays displayed while a descendant is visible; a root branch or a repository with no visible pull request is hidden, and the `.tree-no-match` message rendered by `renderRepositories` is shown while every repository is hidden
-4. Counters (repository, root branch, child counters shown) are summed on the way back up and written through `updateCounterDisplay`; DOM writes only happen when the value changes
-5. The orphaned issues section is walked apart (`filterOrphanedIssues`): its `.orphaned-issue` rows are evaluated by `data-issue-key` with `evaluateOrphanedIssue`, shown or hidden, `needs-attention` toggled; the section counter is written with the noun `issue`, the section hidden while no row is visible, and the attention of its visible rows is added to the count `filterBranches` returns
-6. Nothing is read back from the rendered tree: the status band is in the index entry (`statusInProgress`, `statusInReview`, from pull-request-status.js) and the SYNC result is `syncStatuses[entry.syncKey]`, the statuses of the last load passed by app.js
-
-Never re-select descendants (`querySelectorAll('.pull-request')`) inside the recursion: the previous implementation did, and a pull request at depth *d* was visited 2^d times (16 million visits per filter change on SECOLLAB).
-
-## Development Workflows
-
-### Initial Setup
-1. Clone repository
-2. Run `npm ci` (not `npm install` - uses package-lock.json exactly)
-3. Copy `config.js.default` to `config.js`
-4. Fill in Bitbucket credentials:
-   - Username: the e-mail of the Atlassian account (the Bitbucket username is rejected with an API token)
-   - Password: an API token with scopes (https://id.atlassian.com/manage-profile/security/api-tokens, "Create API token with scopes", app Bitbucket, scopes `read:repository:bitbucket` and `read:pullrequest:bitbucket`); app passwords were removed by Atlassian in July 2026
-   - Workspace slug
-5. Fill in Jira credentials:
-   - Site name (subdomain of atlassian.net)
-   - Username (email)
-   - API token without scopes, from the same page (a Bitbucket-scoped token is rejected by Jira)
-6. Update `projects.js` with your projects
-7. Run `npm start`
-8. Navigate to http://localhost:3000
-
-### Running Without Atlassian Access (Fixture Mode)
-`npm run start:fixtures` (or `node index.mjs --fixtures`) serves both configured projects from generated data and never calls Atlassian; no config.js is needed. `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (default 24, the real SECOLLAB value). Use it for UI work and for performance checks: SECOLLAB in fixture mode has the same volumes and tree shape as the real project.
-
-### Adding a New Project
-1. Edit `projects.js`
-2. Add new entry:
-   ```javascript
-   'NEW_PROJECT': {
-       repositories: ['repo-slug-1', 'repo-slug-2'],
-       jiraProjects: ['JIRA1', 'JIRA2'],
-       jiraRegex: /(JIRA1-\d+|JIRA2-\d+)/g
-   }
-   ```
-3. Restart server (no code changes needed, just config)
-4. New project appears in dropdown automatically
-
-### Modifying API Endpoints
-When adding/modifying endpoints:
-1. Update route in index.mjs
-2. Add caching if appropriate (use cache.mjs functions)
-3. Add error handling with logging:
-   ```javascript
-   try {
-     // operation
-   } catch (error) {
-     log(`Error: ${error.message}`, errorLogStream);
-     res.status(500).send('Internal Server Error');
-   }
-   ```
-4. Add performance logging for expensive operations:
-   ```javascript
-   const startTime = Date.now();
-   // operation
-   const duration = Date.now() - startTime;
-   log(`Operation - Duration: ${duration}ms`, performanceLogStream);
-   ```
-
-### Frontend Development
-1. Edit files in `public/` directory
-2. Refresh browser (Express serves static files)
-3. No build step required
-4. Use browser DevTools for debugging
-
-### Testing Changes
-- **Manual testing**: Use the UI to verify functionality; `npm run start:fixtures` gives realistic data without credentials
-- **Unit tests**: `npm test` (node:test, pure logic, the tree rendering, the fixture generator, the SYNC computation against a fake Bitbucket)
-- **Coverage**: `npm run test:coverage` runs the same tests and prints the lines, branches and functions reached in each module of the project; a file no test loads is absent from the table, not at 0%
-- **API testing**: Use browser DevTools Network tab or curl
-- **Cache testing**: Check `/api/cache/stats` endpoint
-
-## Coding Conventions
-
-### JavaScript Style
-- **ES6 modules**: Use `import/export`, not `require()` in .mjs files
-- **async/await**: Preferred over promises for async operations
-- **Arrow functions**: Used for callbacks and short functions
-- **Template literals**: Used for string interpolation
-- **Const by default**: Use `const` unless reassignment needed
-
-### Naming Conventions
-- **Functions**: camelCase (`fetchPullRequests`, `handleFilterChange`)
-- **Variables**: camelCase (`currentProject`, `jiraIssuesMap`)
-- **Constants**: camelCase (no UPPER_CASE for constants in this codebase)
-- **CSS classes**: kebab-case (`pull-request`, `filter-item`)
-- **API routes**: kebab-case (`/api/pull-requests`)
-
-### Error Handling
-Always use try-catch with logging:
-```javascript
-try {
-    // operation
-} catch (error) {
-    log(`Error in functionName: ${error.message}`, errorLogStream);
-    throw error;  // or handle gracefully
-}
-```
-
-### API Response Structure
-- Always return JSON for API endpoints
-- Include error messages in responses
-- Use appropriate HTTP status codes:
-  - 200: Success
-  - 500: Server error
-  - Check response.ok before parsing in client
-
-### Comments
-- Minimal inline comments (code should be self-documenting)
-- JSDoc-style comments in cache.mjs for exported functions
-- TODO comments when appropriate
-
-## Common Tasks
-
-### Add New Filter (a multi-select)
-1. **Backend**: Modify `/api/pull-requests/:project` (project-data.mjs, project-assembly.mjs, the fixture generator) to include new data
-2. **Registry**: one row `{ key, elementId, urlParam }` in `multiSelectFilters` (public/filter-registry.js); the state, the URL parameter, the control wiring, the restore from the URL and the active-filter count follow
-3. **Frontend HTML**: an empty `<div class="multi-select" id="<elementId>">` with its label in index.html, the label text in an element with the id `<elementId>Label` (the registry test checks the id exists, the server test the label)
-4. **Filter Logic**: in `buildFilterIndex()` (app-filter.js), the option list under `key` (`{ value, label }[]`, display order) and the set of values under `key` on each pull-request entry and each orphaned-issue entry; `matchesIssueFilters` matches any selected value against that set (a filter with another rule, like the participants, gets its own code in `evaluatePullRequest`); unit tests in test/app-filter.test.mjs and test/app-url.test.mjs
-
-### Add New Jira Field
-1. Modify `fetchJiraIssuesDetails()` in project-data.mjs
-2. Update `fields` parameter in JQL query URL
-3. Update the frontend rendering to display the new field (`renderPullRequest` in app-render.js)
-4. Include field in hash calculation if it should trigger refresh
-
-### Debug Performance Issues
-1. Check performance.log for slow operations
-2. Review cache hit/miss ratio at `/api/cache/stats`
-3. Inspect Network tab for redundant API calls
-4. Verify hash-based change detection is working
-5. Consider increasing cache TTL if appropriate
-
-### Add New Repository to Existing Project
-1. Edit `projects.js`
-2. Add repository slug to `repositories` array
-3. Restart server
-4. Cache will refresh automatically after TTL
-
-### Modify Logging
-All logging goes through the `log()` function:
-```javascript
-log(message, logStream);
-```
-Three streams available:
-- `accessLogStream`: General access and info
-- `errorLogStream`: Errors and failures
-- `performanceLogStream`: Timing and performance metrics
-
-## Important Notes for AI Assistants
-
-### Security Considerations
-- **config.js is git-ignored**: Never commit credentials
-- **Basic Auth used**: Credentials are Base64 encoded (not encrypted)
-- **No HTTPS enforcement**: Should only run on localhost or behind secure proxy
-- **CORS not configured**: Frontend and backend must be same-origin
-- **No input validation**: Trust that config.js and projects.js are correct
-- **Only public/ and README.md are served**: never mount a static middleware on the project directory, it would serve config.js, the logs and the sources (fixed in 2.5.2); `test/server.test.mjs` checks it
-- **sync-cache.json** holds commit hashes and file paths only, no content and no credential; it is git-ignored
-- **Jira and Bitbucket text is untrusted**: anyone with write access to Jira can put `<script>` in a summary; app-render.js escapes every text it interpolates (`escapeHtml`) and the issue popover uses `textContent`; keep it that way in any new rendering, and never put such a text through `innerHTML`
-
-### Performance Optimization
-- **Minimize API calls**: Use existing cached data when possible
-- **Batch operations**: Jira issues fetched in batches of 50
-- **Hash-based updates**: Commit counts only fetched when other data changes
-- **Pagination handled**: the Bitbucket pull requests are read page by page (a loop over `next`), the Jira searches with `searchIssuePages` (the `nextPageToken` of the search endpoint)
-
-### Common Pitfalls
-1. **Module type mismatch**: Backend uses ES modules (.mjs), config uses CommonJS (module.exports)
-2. **Cache staleness**: Remember that data can be up to 2 minutes old
-3. **API rate limits**: Bitbucket can return HTTP 429 if too many requests
-4. **Filter restoration**: on a page load the SYNC filter is NOT restored from the URL (its statuses are loaded on demand) while every other filter is, including the Work select; on Back/Forward SYNC follows the URL while its statuses are loaded
-5. **Regex patterns**: Must match exact Jira issue key format in PR titles
-6. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks; the focus ring (`:focus-visible`, primary colour) is invisible on a surface painted in the primary colour, so such a surface overrides `outline-color` with `--on-accent-text` (the repository header does); any surface carrying `--on-accent-text` (a badge, a count, a button) needs 4.5:1 or more with it in both themes (WCAG AA for small text), so it is never filled with the status, attention or muted-text colours, which miss that contrast in the light theme; the SYNC badges use tokens of their own for that (`--badge-ok-bg`, `--badge-sync-bg`, `--badge-neutral-bg`); the active-filter count (`.header-badge` on `--attention-color`), the status-coloured texts and the status icons still miss AA in the light theme (#76), do not copy them
-7. **Participants and Work**: attention is computed by `computeAttention(entry, participants)` from the index (`assignees`, `pendingReviewers`, `statusInProgress`, `statusInReview`, the last two from `statusClass` of pull-request-status.js), never from rendered styles; `evaluatePullRequest` takes `participants` and `work` (`all`, `reviews` and `issues` keep every pull request of the participants, `ready`, `reviewers` and `assignees` only those waiting for them); without a participant the work value is ignored, and app.js forces it back to `all`
-8. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests; anything recursive over the tree must visit each pull request once (see Filtering Architecture)
-9. **Grouping per repository**: the tree groups the pull requests per repository and, inside it, by destination branch (`pullRequestsByDestination` in app-render.js); the API response carries no such map since 2.11.0 (every pull request was sent twice), and two repositories sharing a branch name (e.g. `master`) no longer see each other's pull requests
-10. **Search box and history**: the text filter writes the URL with `replaceState` (one history entry for a whole typing session); every other filter pushes; `restoreFiltersFromUrl` keeps the content of a focused search box on a re-render (the URL holds the trimmed query) but takes the URL on Back/Forward
-11. **Jira hierarchy**: only `issueLevel`/`epicOf`/`storyOf` in app-filter.js read `issuetype` and `parent`; parent-only issues (fetched as parents) have no status
-12. **Module boundaries**: app-render.js stays free of filter state and of DOM access at import time (its tests import it in node); app-sync.js never imports app.js (it receives accessors), so there is no circular import; anything that needs both the state and a module goes through app.js; app-render.js and app-filter.js both import pull-request-status.js, and app.js, app-url.js and app-filter.js import filter-registry.js; nothing is installed on `window`: the tree's clicks reach `handleTreeClick` (tree-toggle.js) through one listener on the pane
-13. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop the response when the project changed meanwhile; `loadSyncStatuses` compares the load generation `resetSyncStatuses` bumps (Back/Forward make quick switches easy); any new fetch that paints something must do the same
-14. **Conflict computation**: never merge file contents on the event loop again (a 30,000-line lock file ran for five minutes and blocked every request, 2.7.0); conflicts come from the patches of both sides, and `sync-cache.json` makes the results permanent, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat`, `computeConflicts`, `checkPatch` or the diffstat mapping (sync-statuses.mjs) that can change a decision must bump `conflictRuleVersion` in conflicts.mjs, which the cache keys start with (`syncCacheVersion` is the file format); no need to delete `sync-cache.json` after a bump, entries computed under another version are never looked up again and are dropped the next time the file is written (the `ruleVersion` option of `openSyncCache`)
-15. **Orphaned issues section**: it is a `.repository.orphaned-issues` block so the toggles apply, and the filter walk skips it in the repository loop; its rows are `.orphaned-issue`, never `.pull-request` (the tree pass and `captureToggleStates` select `.pull-request`); the parents of the orphaned issues are in `jiraIssuesDetails` like the linked issues' parents, except a parent that is an orphaned issue itself, which the index looks up among the orphaned issues
-
-### Testing Approach
-- **Unit tests**: `npm test` runs `node:test` over `test/*.test.mjs` for the pure logic (`parseTextQuery`, `matchesText`, `issueLevel`, `epicOf`, `storyOf`, `computeAttention`, `countActiveFilters`, `buildFilterIndex`, `initializeFilter`, `evaluatePullRequest`, `evaluateOrphanedIssue`, `buildDocumentTitle`, `projectFromUrl`, `filtersFromUrl`, `urlWithFilters`, `renderRepositories`, `renderOrphanedIssues`, `findRootBranches`, `calculateTotalPullRequests`, `calculateDescendants`, `renderParticipant`, `escapeHtml` and the escaping of hostile Jira and Bitbucket text) and the fixture generator (volumes, determinism, deep stack, hierarchy, the participants list), the filter registry (`test/filter-registry.test.mjs`), the status band (`test/pull-request-status.test.mjs`), the assembly of a project's data (`test/project-assembly.test.mjs`), the tree's click handler with fake elements (`test/tree-toggle.test.mjs`), the multi-select's Escape focus and its close of closed instances with fake elements (`test/multi-select.test.mjs`), the conflict rule on synthetic patches (`test/conflicts.test.mjs`), the on-disk cache (`test/sync-cache.test.mjs`), one SYNC computation per project at a time, the TTLs raised during a rate-limit pause (with `mock.timers` on `Date`, since node-cache reads `Date.now()`) and the cache statistics (`test/cache.test.mjs`), the SYNC tooltip text (`test/app-sync.test.mjs`), the Atlassian wrapper with a fake `fetch` and a clock variable (`test/atlassian-fetch.test.mjs`: the pause after a 429 from either API, the failure messages with and without the URL, what the routes answer during a pause), the project data against a fake Atlassian (`test/project-data.test.mjs`: pull-request pagination, the Jira batches of 50 and the parents fetched after them, the fix versions inherited, the orphaned issues (their fields, their parents fetched with the linked issues' parents), the sprints of every board, the hash and the commit counts fetched only when it changed, the failure rules of every fetcher), the server's SYNC computation against a fake Bitbucket answering diffstats and diffs by URL (`test/sync-statuses.test.mjs`: the requests made, the statuses and reasons sent, what is stored in `sync-cache.json` under the rule-version prefix, the summary log line); no DOM, no extra dependency; `test/server.test.mjs` starts the server in fixture mode on an ephemeral port (`PORT=0`) and checks what it serves (the app, whose every `<select>` is named by a `<label for>` with text or an `aria-label` (no script of public/ makes a select, which the test checks too), every multi-select trigger is a button labelled by its filter's `<id>Label` element and its selection, and the SYNC load button says what it loads (#62), the API, `README.md`, nothing else of the project directory), the documented shape of `/api/pull-requests/:project` and its `dataHash` stable across calls, the five counters of `/api/cache/stats`, and the answers to an unknown project (500 from the pull requests route, whose `buildProjectData` throws "Project not found" and whose route maps every error to 500; 404 from the sync statuses route)
-- **Coverage**: `npm run test:coverage` is `npm test` with Node's `--experimental-test-coverage` (no dependency; the include patterns need Node 22.5 or later): after the tests, a table with the line, branch and function coverage of `*.mjs`, `projects.js`, `public/*.js` and `fixtures/*.mjs` and the uncovered line numbers; the files are listed explicitly because a `--require` preload in `NODE_OPTIONS` would otherwise appear from outside the project (`--test-coverage-exclude` cannot express "outside the project", minimatch's `**` does not cross `..`), so a new source directory needs a pattern in the script; `index.mjs` (the routes and the wiring, the fixture-mode guard) is reached through the fixture server the server test spawns, which exits normally on SIGTERM so that V8 writes its coverage, and the test waits for that exit; a file no test loads (`public/app.js`) is absent from the table rather than at 0%, so the "all files" line overstates; the DOM modules (`app-shell.js`, `app-sync.js`, `tree-toggle.js`, `multi-select.js`) are low because only their pure helpers, or their DOM writes on fake elements, are tested; no threshold
-- **Performance**: start `npm run start:fixtures`, open SECOLLAB, and time a filter change in the browser console (e.g. `performance.now()` around a checkbox `.click()` of a multi-select); a pass should stay around a millisecond of JavaScript
-- **UI**: manual testing in the browser (layout, filters, theme)
-- **Regression testing**: Test all filters after making changes
-- **API testing**: Use browser DevTools or Postman
-- **Error scenarios**: Check error.log for unexpected issues
-
-### Deployment
-- **Production**: Not designed for production deployment
-- **Target environment**: Developer workstations, localhost only
-- **No containerization**: Direct Node.js execution
-- **No CI/CD**: Manual deployment
-
-### Version Management
-Version information stored in package.json:
-- `version`: Semantic version number
-- `releaseDate`: Release date in ISO format
-- Update both when making releases
-- Version displayed in UI footer
-
-## Git Workflow
-
-### Branching Strategy
-- Default branch: Not specified in current context
-- Feature branches: Use descriptive names with `claude/` prefix
-- Example: `claude/claude-md-mhzdq5nie29z6hi0-01HJKAFkKK9KyjvqwJpsnDwQ`
-
-### Ignored Files (.gitignore)
-- `config.js`: User-specific credentials
-- `node_modules/`: Dependencies
-- `*.log`: All log files (access, error, performance)
-- `sync/`: Temporary folder
-- `Bitbucket-pr-tree*.gif`: Demo/screenshot files
-- `sync-cache.json*`: conflict results kept across restarts (and the temporary file of a write)
-
-### Commit Messages
-- No specific convention enforced
-- Recent commits show format: `verb: description`
-  - `bump version number`
-  - `fix: use new api after deprecation removal`
-  - `feat(server-side caching)`
-
-## External Dependencies
-
-### APIs Used
-- **Bitbucket API v2.0**: https://api.bitbucket.org/2.0/
-  - Endpoints: repositories, pullrequests, commits, diff
-- **Jira API v3**: https://{siteName}.atlassian.net/rest/api/3/
-  - Endpoints: search (JQL), issues
-- **Jira Agile API v1.0**: https://{siteName}.atlassian.net/rest/agile/1.0/
-  - Endpoints: board, sprint
-
-### Authentication
-- Bitbucket: Basic Auth with the account e-mail and a scoped API token
-- Jira: Basic Auth with email and API token
-- Tokens stored in config.js (Base64 encoded in headers)
-
-## Future Considerations
-
-### Potential Improvements
-- Add automated tests (Jest for backend, testing-library for frontend)
-- Implement WebSocket for real-time updates
-- Add user authentication/multi-user support
-- Containerize with Docker
-- Add TypeScript for type safety
-- Implement proper build pipeline
-- Add database for persistent caching
-- Implement OAuth for API authentication
-- Add PR comment integration
-- Support for GitHub (not just Bitbucket)
-
-### Known Limitations
-- No error recovery for failed API calls
-- No retry logic for transient failures
-- Limited to Bitbucket and Jira (no GitHub/GitLab support)
-- No mobile-responsive design optimization
-- Single-user application (no authentication)
-- In-memory cache lost on server restart
-
-## Support and Resources
-
-- **Repository**: Check README.md for user documentation
-- **Issues**: No issue tracker specified
-- **License**: Copyright François-Régis Jaunatre (proprietary)
-- **Documentation**: README.md contains changelog and feature list
-
----
-
-**Last Updated**: 2026-10-10
-**For**: AI Assistant usage (Claude, GPT, etc.)
-**Maintained by**: Project contributors
+**docs/superpowers is the design record.** Each change is designed in a spec (`specs/YYYY-MM-DD-<topic>-design.md`) and implemented from a plan (`plans/YYYY-MM-DD-<topic>.md`); the decisions and the alternatives turned down are there, not in this file. Read the spec of an area before redesigning it; write one for a new change.
+
+## Workflows
+
+### Setup
+`npm ci` (never `npm install`), copy `config.js.default` to `config.js` and fill it in (Bitbucket: the account e-mail and a scoped API token; Jira: the e-mail and an unscoped API token; app passwords are gone), edit `projects.js`, `npm start`, open http://localhost:3000.
+
+### Without Atlassian access
+`npm run start:fixtures` (or `node index.mjs --fixtures`) serves both projects from generated data, no config.js needed; `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (default 24). SECOLLAB in fixture mode has the volumes and tree shape of the real project: use it for UI work and performance checks.
+
+### Tests
+- `npm test`: every `test/*.test.mjs`. The server modules take `fetch`, the clock and the logs as parameters, so they are tested against fakes answering by URL (`project-data`, `sync-statuses`, `atlassian-fetch`); the frontend modules are pure or tested on fake elements; `server.test.mjs` starts the fixture server on `PORT=0` and checks what it serves.
+- `npm run test:coverage`: the same with coverage. The include patterns are listed in package.json (a `--require` preload in `NODE_OPTIONS` would show up otherwise), so a new source directory needs a pattern there. A file no test loads (`public/app.js`) is absent from the table, not at 0%. `index.mjs` is covered through the spawned fixture server, which exits normally on SIGTERM so V8 writes its coverage.
+- Performance: fixture server, SECOLLAB, time a filter change in the browser console (`performance.now()` around a multi-select checkbox `.click()`); a pass stays around a millisecond.
+- UI: manual, in the browser, in both themes; test every filter after a change to the filters.
+
+### Release
+Bump `version` and `releaseDate` in package.json (the UI shows them through `/api/version`) and add a changelog entry at the top of README.md's "Changelog" section. PRD.md gets a requirement line for a new feature.
+
+## Common tasks
+
+**Add a project or a repository**: `projects.js` only, then restart.
+
+**Add a multi-select filter**:
+1. The data in the `/api/pull-requests/:project` response: project-data.mjs, project-assembly.mjs, and the fixture generator
+2. One row `{ key, elementId, urlParam }` in `multiSelectFilters` (filter-registry.js): the state, the URL parameter, the control wiring, the restore from the URL and the active-filter count follow
+3. An empty `<div class="multi-select" id="<elementId>">` in index.html with its visible label in an element with the id `<elementId>Label`
+4. In `buildFilterIndex` (app-filter.js): the option list under `key` (`{ value, label }[]`, display order) and the set of values under `key` on each pull-request entry and each orphaned-issue entry; `matchesIssueFilters` does the rest
+5. Tests in app-filter, app-url and filter-registry (which checks the element ids exist in index.html)
+
+**Add a Jira field**: the `fields` of the request in `fetchJiraIssuesDetails` (project-data.mjs, and `fetchInReviewIssuesWithoutPR` if orphaned issues need it), the fixture generator, the rendering in app-render.js through `escapeHtml`; it reaches the hash through `calculateHash` (project-assembly.mjs) since the details are hashed whole.
+
+**Add or change an endpoint**: route in index.mjs, cache in cache.mjs if it calls Atlassian, `try`/`catch` with `log(message, errorLogStream)` and a 500, a `performanceLogStream` line for anything slow, every Atlassian request through `atlassianFetch`; a test in server.test.mjs; PRD.md section 7.5.
+
+**Debug performance**: performance.log, `/api/cache/stats`, the Network tab for repeated calls, whether `dataHash` stays stable (commit counts are fetched only when it changes).
+
+## Conventions
+
+- `import`/`export` in `.mjs` and `public/`; `async`/`await`; `const` unless reassigned; arrow functions for callbacks; template literals
+- camelCase for functions, variables and constants (no UPPER_CASE); kebab-case for CSS classes and API routes
+- A module opens with a header comment saying what it is for and what it does not do (index.mjs, cache.mjs and app.js predate the habit and comment per function); few inline comments otherwise; JSDoc on exported functions where the signature is not obvious
+- Server modules never read config.js or call `fetch` themselves: `create*({ fetch, ..., log })` factories, wired once in index.mjs, so they are testable against fakes
+- Frontend modules touch no DOM at import time, so their pure parts are imported by node tests
+- API errors: JSON for API answers, 500 with a log line on failure, 503 with `rateLimitedUntil` during a rate-limit pause; the client checks `response.ok`
+- Commit messages `type: description` (`fix:`, `feat:`, `refactor:`, `docs:`, `test:`); branches `claude/<topic>`; stacked pull requests are common (see the user's global notes on retargeting before merging)
+
+## Pitfalls (each one happened)
+
+1. **Security**: only `public/` and `README.md` (its own route) are served; never mount a static middleware on the project directory, it served config.js, the logs and the sources before 2.5.2 (server.test.mjs checks it). `sync-cache.json` and the logs are git-ignored.
+2. **Untrusted text**: anyone with Jira write access can put `<script>` in a summary. app-render.js escapes every Bitbucket and Jira text it interpolates (`escapeHtml`), the issue popover uses `textContent`, the main-pane messages are DOM nodes; keep it that way, never put such a text through `innerHTML`. The only HTML shown as HTML is Bitbucket's rendered pull-request title and description in the popover.
+3. **Rate limits**: every Atlassian request goes through `atlassianFetch` (index.mjs). After any 429 from Bitbucket or Jira nothing is sent for 10 minutes after the last 429, every cache TTL is raised to cover the pause, responses built meanwhile carry `rateLimited: true`, and an uncached endpoint answers 503. A fetcher that tolerates failures must still rethrow a `RateLimitError` (`rethrowRateLimit` in project-data.mjs), or a response missing its parents, sprints or counts is cached for the whole pause.
+4. **Jira search paging**: `/rest/api/3/search/jql` has no `total` and ignores `startAt`; page with `nextPageToken` until `isLast` (`searchIssuePages`). Reading `total` truncated sprints to 100 issues and the orphaned issues to 50 before 2.7.2.
+5. **Deep stacks**: SECOLLAB has a 24-deep stack of pull requests. Anything recursive over the tree visits each pull request once; never re-select descendants (`querySelectorAll('.pull-request')`) inside a recursion: a pull request at depth d was visited 2^d times, 16 million visits per filter change.
+6. **The filter pass reads nothing from the DOM**: the status band, the reviewers and the SYNC key come from pull-request-status.js through the index; attention is `computeAttention` on the index entry, never a rendered style. The render and the index call the same functions so the band painted and the band filtered on cannot diverge.
+7. **Conflicts**: never merge file contents on the event loop (a 30,000-line lock file blocked every request for five minutes, 2.7.0); conflicts come from the patches of both sides. Results live in `sync-cache.json` for good, so a change to `parseUnifiedDiff`, `conflictingFiles`, `decideFromDiffstat` (conflicts.mjs) or to `computeConflicts`, `checkPatch` or the diffstat mapping (sync-statuses.mjs) that can change a decision must bump `conflictRuleVersion`; the old entries are then never read and are dropped at the next write. Check a rule change against `git merge-file` or `git merge-tree` on generated cases. Known approximations are listed in the header of conflicts.mjs.
+8. **SYNC is on demand only**: `/api/sync-statuses/:project` is called by the load button, never automatically; only complete results are stored (a failure or a partial result with a `reason` is retried at the next load). On a page load the SYNC filter is not restored from the URL (no statuses yet); every other filter is.
+9. **Late responses**: `selectProject` and `checkForUpdates` capture the project before their fetch and drop a response for a project no longer selected; `loadSyncStatuses` compares the generation `resetSyncStatuses` bumps. Any new fetch that paints something must do the same (Back/Forward make quick switches easy).
+10. **History**: the page follows the URL, never the other way round. A filter change pushes one entry, typing in the search box replaces it, a manual project switch pushes once, a load or Back/Forward replaces the URL after the render with the filters kept; nothing in the Back/Forward path pushes. `restoreFiltersFromUrl` is the only path from the URL to the state and the controls.
+11. **Grouping**: the tree groups pull requests per repository, then by destination branch (`pullRequestsByDestination` in app-render.js); the API sends each pull request once. Two repositories sharing a branch name (`master`) used to show each other's pull requests.
+12. **Jira hierarchy**: only `issueLevel`, `epicOf` and `storyOf` (app-filter.js) read `issuetype` and `parent`; a sub-task reaches its epic through its parent story. Parent-only issues have no status; a parent that is itself an orphaned issue is looked up among the orphaned issues, not in `jiraIssuesDetails`.
+13. **Orphaned issues section**: a `.repository.orphaned-issues` block so the toggles apply, skipped by the repository loop of the filter walk; its rows are `.orphaned-issue`, never `.pull-request`.
+14. **Module boundaries**: app-render.js knows no filter state; app-sync.js never imports app.js (it gets accessors), so there is no circular import; nothing is put on `window`, the tree has no inline handler (one listener on the pane, `handleTreeClick`).
+15. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks. Text in `--on-accent-text` needs 4.5:1 with its fill in both themes, so never fill with the status, attention or muted-text colours (the SYNC badges have tokens of their own). The focus ring is the primary colour: a surface painted in it overrides `outline-color`. Known misses are in issue #76; do not copy them.
+16. **Accessibility**: every filter control is named by its visible label (`<label for>`, or `aria-labelledby` the `<id>Label` element for a multi-select); server.test.mjs checks it.
+17. **Known server limitation**: `lastResponse` in project-data.mjs is one slot for all projects, so with two projects open the commit counts are fetched again on every build (issue #78).
+18. **Line endings**: `.gitignore`, `cache.mjs`, `index.mjs`, `package-lock.json` and `public/multi-select.js` are CRLF; edit them with tools that keep the line endings, and restore CRLF after npm rewrites the lock file.
