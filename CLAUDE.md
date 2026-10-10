@@ -33,6 +33,7 @@ public/app-render.js   The tree and the orphaned issues as HTML strings (pure), 
 public/app-filter.js   Filter index, pure evaluation, the single-pass filter walk and counters
 public/app-sync.js     SYNC statuses: on-demand load, badges, SYNC controls
 public/app-url.js      Project and filters as URL parameters (pure)
+public/atlassian-pause.js      The Atlassian pause on the page: 503 of a project load, pause end, banner indicator
 public/app-shell.js    Banner, sidebar, theme, help, keyboard shortcuts, tab title
 public/filter-registry.js      The five multi-select filters (key, element, URL parameter), defaultFilters()
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike

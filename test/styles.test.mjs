@@ -62,6 +62,14 @@ test('the ring of the active-filter count reaches 3:1 against the banner, in bot
     }
 });
 
+test('the pause indicator of the banner reaches 4.5:1 against the banner, in both themes', () => {
+    assert.match(rules.find(rule => rule.selectors.includes('.atlassian-pause')).body, /(^|[\s;])color:\s*var\(--header-warning\)/);
+    for (const [theme, tokens] of Object.entries(themes)) {
+        const ratio = contrast(resolve(tokens, '--header-warning'), resolve(tokens, '--header-bg'));
+        assert.ok(ratio >= 4.5, `${theme}: --header-warning against --header-bg is ${ratio.toFixed(2)}:1`);
+    }
+});
+
 test('every surface under --on-accent-text text is filled with a strong token or the primary colour', () => {
     const onAccent = new Set(rules.filter(rule => /(^|[\s;])color:\s*var\(--on-accent-text\)/.test(rule.body)).flatMap(rule => rule.selectors));
     assert.ok(onAccent.has('.header-badge'));

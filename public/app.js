@@ -6,6 +6,7 @@ import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tre
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
+import { readProjectResponse, pausedStateText, showPauseIndicator } from './atlassian-pause.js';
 
 // The projects the dropdown offers, from /api/projects
 let availableProjects = [];
@@ -14,7 +15,12 @@ let currentProject = null;
 // the URL carries and what the filter pass applies
 let filters = defaultFilters();
 let currentApiResult = null;
-let reloadInterval = 100;
+let reloadInterval = null;
+// The end of the Atlassian pause the last /api/pull-requests answer of the
+// current project announced (epoch ms), 0 when it announced none
+let pausedUntil = 0;
+// One check just after the end of the pause, scheduled with the periodic checks
+let pauseEndTimer = null;
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
@@ -178,6 +184,7 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     // The refresh time belongs to the data being left
     const lastRefreshElement = document.getElementById('lastRefreshTime');
     if (lastRefreshElement) lastRefreshElement.textContent = '';
+    setPause(0);
 
     if (!currentProject) {
         clearFilterOptions();
@@ -197,12 +204,13 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
         updateUrlWithFilters();
     }
     showLoadingState();
-    const apiResult = await fetchData(projectName);
+    const { data, pausedUntil: until } = await fetchData(projectName);
     // Back and Forward make quick switches easy: a late response for a project no longer selected is dropped
     if (currentProject !== projectName) return;
-    renderEverything(apiResult, { preferTypedText: !fromUrl });
+    setPause(until);
+    renderEverything(data, { preferTypedText: !fromUrl });
     // The address bar catches up with the filters the render validated, without a new entry
-    if (apiResult) updateUrlWithFilters({ replace: true });
+    if (data) updateUrlWithFilters({ replace: true });
     startPeriodicChecking();
 }
 
@@ -250,6 +258,10 @@ function showLoadingState() {
 
 function showErrorState() {
     showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
+}
+
+function showPausedState() {
+    showStateMessage('fas fa-hourglass-half', pausedStateText(currentProject, pausedUntil));
 }
 
 // Copies the filter controls into the filters object and refreshes the
@@ -346,7 +358,11 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     if (!apiResult) {
         currentApiResult = null;
         setToolbarVisible(false);
-        showErrorState();
+        if (pausedUntil) {
+            showPausedState();
+        } else {
+            showErrorState();
+        }
         return;
     }
 
@@ -397,22 +413,43 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     }
 }
 
+// The answer of /api/pull-requests/:project: { data }, { pausedUntil } during
+// an Atlassian pause, {} on any other failure
 async function fetchData(project) {
     try {
         const response = await fetch(`/api/pull-requests/${encodeURIComponent(project)}`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return await response.json();
+        const result = await readProjectResponse(response);
+        if (!result.data && !result.pausedUntil) console.error(`Error fetching pull requests: HTTP ${response.status}`);
+        return result;
     } catch (error) {
         console.error('Error fetching pull requests:', error);
-        return null;
+        return {};
     }
+}
+
+// Keeps the end of the pause the last answer announced (0: none), shows it in
+// the banner and, while the checks run, moves the check at its end
+function setPause(until) {
+    pausedUntil = until || 0;
+    showPauseIndicator(pausedUntil);
+    if (reloadInterval) schedulePauseEndCheck();
+}
+
+function schedulePauseEndCheck() {
+    clearTimeout(pauseEndTimer);
+    pauseEndTimer = null;
+    const remaining = pausedUntil - Date.now();
+    // A second after the end, so the server's pause is over
+    if (remaining > 0) pauseEndTimer = setTimeout(checkForUpdates, remaining + 1000);
 }
 
 async function checkForUpdates() {
     const project = currentProject;
     if (!project) {
+        return;
+    }
+    // During the pause the server answers 503 or the data already shown; the check at its end takes over
+    if (Date.now() < pausedUntil) {
         return;
     }
     // The refresh icon spins while a check runs, and marks it: a second check
@@ -424,9 +461,15 @@ async function checkForUpdates() {
     }
     if (refreshIcon) refreshIcon.classList.add('checking');
     try {
-        const newData = await fetchData(project);
+        const { data: newData, pausedUntil: until } = await fetchData(project);
         // A project switched to during the check has its own load: the late response of the project left is dropped
-        if (currentProject !== project || !newData) return;
+        if (currentProject !== project) return;
+        setPause(until);
+        if (!newData) {
+            // The tree, if any, stays; without one the message follows this answer, paused or failed
+            if (!currentApiResult) renderEverything(null);
+            return;
+        }
 
         // Always update the refresh time
         const lastRefreshElement = document.getElementById('lastRefreshTime');
@@ -453,6 +496,7 @@ function startPeriodicChecking(now) {
         setTimeout(checkForUpdates, 0); // run now
     }
     reloadInterval = setInterval(checkForUpdates, 120000); // Check every minute
+    schedulePauseEndCheck();
 }
 
 function stopPeriodicChecking() {
@@ -460,6 +504,8 @@ function stopPeriodicChecking() {
         clearInterval(reloadInterval);
         reloadInterval = null;
     }
+    clearTimeout(pauseEndTimer);
+    pauseEndTimer = null;
 }
 
 // Add event listener for visibility change

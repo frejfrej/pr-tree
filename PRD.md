@@ -459,6 +459,7 @@ The application integrates with a Jira workflow where:
 **Rate-Limit Pause:**
 - After an HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429
 - Every cache TTL is raised to cover the pause, so cached data keeps being served; responses built during the pause carry `rateLimited: true`
+- The page shows the pause: a project load refused with a 503 says until when instead of a generic failure, the banner shows "Paused until HH:MM" while the tree kept is stale, the periodic checks send nothing until the end of the pause and one check runs just after it
 
 ### 7.5 API Endpoints
 

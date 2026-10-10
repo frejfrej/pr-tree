@@ -61,6 +61,7 @@
     * Conflicts are decided from Bitbucket's diffs of both sides since the merge base with git's rule, usually two to four requests per pull request; a result never changes for a pair of commits, so it is kept in `sync-cache.json` next to the server and reused across reloads and restarts
     * A single server request retrieves the status of all pull requests, cached server-side
     * After an Atlassian HTTP 429 response, the server pauses all Atlassian requests and serves cached data until 10 minutes after the last 429
+        * The page says so: the banner shows "Paused until HH:MM" next to the refresh time, a project that cannot load meanwhile says until when instead of a generic failure, and the page checks again at the end of the pause
 * Hovering the title of the pull-request or the Jira issue displays a popover previewing their title and description.
 * Online help displays the README.md file
 * Filtering cost does not depend on how deep pull requests are stacked: one pass over the tree, whatever the project size
@@ -83,6 +84,10 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.12.0
+    * During the 10-minute pause of the Atlassian requests after an HTTP 429, the page says so instead of failing silently: a project that cannot load meanwhile says "Atlassian requests are paused until 14:33 after a rate limit (HTTP 429)" instead of "Could not load", and the banner shows "Paused until 14:33" with a warning icon next to the refresh time while the tree kept is the data of the last refresh (below 900px, the icon only, the time in its tooltip) (#77)
+    * The page checks again a second after the end of the pause, so the project loads or refreshes at the time it announced instead of up to two minutes later, and the periodic checks send no request during the pause
+    * The SYNC warning gives the end of the pause as HH:MM, like the banner, instead of a time with seconds
 * Version 2.11.2
     * Light theme: the highlighted links of the pull requests and orphaned issues that need attention, the active-filter count (now ringed in the banner's text colour, so it stands out from the blue banner), the `-n` commit badges, the changes-requested reviewer icons and the icon of a failed load are a darker red, the `+n` commit badges and the approved reviewer icons a darker green, and the SYNC warning icon a darker amber, so each one reaches the WCAG AA contrast with its background (4.5:1; they were between 1.9:1 and 3.2:1); the SYNC badges and the colours of the dark theme are unchanged, the ring of the active-filter count is drawn in both themes (#76)
 * Version 2.11.1
