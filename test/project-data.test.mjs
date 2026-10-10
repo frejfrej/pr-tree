@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createProjectData } from '../project-data.mjs';
+import { RateLimitError } from '../atlassian-fetch.mjs';
 
 /**
  * The project data against a fake Atlassian: the documented rules of
@@ -40,8 +41,9 @@ const version = name => ({ id: name, name });
  * `commits(repo, include, exclude)` the number of commits; `issues` and
  * `parents` the pools answered to `issueKey in` and `key IN` queries;
  * `boards` per Jira project, `sprints` per board id, `sprintIssues` per
- * sprint id, `inReview` the issues in review; both searches are paged with a token like
- * the search endpoint, `maxResults` at a time.
+ * sprint id, `inReview` the issues in review; the parents, sprint and
+ * in-review searches are paged with a token like the search endpoint,
+ * `maxResults` at a time (a request without maxResults gets Jira's 50).
  * `intercept(url)` runs first: a Response it returns replaces the answer.
  */
 function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], parents = [], boards = {}, sprints = {}, sprintIssues = {}, inReview = [], intercept = () => undefined } = {}) {
@@ -83,7 +85,8 @@ function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], pare
             }
             if ((match = jql.match(/^key IN \(([^)]*)\)$/))) {
                 const keys = new Set(keysOf(match[1]));
-                return json({ issues: parents.filter(candidate => keys.has(candidate.key)) });
+                if (!searchParams.has('maxResults')) searchParams.set('maxResults', '50');
+                return json(page(parents.filter(candidate => keys.has(candidate.key)), searchParams));
             }
             if ((match = jql.match(/^sprint = (\d+) /))) return json(page(sprintIssues[match[1]] ?? [], searchParams, key => ({ key })));
             if (jql.includes('status = "In Review"')) return json(page(inReview, searchParams));
@@ -246,6 +249,44 @@ test('a failed parent request is logged and leaves the issues without their pare
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1']); // no parent-only entry, the build goes on
     assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions, []);
     assert.deepEqual(logs.error, ['Error fetching parent issues: Request failed with status code 502']);
+});
+
+test('the parents are read page by page: more than a page of them all come back', async () => {
+    const keys = Array.from({ length: 120 }, (_, i) => `PROJ-${i + 1}`);
+    const pullRequests = keys.map((key, i) => pullRequest(i + 1, { title: `${key} change` }));
+    const issues = keys.map((key, i) => issue(key, { parent: `PROJ-${1001 + i}` }));
+    const parents = keys.map((key, i) => issue(`PROJ-${1001 + i}`, { type: 'Epic' }));
+    const { buildProjectData, requests } = setUp(fakeAtlassian({ pullRequests: { 'repo-a': [pullRequests] }, issues, parents }));
+    const data = await buildProjectData('P', project);
+    const parentUrls = urlsMatching(requests, /search\/jql/).filter(url => jqlOf(url).startsWith('key IN'));
+    assert.deepEqual(parentUrls.map(url => [new URL(url).searchParams.get('maxResults'), new URL(url).searchParams.get('nextPageToken')]), [['100', null], ['100', 'page-100']]);
+    assert.equal(data.jiraIssuesDetails.length, 240); // 120 linked issues, then their 120 parents
+});
+
+test('a rate-limit pause ends the build from a fetcher that otherwise goes on after a failure, without an error line', async () => {
+    const fetchers = {
+        parents: url => jqlOf(url)?.startsWith('key IN'),
+        boards: url => url.includes('projectKeyOrId=PROJ'),
+        'sprints of a board': url => /\/board\/1\/sprint/.test(url),
+        'sprint issues': url => url.includes('sprint%20%3D%207'),
+        'commit counts': url => url.includes('/commits?')
+    };
+    for (const [name, matches] of Object.entries(fetchers)) {
+        const { buildProjectData, logs } = setUp(fakeAtlassian({
+            pullRequests: { 'repo-a': [[pullRequest(1)]] },
+            issues: [issue('PROJ-1', { parent: 'PROJ-100' })],
+            parents: [issue('PROJ-100', { type: 'Epic' })],
+            boards: { PROJ: [{ id: 1, name: 'Board 1' }] },
+            sprints: { 1: [{ id: 7, name: 'Sprint 7' }] },
+            sprintIssues: { 7: ['PROJ-1'] },
+            intercept: url => {
+                if (matches(url)) throw new RateLimitError();
+                return undefined;
+            }
+        }));
+        await assert.rejects(buildProjectData('P', project), RateLimitError, name);
+        assert.deepEqual(logs.error, [], name);
+    }
 });
 
 test('the active sprints of every scrum board of each Jira project, once each, and their issues 100 at a time', async () => {

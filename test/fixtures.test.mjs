@@ -190,7 +190,8 @@ test('the filter index of the SECOLLAB fixture lists the fictional team as parti
     assert.ok(names.length >= 5, `${names.length} participants`);
     assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
     const entries = [...pullRequestsById.values()];
-    assert.ok(entries.some(entry => entry.reviewers.has('Rovo Dev')), 'the fixture has Rovo Dev reviewing');
+    assert.ok(entries.some(entry => entry.pullRequest.participants.some(participant => participant.user.display_name === 'Rovo Dev')), 'the fixture has Rovo Dev reviewing');
+    assert.ok(!entries.some(entry => entry.reviewers.has('Rovo Dev')), 'Rovo Dev is never a reviewer (otherReviewers)');
     assert.ok(!names.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
     for (const name of names) {
         assert.ok(entries.some(entry => entry.assignees.has(name) || entry.reviewers.has(name)), `${name} is an assignee or a reviewer`);

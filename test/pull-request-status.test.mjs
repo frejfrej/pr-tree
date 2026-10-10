@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { otherReviewers, statusClass } from '../public/pull-request-status.js';
+import { otherReviewers, statusClass, syncKey } from '../public/pull-request-status.js';
 
 const author = { uuid: 'author-uuid', display_name: 'Author' };
 const jane = { uuid: 'jane-uuid', display_name: 'Jane' };
@@ -10,6 +10,12 @@ const pullRequest = (participants, approved = false) => ({
     participants: [{ user: author, approved: false }, ...participants.map(user => ({ user, approved }))]
 });
 const issue = status => ({ fields: { status: { name: status } } });
+
+test('syncKey is the key of a SYNC statuses response, "undefined" where a hash is missing', () => {
+    const withHashes = { source: { repository: { name: 'repo' }, commit: { hash: 's1' } }, destination: { commit: { hash: 'd1' } } };
+    assert.equal(syncKey(withHashes), 'repo/d1..s1');
+    assert.equal(syncKey({ ...withHashes, destination: {} }), 'repo/undefined..s1');
+});
 
 test('otherReviewers leaves out the author and Rovo Dev', () => {
     assert.deepEqual(otherReviewers(pullRequest([jane, rovoDev])).map(participant => participant.user.display_name), ['Jane']);

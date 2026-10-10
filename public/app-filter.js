@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
-import { statusClass, atlassianAgent } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, atlassianAgent } from './pull-request-status.js';
 
 // The multi-selects compared with the set of the index entry named like the
 // filter; the participants have the Work select and their own rule
@@ -233,8 +233,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         for (const story of pullRequestStories) {
             stories.set(story.key, story);
         }
-        // Every participant but the author reviews the pull request: these are the reviewers
-        const otherParticipants = pullRequest.participants.filter(participant => participant.user.uuid !== pullRequest.author.uuid);
+        // The reviewers the tree shows: every participant but the author and Rovo Dev
+        const reviewers = otherReviewers(pullRequest);
         // The band the tree paints (pull-request-status.js): what the attention rule reads
         // (the render looks the linked issues up among the details only; a
         // linked issue is never an orphaned one, so both see the same list)
@@ -244,9 +244,9 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             linkedIssues,
             statusInProgress: band === 'status-in-progress',
             statusInReview: band === 'status-in-review',
-            // The key of this pull request in a SYNC statuses response (app-sync.js
-            // paints from the same key; a missing hash gives one no response holds)
-            syncKey: `${pullRequest.source?.repository?.name}/${pullRequest.destination?.commit?.hash}..${pullRequest.source?.commit?.hash}`,
+            // The key of this pull request in a SYNC statuses response, the one
+            // the render writes on its badge (pull-request-status.js)
+            syncKey: syncKey(pullRequest),
             // What the text filter searches: title, source branch and issue keys
             searchText: [pullRequest.title, pullRequest.source?.branch?.name, ...issueKeys]
                 .filter(Boolean).join(' ').toLowerCase(),
@@ -256,8 +256,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             assignees: new Set(linkedIssues
                 .filter(issue => issue.fields.assignee && issue.fields.assignee.displayName)
                 .map(issue => issue.fields.assignee.displayName)),
-            reviewers: new Set(otherParticipants.map(participant => participant.user.display_name).filter(Boolean)),
-            pendingReviewers: new Set(otherParticipants
+            reviewers: new Set(reviewers.map(participant => participant.user.display_name).filter(Boolean)),
+            pendingReviewers: new Set(reviewers
                 .filter(participant => !participant.approved)
                 .map(participant => participant.user.display_name)
                 .filter(Boolean)),

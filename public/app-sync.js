@@ -87,7 +87,7 @@ async function loadSyncStatuses() {
     syncStatusLoading = true;
     updateSyncControls();
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
-        if (!counter.dataset.spec.includes('undefined')) {
+        if (!counter.dataset.syncKey.includes('undefined')) {
             counter.innerHTML = '<div class="conflicts-spinner"></div>';
         }
     });
@@ -138,9 +138,9 @@ export function conflictsTitle(files, reason) {
 /** Renders the stored SYNC statuses onto the conflicts counters: OK, SYNC, or ? with the reason */
 export function applySyncStatuses() {
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
-        const { repoName, spec } = counter.dataset;
-        if (spec.includes('undefined')) {
-            counter.replaceChildren(badge('conflicts-error', `Invalid spec provided ${spec}`, '!'));
+        const { syncKey } = counter.dataset;
+        if (syncKey.includes('undefined')) {
+            counter.replaceChildren(badge('conflicts-error', `Invalid spec provided ${syncKey}`, '!'));
             return;
         }
         if (!currentSyncStatuses) {
@@ -148,7 +148,7 @@ export function applySyncStatuses() {
             return;
         }
 
-        const status = currentSyncStatuses.statuses[`${repoName}/${spec}`];
+        const status = currentSyncStatuses.statuses[syncKey];
         if (!status) {
             counter.replaceChildren(badge('conflicts-error', 'SYNC status unknown - use the SYNC load button to refresh', '?'));
         } else if (status.error) {

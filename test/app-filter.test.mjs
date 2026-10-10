@@ -116,7 +116,7 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
     const bare = pullRequestsById.get(11);
     assert.equal(bare.linkedIssues.length, 0);
     assert.equal(bare.assignees.size, 0);
-    assert.deepEqual([...bare.reviewers], ['Rovo Dev']);
+    assert.deepEqual([...bare.reviewers], []); // Rovo Dev is never a reviewer (otherReviewers)
     assert.equal(bare.statusInReview, false);
 });
 

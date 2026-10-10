@@ -1,4 +1,5 @@
 import { createJiraIssuesMap, missingParentKeys, assembleProjectData } from './project-assembly.mjs';
+import { RateLimitError } from './atlassian-fetch.mjs';
 
 /**
  * The data of a project as /api/pull-requests/:project answers it: the open
@@ -14,6 +15,14 @@ import { createJiraIssuesMap, missingParentKeys, assembleProjectData } from './p
  * response shape) is project-assembly.mjs, shared with the fixture generator.
  * The fixture-mode branch and the project lookup stay in index.mjs.
  */
+
+// The fetchers that keep the build going after a failed request still let a
+// rate-limit pause end it: every later request would fail the same way, and a
+// response without its parents, sprints or commit counts would be cached for
+// the whole pause (the route answers 503 instead)
+function rethrowRateLimit(error) {
+    if (error instanceof RateLimitError) throw error;
+}
 
 /**
  * @param {object} options
@@ -89,6 +98,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             const data = await bitbucketJson(url);
             return data.values.length;
         } catch (error) {
+            rethrowRateLimit(error);
             log.error(`Error fetching commits ahead for ${sourceBranch} compared to ${destinationBranch} in ${repoName}: ${error.message}`);
             return null;
         }
@@ -146,17 +156,20 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
 
     // The parents of the linked and orphaned issues (summary, type, fix versions
     // and parent: what the epic and story filters and the inheritance need), in
-    // one request; a failure is logged and gives no parents, the build goes on
+    // one search, every page of it (a single request stopped at Jira's default
+    // page of 50); a failure is logged and gives no parents, the build goes on
     async function fetchParentIssues(keys) {
         if (keys.length === 0) return [];
-        const jql = `key IN (${keys.join(',')})`;
-        const url = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=key,summary,issuetype,fixVersions,parent`;
         try {
             const startTime = Date.now();
-            const data = await jiraJson(url);
+            const parents = [];
+            for await (const page of searchIssuePages(`key IN (${keys.join(',')})`, 'key,summary,issuetype,fixVersions,parent')) {
+                parents.push(...page.issues);
+            }
             log.performance(`fetchJiraIssuesDetails - Parent issues fetch (${keys.length}) - Duration: ${Date.now() - startTime}ms`);
-            return data.issues;
+            return parents;
         } catch (error) {
+            rethrowRateLimit(error);
             log.error(`Error fetching parent issues: ${error.message}`);
             return [];
         }
@@ -175,6 +188,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                 log.performance(`Fetched ${boardsData.total} boards for project ${project}`);
                 boards = boardsData.values || []; // a body without boards skips the project too, not the build
             } catch (error) {
+                rethrowRateLimit(error);
                 log.error(`Error fetching sprints for project ${project}: ${error.message}`);
                 continue;
             }
@@ -187,6 +201,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                         sprints.add(JSON.stringify({ id: sprint.id, name: sprint.name }));
                     }
                 } catch (error) {
+                    rethrowRateLimit(error);
                     log.error(`Error fetching the sprints of board ${board.name} (project ${project}): ${error.message}`);
                 }
             }
@@ -210,6 +225,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                     startTime = Date.now();
                 }
             } catch (error) {
+                rethrowRateLimit(error);
                 // The pages read so far are kept; the other sprints are still fetched
                 log.error(`Error fetching issues for sprint ${sprint.id}: ${error.message}`);
             }
