@@ -12,11 +12,15 @@ const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'"
 
 // The trigger and the dropdown of every multi-select; the element in index.html
 // is an empty <div class="multi-select" id="..."> and gets this markup at
-// construction (styles.css reserves its height until then)
-const multiSelectMarkup = `
-    <div class="multi-select-trigger" tabindex="0">
-        <span class="multi-select-display">Show all</span>
-        <i class="fas fa-chevron-down multi-select-arrow"></i>
+// construction (styles.css reserves its height until then). The trigger is
+// named by the visible label of the filter, the element with the id
+// `<id>Label` in index.html, then by the current selection ("Sprint, Show all").
+export function multiSelectMarkup(elementId) {
+    return `
+    <div class="multi-select-trigger" tabindex="0" role="button" aria-expanded="false"
+         aria-labelledby="${elementId}Label ${elementId}Display">
+        <span class="multi-select-display" id="${elementId}Display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow" aria-hidden="true"></i>
     </div>
     <div class="multi-select-dropdown">
         <div class="multi-select-search">
@@ -28,6 +32,7 @@ const multiSelectMarkup = `
             <button type="button" class="multi-select-select-all">Select all</button>
         </div>
     </div>`;
+}
 
 export class MultiSelect {
     constructor(elementId, options = {}) {
@@ -42,7 +47,7 @@ export class MultiSelect {
         this.onChange = options.onChange || null;
         this.searchText = '';
 
-        this.element.innerHTML = multiSelectMarkup;
+        this.element.innerHTML = multiSelectMarkup(elementId);
         this.trigger = this.element.querySelector('.multi-select-trigger');
         this.dropdown = this.element.querySelector('.multi-select-dropdown');
         this.display = this.element.querySelector('.multi-select-display');
@@ -125,11 +130,13 @@ export class MultiSelect {
         });
 
         this.element.classList.add('open');
+        this.trigger.setAttribute('aria-expanded', 'true');
         this.searchInput.focus();
     }
 
     close() {
         this.element.classList.remove('open');
+        this.trigger.setAttribute('aria-expanded', 'false');
         this.searchInput.value = '';
         this.searchText = '';
         this.renderOptions();
