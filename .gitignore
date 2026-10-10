@@ -62,3 +62,4 @@ Bitbucket-pr-tree*.gif
 sync-cache.json*
 config.js.test
 .claude/
+docs/superpowers/prompts/
