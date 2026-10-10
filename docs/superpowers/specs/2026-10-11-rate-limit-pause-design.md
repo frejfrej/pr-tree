@@ -36,8 +36,12 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
    last refresh time: the warning triangle of the SYNC controls and
    "Paused until HH:MM", the tooltip naming the rate limit and saying that the
    page checks again at the end (it shows with a tree or without one). The last
-   refresh time stays: it says how old the tree is. Below 900px the text is
-   hidden like the refresh time; the icon and its tooltip stay. Icon and text
+   refresh time stays: it says how old the tree is. The indicator is a
+   `role="status"` region. Below 900px the text is visually hidden (clipped,
+   not `display: none`, so the status region still reads it) and the icon and
+   its tooltip stay; the banner gap goes from 12px to 8px and the project
+   select may shrink, so the banner still fits a 400px window with the
+   indicator and a long project name. Icon and text
    take a new token `--header-warning`: #FFE380 on the light banner #0052CC
    (5.38:1; `--warning-strong` there is 2.0:1), `var(--warning-strong)` on the
    dark banner (10.57:1). styles.test.mjs checks 4.5:1 against `--header-bg`
@@ -48,7 +52,12 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
    adds `rateLimitedUntil` (the live `atlassian.pause()`, `null` outside a
    pause) to each 200 answer when it sends it, outside the cached object, so
    `dataHash` and the cache are untouched; `readProjectResponse` returns it
-   with the data. app.js keeps `pausedUntil` (epoch ms, 0 when none) for the
+   with the data. The 503 carries the same live value, so a build that ended
+   on a `RateLimitError` after the pause was over answers a 503 without an
+   end: an ordinary failure, retried at the next check, instead of a pause
+   announced as already over. A SYNC answer that reports a pause sets it too
+   (`syncPauseEnd`), at once rather than at the next check; it never clears
+   one, its own answer may be cached from before the pause. app.js keeps `pausedUntil` (epoch ms, 0 when none) for the
    current project, set from every answer: a 503 or a 200 with an end sets
    it, anything else clears it. A project switch clears it with the refresh
    time, as both belong to the data left.
@@ -59,16 +68,27 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
    not up to two minutes later. The timer lives with the periodic interval:
    `startPeriodicChecking` (re)schedules it, `stopPeriodicChecking` (hidden
    tab, project switch) clears it; a load that ends in a hidden tab starts
-   no checks, the tab does when it becomes visible again; the checks of the
-   project left stop at the switch, so none replaces the loading message; the check that runs on becoming visible
-   again skips if the pause is still on, and the timer is set again. A new
-   503 at that check (the pause was extended) moves both.
-6. **Refresh with nothing rendered** (the last load failed or was paused):
+   no checks, the tab does when it becomes visible again. The check that
+   runs on becoming visible again skips if the pause is still on, and the
+   timer is set again. A new 503 at that check (the pause was extended) moves
+   both.
+6. **Checks and loads do not overlap**: no check is sent while a project load
+   is in flight (`projectLoading`; a check on becoming visible during a load
+   would build the same data again and could paint over the loading
+   message). A load and a check compare `loadGeneration`, bumped by every
+   switch, after their fetch: comparing the project missed a check started
+   before a switch A → B → A, which painted during A's new load (CLAUDE.md
+   pitfall 9).
+7. **A deferred first render is the load's render**: when the load got no
+   data, the check that later gets some renders it like the load would have
+   (`renderProjectLoad`): the URL-or-typed-text choice of that load, and the
+   URL replaced after the render with the filters kept (pitfall 10).
+8. **Refresh with nothing rendered** (the last load failed or was paused):
    the main-pane message follows the last answer, paused or failed, so a
    pause after a failure, or a failure after a pause, is not left showing the
    previous message.
-7. **The SYNC warning** uses `formatPauseEnd` too, so both say the same time
-   (it showed `toLocaleTimeString`, with seconds).
+9. **The SYNC warning** uses `parsePauseEnd` and `formatPauseEnd` too, so both
+   say the same time (it showed `toLocaleTimeString`, with seconds).
 
 ## 3. Turned down
 
@@ -80,3 +100,7 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
   the user needs to judge the stale data.
 - **Retrying sooner than the pause end**: the server sends nothing to
   Atlassian before it, a request could only return the cache.
+- **Keeping the indicator across a project switch** (review of PR #82): the
+  pause belongs to the server, not to a project, but the indicator follows
+  the answers of the project shown, and a pause kept without a project has no
+  check to clear it at its end. Filed as #83.

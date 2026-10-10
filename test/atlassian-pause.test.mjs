@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readProjectResponse, formatPauseEnd, pausedStateText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
+import { readProjectResponse, parsePauseEnd, formatPauseEnd, pausedStateText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
 
 const response = (status, body) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 
@@ -21,6 +21,8 @@ test('a 503 with the end of the pause gives that end as epoch ms', async () => {
 
 test('a 503 without a readable end, or that is not JSON, is an ordinary failure', async () => {
     assert.deepEqual(await readProjectResponse(response(503, { error: 'paused' })), {});
+    // The pause ended while the build was waiting
+    assert.deepEqual(await readProjectResponse(response(503, { error: 'paused', rateLimitedUntil: null })), {});
     assert.deepEqual(await readProjectResponse(response(503, { rateLimitedUntil: 'soon' })), {});
     assert.deepEqual(await readProjectResponse(response(503, 'Service Unavailable')), {});
 });
@@ -28,6 +30,13 @@ test('a 503 without a readable end, or that is not JSON, is an ordinary failure'
 test('any other failure gives neither data nor a pause', async () => {
     assert.deepEqual(await readProjectResponse(response(500, 'Internal Server Error')), {});
     assert.deepEqual(await readProjectResponse(response(404, { error: 'Project not found', rateLimitedUntil: '2026-10-11T10:10:00.000Z' })), {});
+});
+
+test('the end of a pause is read as epoch ms, 0 when there is none', () => {
+    assert.equal(parsePauseEnd('2026-10-11T10:10:00.000Z'), Date.parse('2026-10-11T10:10:00.000Z'));
+    assert.equal(parsePauseEnd(null), 0);
+    assert.equal(parsePauseEnd(undefined), 0);
+    assert.equal(parsePauseEnd('soon'), 0);
 });
 
 test('the end of the pause is shown as HH:MM, rounded up to the minute', () => {

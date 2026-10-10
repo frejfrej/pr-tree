@@ -133,8 +133,8 @@ test('during a pause, the routes answer 503 with the end of the pause, and the s
     } catch (error) {
         thrown = error;
     }
-    // What /api/pull-requests/:project answers with status 503
-    const body = { error: thrown.message, rateLimitedUntil: new Date(atlassian.rateLimitedUntil()).toISOString() };
+    // What /api/pull-requests/:project answers with status 503 (and adds to its cached data)
+    const body = { error: thrown.message, rateLimitedUntil: atlassian.pause().rateLimitedUntil };
     assert.deepEqual(body, { error: 'Atlassian rate limit reached (HTTP 429), requests are paused', rateLimitedUntil: '2026-09-13T10:10:00.000Z' });
     // What /api/sync-statuses/:project puts in its response, and the TTL that keeps it until the pause ends
     advance(4 * 60 * 1000 + 500);

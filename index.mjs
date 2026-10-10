@@ -180,7 +180,8 @@ app.get('/api/pull-requests/:project', async (req, res) => {
     } catch (error) {
         log(`Error processing pull requests: ${error.message}`, errorLogStream);
         if (error instanceof RateLimitError) {
-            res.status(503).json({ error: error.message, rateLimitedUntil: new Date(atlassian.rateLimitedUntil()).toISOString() });
+            // null when the pause ended while the build was waiting: the page then retries at its next check
+            res.status(503).json({ error: error.message, rateLimitedUntil: atlassian.pause().rateLimitedUntil });
         } else {
             res.status(500).send('Internal Server Error');
         }

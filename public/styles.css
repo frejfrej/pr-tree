@@ -211,6 +211,8 @@ input {
 }
 
 .project-select {
+    /* Shrinks before the banner overflows a phone-width window */
+    min-width: 0;
     max-width: 240px;
     padding: 5px 28px 5px 10px;
     border-color: var(--header-control-border);
@@ -1307,9 +1309,23 @@ select:disabled {
 
 /* 11. Responsive: below 900px the sidebar is a drawer over the tree -------- */
 @media (max-width: 899.98px) {
-    .app-name,
-    .last-refresh,
+    /* The pause indicator fits next to the project at 400px wide */
+    .app-header {
+        gap: 8px;
+    }
+
+    /* Visually hidden, still read in the status region: the icon is aria-hidden */
     .atlassian-pause-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .app-name,
+    .last-refresh {
         display: none;
     }
 

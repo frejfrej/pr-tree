@@ -14,7 +14,7 @@
  * Nothing here touches the DOM at import time.
  */
 
-import { formatPauseEnd } from './atlassian-pause.js';
+import { formatPauseEnd, parsePauseEnd } from './atlassian-pause.js';
 
 // The last /api/sync-statuses response: null until the user loads it, and again after a project switch
 let currentSyncStatuses = null;
@@ -57,6 +57,11 @@ export function syncStatusesLoaded() {
 /** The statuses of the last load, by "repo/destHash..sourceHash"; null while none is loaded */
 export function loadedSyncStatuses() {
     return currentSyncStatuses ? currentSyncStatuses.statuses : null;
+}
+
+/** The end of the Atlassian pause the loaded statuses report (epoch ms), 0 when none */
+export function syncPauseEnd() {
+    return currentSyncStatuses && currentSyncStatuses.rateLimited ? parsePauseEnd(currentSyncStatuses.rateLimitedUntil) : 0;
 }
 
 /**
@@ -201,8 +206,8 @@ export function updateSyncControls() {
                 ? 'Failed to refresh SYNC status - showing previously loaded results'
                 : 'Failed to load SYNC status - use the load button to try again';
         } else if (!syncStatusLoading && currentSyncStatuses && currentSyncStatuses.rateLimited) {
-            const end = Date.parse(currentSyncStatuses.rateLimitedUntil);
-            const until = Number.isFinite(end) ? formatPauseEnd(end) : '';
+            const end = parsePauseEnd(currentSyncStatuses.rateLimitedUntil);
+            const until = end ? formatPauseEnd(end) : '';
             warningText = `Atlassian rate limit reached - SYNC status may be incomplete${until ? `, requests are paused until ${until}` : ''}`;
         }
         syncWarning.hidden = !warningText;

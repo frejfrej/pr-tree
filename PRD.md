@@ -471,7 +471,7 @@ The application integrates with a Jira workflow where:
 | `/api/sync-statuses/:project` | GET | 300s | SYNC (conflict) status of every open pull request, loaded on demand |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
-During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached, and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
+During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
 
 ### 7.6 Logging Infrastructure
 

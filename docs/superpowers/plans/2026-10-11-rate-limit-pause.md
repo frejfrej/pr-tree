@@ -23,5 +23,10 @@ Spec: `docs/superpowers/specs/2026-10-11-rate-limit-pause-design.md` (#77).
 5. **Review findings**: `rateLimitedUntil` on the 200 answers (index.mjs,
    server.test.mjs shape), the checks stopped at a project switch and not
    started in a hidden tab.
-6. **Release**: package.json 2.12.0, README changelog and features list, PRD
+6. **/code-review findings**: `loadGeneration` and `projectLoading` in
+   app.js, `renderProjectLoad`, the SYNC pause (`syncPauseEnd`), the live end
+   in the 503, `parsePauseEnd` shared, the text visually hidden below 900px,
+   the banner fit at 400px; issues #83 (the indicator across switches) and
+   #84 (the server's concurrent project builds).
+7. **Release**: package.json 2.12.0, README changelog and features list, PRD
    (rate-limit pause and 7.5), CLAUDE.md file list.

@@ -5,7 +5,8 @@
  * its cached data with rateLimitedUntil otherwise.
  * This module reads that answer, formats the end of the pause and paints the
  * banner indicator. When to fetch, and what the main pane shows, belong to
- * app.js; the SYNC warning (app-sync.js) only borrows formatPauseEnd.
+ * app.js; the SYNC warning (app-sync.js) only borrows parsePauseEnd and
+ * formatPauseEnd.
  *
  * Nothing here touches the DOM at import time.
  */
@@ -21,18 +22,24 @@
 export async function readProjectResponse(response) {
     if (response.ok) {
         const data = await response.json();
-        const pausedUntil = Date.parse(data.rateLimitedUntil);
-        return Number.isFinite(pausedUntil) ? { data, pausedUntil } : { data };
+        const pausedUntil = parsePauseEnd(data.rateLimitedUntil);
+        return pausedUntil ? { data, pausedUntil } : { data };
     }
     if (response.status === 503) {
         try {
-            const pausedUntil = Date.parse((await response.json()).rateLimitedUntil);
-            if (Number.isFinite(pausedUntil)) return { pausedUntil };
+            const pausedUntil = parsePauseEnd((await response.json()).rateLimitedUntil);
+            if (pausedUntil) return { pausedUntil };
         } catch (error) {
             // Not JSON: an ordinary failure
         }
     }
     return {};
+}
+
+/** The rateLimitedUntil of a server answer (an ISO date, or null) as epoch ms, 0 when it names no end */
+export function parsePauseEnd(value) {
+    const end = Date.parse(value);
+    return Number.isFinite(end) ? end : 0;
 }
 
 /**
