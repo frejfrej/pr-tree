@@ -2,8 +2,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { multiSelectMarkup } from '../public/multi-select.js';
+import { multiSelectFilters } from '../public/filter-registry.js';
 
 /**
  * Runs the server in fixture mode on an ephemeral port and checks what it
@@ -65,13 +67,77 @@ test('the app and the API still answer', async () => {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-type'), /^text\/html/);
-    // Every select of the app page has an accessible name: the .filter-label spans are not labels (#62)
-    const selects = (await page.text()).match(/<select\b[^>]*>/g);
-    assert.ok(selects.length >= 3, 'the project, Work and SYNC selects');
-    for (const select of selects) assert.match(select, /\baria-label="[^"]+"/, select);
     const version = await (await fetch(`${baseUrl}/api/version`)).json();
     const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
     assert.equal(version.version, packageJson.version);
+});
+
+// A comment is not markup: the checks below read the page without them
+const withoutComments = html => html.replace(/<!--[\s\S]*?-->/g, '');
+
+// The attributes of an opening tag, up to its `>`: an attribute value may hold a `>`
+const tagAttributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+
+// The opening tags of an element in a page
+function openingTags(html, element) {
+    return html.match(new RegExp(`<${element}\\b${tagAttributes}>`, 'g')) ?? [];
+}
+
+function attribute(tag, name) {
+    return tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
+}
+
+// The element with this id has text of its own before any child element
+function hasTextById(html, id) {
+    return new RegExp(`\\sid="${id}"${tagAttributes}>\\s*[^<\\s]`).test(html);
+}
+
+// The label for this id has text of its own before any child element
+function hasLabelText(html, id) {
+    return new RegExp(`<label\\b${tagAttributes}\\sfor="${id}"${tagAttributes}>\\s*[^<\\s]`).test(html);
+}
+
+test('every select and multi-select of the app has an accessible name (#62)', async () => {
+    const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
+
+    // The page holds every select of the app: no script makes one
+    const scripts = readdirSync(path.join(root, 'public')).filter(file => file.endsWith('.js'));
+    for (const script of scripts) {
+        const source = readFileSync(path.join(root, 'public', script), 'utf8');
+        assert.doesNotMatch(source, /<select\b|createElement\(\s*['"`]select/i, `${script} makes a select this test does not see`);
+    }
+
+    // A select is named by a <label for> with text, or by an aria-label when nothing visible names it
+    const selects = openingTags(html, 'select');
+    assert.ok(selects.length >= 3, 'the project, Work and SYNC selects');
+    const labelled = new Set(openingTags(html, 'label').map(label => attribute(label, 'for')));
+    for (const select of selects) {
+        const id = attribute(select, 'id');
+        const named = Boolean(attribute(select, 'aria-label')?.trim()) ||
+            (labelled.has(id) && hasLabelText(html, id));
+        assert.ok(named, select);
+    }
+
+    // A multi-select trigger is a button named by the visible label of its filter, then by its
+    // selection; the page holds one per filter of the registry, and no other
+    const classes = div => (attribute(div, 'class') ?? '').split(/\s+/);
+    const multiSelects = openingTags(html, 'div').filter(div => classes(div).includes('multi-select'));
+    assert.deepEqual(multiSelects.map(div => attribute(div, 'id')).sort(), multiSelectFilters.map(filter => filter.elementId).sort());
+    for (const { elementId: id } of multiSelectFilters) {
+        assert.ok(hasTextById(html, `${id}Label`), `the visible label ${id}Label`);
+        const markup = multiSelectMarkup(id);
+        const [trigger] = openingTags(markup, 'div').filter(div => attribute(div, 'class') === 'multi-select-trigger');
+        assert.equal(attribute(trigger, 'role'), 'button');
+        assert.equal(attribute(trigger, 'aria-expanded'), 'false');
+        assert.equal(attribute(trigger, 'aria-labelledby'), `${id}Label ${id}Display`);
+        assert.ok(hasTextById(markup, `${id}Display`), `the selection ${id}Display`);
+        const [search] = openingTags(markup, 'input');
+        assert.equal(attribute(search, 'aria-labelledby'), `${id}Label`, 'the search box is named by the label');
+    }
+
+    // The SYNC load button says what it loads, its visible text first
+    const [loadButton] = openingTags(html, 'button').filter(button => attribute(button, 'id') === 'loadSyncButton');
+    assert.equal(attribute(loadButton, 'aria-label'), 'Load SYNC status');
 });
 
 test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoint stays', async () => {

@@ -76,17 +76,17 @@
   </div>
 
   <div class="filter-item">
-    <span class="filter-label">Sprint</span>
+    <span class="filter-label"><span id="sprintSelectLabel">Sprint</span></span>
     <div class="multi-select" id="sprintSelect"></div>
   </div>
 
   <div class="filter-item">
-    <span class="filter-label">Fix version</span>
+    <span class="filter-label"><span id="fixVersionSelectLabel">Fix version</span></span>
     <div class="multi-select" id="fixVersionSelect"></div>
   </div>
 
   <div class="filter-item">
-    <span class="filter-label">Epic
+    <span class="filter-label"><span id="epicSelectLabel">Epic</span>
       <i class="fas fa-info-circle info-icon"
          title="Epic of the linked issues; for a sub-task, the epic of its parent story"></i>
     </span>
@@ -94,7 +94,7 @@
   </div>
 
   <div class="filter-item">
-    <span class="filter-label">Story
+    <span class="filter-label"><span id="storySelectLabel">Story</span>
       <i class="fas fa-info-circle info-icon"
          title="Issue delivered by the pull request: the linked issue, or the parent of a linked sub-task"></i>
     </span>
@@ -102,7 +102,7 @@
   </div>
 
   <div class="filter-item">
-    <span class="filter-label">Participants
+    <span class="filter-label"><span id="participantSelectLabel">Participants</span>
       <i class="fas fa-info-circle info-icon"
          title="Assignees of the linked issues and reviewers of the pull requests"></i>
     </span>
@@ -110,11 +110,11 @@
   </div>
 
   <div class="filter-item">
-    <span class="filter-label">Work
+    <span class="filter-label"><label for="workSelect">Work</label>
       <i class="fas fa-info-circle info-icon"
          title="All work: every pull request the selected participants review or have a linked issue assigned to. All reviews: every pull request they review. All issues: every pull request with a linked issue assigned to them. Ready for participants: those waiting for them. Ready for reviewers: in review and not approved by them. Ready for assignees: in progress with a linked issue assigned to them."></i>
     </span>
-    <select id="workSelect" aria-label="Work" disabled>
+    <select id="workSelect" disabled>
       <option value="all">All work</option>
       <option value="reviews">All reviews</option>
       <option value="issues">All issues</option>
@@ -127,17 +127,17 @@
   <hr class="sidebar-divider">
 
   <div class="filter-item">
-    <span class="filter-label">SYNC
+    <span class="filter-label"><label for="syncSelect">SYNC</label>
       <i class="fas fa-info-circle info-icon"
          title="SYNC status is only fetched when you click the load button. This filter will be reset when the page is reloaded"></i>
     </span>
-    <select id="syncSelect" aria-label="SYNC" disabled>
+    <select id="syncSelect" disabled>
       <option value="Show all">SYNC status not loaded</option>
     </select>
     <div class="filter-row">
-      <button type="button" id="loadSyncButton" class="button" disabled
+      <button type="button" id="loadSyncButton" class="button" disabled aria-label="Load SYNC status"
               title="Load SYNC status for all pull requests">
-        <i class="fas fa-sync-alt"></i> Load
+        <i class="fas fa-sync-alt" aria-hidden="true"></i> Load
       </button>
       <span id="syncWarning" class="sync-warning" hidden>
         <i class="fas fa-exclamation-triangle"></i>
