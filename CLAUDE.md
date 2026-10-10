@@ -231,7 +231,7 @@ pr-tree/
 
 **public/app-shell.js**
 - Banner and sidebar chrome, independent of pull-request data; the version badge (`fetchAndDisplayVersion`, from `/api/version`) is filled by `initializeAppShell`
-- Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed; `/` shows the sidebar and focuses the search box; Escape is left to a text box that has content (it clears itself)
+- Sidebar toggle (button, `F` key), stored in `localStorage` under `prTree.sidebarHidden` for the wide layout; below 900px the sidebar is a drawer that always starts closed; `/` shows the sidebar and focuses the search box, and so does Ctrl+F or Cmd+F (`isFindShortcut`, pure) unless the search box already has the focus or the help is open, where the browser's find runs; Escape is left to a text box that has content (it clears itself)
 - Theme toggle, stored under `prTree.theme`; the OS setting is followed until a choice is stored; an inline script in `index.html` applies both before the first paint
 - Help modal, active-filter badge, tree toolbar (collapse all / expand all), document title (`(attention) PROJECT · Bitbucket Pull-Requests Tree`)
 - No DOM access at import time, so its pure helpers are unit-tested

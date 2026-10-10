@@ -4,7 +4,7 @@
 * Application layout
     * A top banner shows the app name, the project selector, the refresh status, the theme toggle, the help and GitHub links and the version
     * Filters live in a left sidebar that stays in place while the pull-request tree scrolls
-    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser; `/` focuses the search box
+    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser; `/` or Ctrl+F (Cmd+F on macOS) focuses the search box
     * On windows narrower than 900px the sidebar becomes a drawer over the tree
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
@@ -26,7 +26,7 @@
     * If the pull request is open but related issues are closed or in review
 * Provides a text filter
     * Keeps the pull requests whose title, source branch name or linked issue keys contain every word typed (case-insensitive)
-    * `/` focuses the search box, Escape clears it
+    * `/` or Ctrl+F (Cmd+F on macOS) focuses the search box, Escape clears it; Ctrl+F pressed again from the box opens the browser's own find
 * Provides an epic filter
     * Keeps the pull requests whose linked issues belong to the selected epics; a pull request linked to a sub-task follows the epic of its parent story
 * Provides a story filter
@@ -143,7 +143,7 @@
     * SYNC follows the URL through Back and Forward while its statuses are loaded
 * Version 2.4.0
     * Text filter at the top of the sidebar: matches the pull-request title, the source branch name and the linked issue keys, every word typed must match
-        * `/` focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean
+        * `/` or Ctrl+F focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean
     * Epic filter: pull requests of the selected epics, resolved through the parent story when the pull request is linked to a sub-task
         * The server now fetches the summary, type and parent of parent issues (previously their fix versions only)
         * Fixture data carries epics
