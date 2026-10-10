@@ -84,8 +84,10 @@
 
 ## Changelog:
 * Version 2.11.1
-    * Every filter of the sidebar is named by its visible label: the Work and SYNC labels are real labels (a click on them focuses the select), and the Sprint, Fix version, Epic, Story and Participants dropdowns are announced as buttons with their label, their selection and whether they are open ("Sprint, Show all, collapsed"); before, a screen reader announced them as "Show all" with no role (#62)
+    * Every filter of the sidebar is named by its visible label: the Work and SYNC labels are real labels (a click on them focuses the select once it is enabled: Work with a participant selected, SYNC once its statuses are loaded), and the Sprint, Fix version, Epic, Story and Participants dropdowns are announced as buttons with their label, their selection and whether they are open ("Sprint, Show all, collapsed"); before, a screen reader announced them as "Show all" with no role (#62)
     * The SYNC load button is announced as "Load SYNC status" instead of "Load"
+    * The search box of each dropdown is named by its filter ("Sprint") instead of "Search...", and Escape from it closes the dropdown and puts the focus back on the dropdown's button instead of losing it
+    * A click anywhere on the page no longer rebuilds the option lists of the dropdowns that are already closed
 * Version 2.11.0
     * More than 50 parent issues (epics and stories named by the linked and orphaned issues) no longer lose the ones past the 50th: the parents are read page by page, like the other Jira searches
     * A pull request linking an issue Jira returns without a status (a key of a project outside the configured ones, fetched only as the parent of another linked issue) no longer stops the whole tree from rendering: it shows "(no status)"

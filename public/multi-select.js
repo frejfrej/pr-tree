@@ -14,7 +14,8 @@ const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'"
 // is an empty <div class="multi-select" id="..."> and gets this markup at
 // construction (styles.css reserves its height until then). The trigger is
 // named by the visible label of the filter, the element with the id
-// `<id>Label` in index.html, then by the current selection ("Sprint, Show all").
+// `<id>Label` in index.html, then by the current selection ("Sprint, Show all");
+// the search box of the dropdown by that label alone ("Sprint").
 export function multiSelectMarkup(elementId) {
     return `
     <div class="multi-select-trigger" tabindex="0" role="button" aria-expanded="false"
@@ -24,7 +25,7 @@ export function multiSelectMarkup(elementId) {
     </div>
     <div class="multi-select-dropdown">
         <div class="multi-select-search">
-            <input type="text" placeholder="Search..." class="multi-select-search-input">
+            <input type="text" placeholder="Search..." class="multi-select-search-input" aria-labelledby="${elementId}Label">
         </div>
         <div class="multi-select-options"></div>
         <div class="multi-select-actions">
@@ -82,9 +83,12 @@ export class MultiSelect {
             this.renderOptions();
         });
 
+        // Escape from the search box closes the dropdown and gives the focus back
+        // to the trigger: the hidden box would otherwise drop it to the page
         this.searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.close();
+                this.trigger.focus();
             }
         });
 
@@ -135,6 +139,9 @@ export class MultiSelect {
     }
 
     close() {
+        // Every click on the page closes every instance: a closed one has
+        // nothing to reset, and re-rendering its options would rebind them all
+        if (!this.element.classList.contains('open')) return;
         this.element.classList.remove('open');
         this.trigger.setAttribute('aria-expanded', 'false');
         this.searchInput.value = '';
