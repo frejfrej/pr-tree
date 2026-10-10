@@ -15,6 +15,7 @@ import { RateLimitError, createAtlassianFetch } from './atlassian-fetch.mjs';
 import { createSyncStatuses } from './sync-statuses.mjs';
 import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
+import { conflictRuleVersion } from './conflicts.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
@@ -78,8 +79,11 @@ app.use((req, res, next) => {
 
 // A conflict result never changes for a pair of commits: the results are kept
 // on disk and survive restarts (sync-cache.mjs); failures and partial results
-// are computed again at the next load
+// are computed again at the next load. The keys start with the version of the
+// conflict rule (sync-cache.mjs adds it): the entries of another version are
+// never looked up again, and go the next time the file is written.
 const syncCache = openSyncCache(path.join(__dirname, 'sync-cache.json'), {
+    ruleVersion: conflictRuleVersion,
     onError: error => log(`sync-cache.json ignored: ${error.message}`, errorLogStream)
 });
 log(`sync-cache.json: ${syncCache.size} conflict results loaded`, accessLogStream);
