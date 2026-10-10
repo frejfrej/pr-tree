@@ -518,7 +518,7 @@ YYYY-MM-DDTHH:mm:ss.sssZ - Message
 - **Blue**: Informational badges (review status)
 - **Yellow**: Priority indicators
 - **Gray**: Neutral/inactive state, SYNC not checked
-- The OK, SYNC and `?`/`!` badges are filled with dedicated colour tokens whose contrast with their text is at least 4.5:1 (WCAG AA) in both themes
+- Status text, status icons and the fills under white (dark-theme: dark) text, such as the OK, SYNC and `?`/`!` badges and the active-filter count, use "strong" status colours whose contrast with the surface and with that text is at least 4.5:1 (WCAG AA) in both themes; the plain status colours are kept for borders
 
 #### Status Badges
 - Rounded corners with 4px radius
