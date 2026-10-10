@@ -1,7 +1,8 @@
 /**
  * The Atlassian pause as the page shows it. After an HTTP 429 the server sends
- * nothing to Atlassian for 10 minutes, and /api/pull-requests/:project answers
- * 503 { error, rateLimitedUntil } when it has to build the data meanwhile.
+ * nothing to Atlassian for 10 minutes: /api/pull-requests/:project answers
+ * 503 { error, rateLimitedUntil } when it has to build the data meanwhile, and
+ * its cached data with rateLimitedUntil otherwise.
  * This module reads that answer, formats the end of the pause and paints the
  * banner indicator. When to fetch, and what the main pane shows, belong to
  * app.js; the SYNC warning (app-sync.js) only borrows formatPauseEnd.
@@ -10,14 +11,19 @@
  */
 
 /**
- * Reads a /api/pull-requests/:project response: { data } on success,
- * { pausedUntil } (epoch ms) on a 503 carrying the end of the pause, {} on
- * any other failure (a 503 without a readable end has no time to announce).
+ * Reads a /api/pull-requests/:project response: { data } on success, with
+ * pausedUntil (epoch ms) when the data was served from the cache during a
+ * pause; { pausedUntil } on a 503 carrying the end of the pause; {} on any
+ * other failure (a 503 without a readable end has no time to announce).
  * @param {Response} response
  * @returns {Promise<{ data?: object, pausedUntil?: number }>}
  */
 export async function readProjectResponse(response) {
-    if (response.ok) return { data: await response.json() };
+    if (response.ok) {
+        const data = await response.json();
+        const pausedUntil = Date.parse(data.rateLimitedUntil);
+        return Number.isFinite(pausedUntil) ? { data, pausedUntil } : { data };
+    }
     if (response.status === 503) {
         try {
             const pausedUntil = Date.parse((await response.json()).rateLimitedUntil);

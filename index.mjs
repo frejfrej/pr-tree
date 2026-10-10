@@ -172,7 +172,8 @@ app.get('/api/pull-requests/:project', async (req, res) => {
     try {
         const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
 
-        res.json(projectData);
+        // The end of a pause in progress, read at each answer: the cached data may predate it
+        res.json({ ...projectData, rateLimitedUntil: atlassian.pause().rateLimitedUntil });
 
         const duration = Date.now() - startTime;
         log(`Completed processing for project ${projectName} - Duration: ${duration}ms`, performanceLogStream);

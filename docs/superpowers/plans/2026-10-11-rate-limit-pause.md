@@ -20,5 +20,8 @@ Spec: `docs/superpowers/specs/2026-10-11-rate-limit-pause-design.md` (#77).
    with an end two minutes ahead; switch project (paused message and
    indicator), then a refresh with a tree (tree kept, indicator), restore
    `fetch` and wait for the end (tree loads, indicator gone).
-5. **Release**: package.json 2.12.0, README changelog and features list, PRD
+5. **Review findings**: `rateLimitedUntil` on the 200 answers (index.mjs,
+   server.test.mjs shape), the checks stopped at a project switch and not
+   started in a hidden tab.
+6. **Release**: package.json 2.12.0, README changelog and features list, PRD
    (rate-limit pause and 7.5), CLAUDE.md file list.

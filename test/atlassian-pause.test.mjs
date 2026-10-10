@@ -6,6 +6,12 @@ const response = (status, body) => new Response(typeof body === 'string' ? body 
 
 test('a successful response gives its data', async () => {
     assert.deepEqual(await readProjectResponse(response(200, { dataHash: 'abc' })), { data: { dataHash: 'abc' } });
+    assert.deepEqual(await readProjectResponse(response(200, { dataHash: 'abc', rateLimitedUntil: null })), { data: { dataHash: 'abc', rateLimitedUntil: null } });
+});
+
+test('cached data served during a pause comes with the end of the pause', async () => {
+    const body = { dataHash: 'abc', rateLimitedUntil: '2026-10-11T10:10:00.000Z' };
+    assert.deepEqual(await readProjectResponse(response(200, body)), { data: body, pausedUntil: Date.parse('2026-10-11T10:10:00.000Z') });
 });
 
 test('a 503 with the end of the pause gives that end as epoch ms', async () => {

@@ -459,7 +459,7 @@ The application integrates with a Jira workflow where:
 **Rate-Limit Pause:**
 - After an HTTP 429 from Bitbucket or Jira, no request is sent to Atlassian until 10 minutes after the last 429
 - Every cache TTL is raised to cover the pause, so cached data keeps being served; responses built during the pause carry `rateLimited: true`
-- The page shows the pause: a project load refused with a 503 says until when instead of a generic failure, the banner shows "Paused until HH:MM" while the tree kept is stale, the periodic checks send nothing until the end of the pause and one check runs just after it
+- The page shows the pause: a project load refused with a 503 says until when instead of a generic failure, the banner shows "Paused until HH:MM" while the tree is the data cached before the pause, the periodic checks send nothing until the end of the pause and one check runs just after it
 
 ### 7.5 API Endpoints
 
@@ -471,7 +471,7 @@ The application integrates with a Jira workflow where:
 | `/api/sync-statuses/:project` | GET | 300s | SYNC (conflict) status of every open pull request, loaded on demand |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
-During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached, and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
+During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached, and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
 
 ### 7.6 Logging Infrastructure
 

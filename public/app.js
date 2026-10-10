@@ -173,7 +173,9 @@ async function loadProjects() {
 // selections are cleared whatever the URL says, there is nothing to restore
 // them against.
 async function selectProject(projectName, { fromUrl = false } = {}) {
-    // The SYNC statuses belong to the project being left
+    // The SYNC statuses and the checks belong to the project being left: a
+    // check of the new project during its load could replace the loading message
+    stopPeriodicChecking();
     resetSyncStatuses();
     // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
     currentApiResult = null;
@@ -192,7 +194,6 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
         readFilterControls();
         if (!fromUrl) updateUrlWithFilters();
         setToolbarVisible(false);
-        stopPeriodicChecking();
         showEmptyState();
         applyFilters(); // no tree to filter: refreshes the badge and the tab title
         return;
@@ -211,7 +212,8 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     renderEverything(data, { preferTypedText: !fromUrl });
     // The address bar catches up with the filters the render validated, without a new entry
     if (data) updateUrlWithFilters({ replace: true });
-    startPeriodicChecking();
+    // A hidden tab starts them when it becomes visible again
+    if (!document.hidden) startPeriodicChecking();
 }
 
 // Back and Forward: the page follows the URL, never the other way round.

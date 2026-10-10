@@ -85,8 +85,10 @@
 
 ## Changelog:
 * Version 2.12.0
-    * During the 10-minute pause of the Atlassian requests after an HTTP 429, the page says so instead of failing silently: a project that cannot load meanwhile says "Atlassian requests are paused until 14:33 after a rate limit (HTTP 429)" instead of "Could not load", and the banner shows "Paused until 14:33" with a warning icon next to the refresh time while the tree kept is the data of the last refresh (below 900px, the icon only, the time in its tooltip) (#77)
+    * During the 10-minute pause of the Atlassian requests after an HTTP 429, the page says so instead of failing silently: a project that cannot load meanwhile says "Atlassian requests are paused until 14:33 after a rate limit (HTTP 429)" instead of "Could not load", and the banner shows "Paused until 14:33" with a warning icon next to the refresh time while the tree is the data cached before the pause (below 900px, the icon only, the time in its tooltip) (#77)
+    * The response of `/api/pull-requests/:project` carries `rateLimitedUntil`: the end of the pause in progress, `null` outside one
     * The page checks again a second after the end of the pause, so the project loads or refreshes at the time it announced instead of up to two minutes later, and the periodic checks send no request during the pause
+    * A check of the project left no longer runs during the load of the next one, and a load that ends in a background tab starts the periodic checks only when the tab is shown again
     * The SYNC warning gives the end of the pause as HH:MM, like the banner, instead of a time with seconds
 * Version 2.11.2
     * Light theme: the highlighted links of the pull requests and orphaned issues that need attention, the active-filter count (now ringed in the banner's text colour, so it stands out from the blue banner), the `-n` commit badges, the changes-requested reviewer icons and the icon of a failed load are a darker red, the `+n` commit badges and the approved reviewer icons a darker green, and the SYNC warning icon a darker amber, so each one reaches the WCAG AA contrast with its background (4.5:1; they were between 1.9:1 and 3.2:1); the SYNC badges and the colours of the dark theme are unchanged, the ring of the active-filter count is drawn in both themes (#76)

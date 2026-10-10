@@ -16,8 +16,9 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
 
 1. **One module, `public/atlassian-pause.js`**, owns the pause on the page:
    - `readProjectResponse(response)` reads a `/api/pull-requests` response
-     into `{ data }`, `{ pausedUntil }` (a 503 whose `rateLimitedUntil` is a
-     date, as epoch ms) or `{}` (any other failure). A 503 without a readable
+     into `{ data }` (with `pausedUntil` when the answer carries an end, see
+     4), `{ pausedUntil }` (a 503 whose `rateLimitedUntil` is a date, as
+     epoch ms) or `{}` (any other failure). A 503 without a readable
      date is an ordinary failure: there is no end to announce.
    - `formatPauseEnd(until)`: HH:MM, 24-hour, **rounded up to the minute**.
      The server's pause ends on an arbitrary second; "until 14:32" read at
@@ -41,10 +42,15 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
    (5.38:1; `--warning-strong` there is 2.0:1), `var(--warning-strong)` on the
    dark banner (10.57:1). styles.test.mjs checks 4.5:1 against `--header-bg`
    in both themes.
-4. **State**: app.js keeps `pausedUntil` (epoch ms, 0 when none) for the
-   current project, set from every `/api/pull-requests` answer: a 503 sets
-   it, anything else clears it (a success, and an ordinary failure too: the
-   server is no longer pausing). A project switch clears it with the refresh
+4. **The answer carries the pause**: during a pause the TTLs are raised, so
+   most answers are cached data with status 200, not 503 (after a 429 of a
+   SYNC load, the likeliest one, every check gets the cached tree). The route
+   adds `rateLimitedUntil` (the live `atlassian.pause()`, `null` outside a
+   pause) to each 200 answer when it sends it, outside the cached object, so
+   `dataHash` and the cache are untouched; `readProjectResponse` returns it
+   with the data. app.js keeps `pausedUntil` (epoch ms, 0 when none) for the
+   current project, set from every answer: a 503 or a 200 with an end sets
+   it, anything else clears it. A project switch clears it with the refresh
    time, as both belong to the data left.
 5. **Checks during the pause**: the periodic check skips its fetch while
    `Date.now() < pausedUntil` (the server would answer 503 or the cached data
@@ -52,7 +58,9 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
    of the pause, so the page loads or refreshes at the time it announced,
    not up to two minutes later. The timer lives with the periodic interval:
    `startPeriodicChecking` (re)schedules it, `stopPeriodicChecking` (hidden
-   tab, no project) clears it; the check that runs on becoming visible
+   tab, project switch) clears it; a load that ends in a hidden tab starts
+   no checks, the tab does when it becomes visible again; the checks of the
+   project left stop at the switch, so none replaces the loading message; the check that runs on becoming visible
    again skips if the pause is still on, and the timer is set again. A new
    503 at that check (the pause was extended) moves both.
 6. **Refresh with nothing rendered** (the last load failed or was paused):
