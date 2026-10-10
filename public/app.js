@@ -1,11 +1,12 @@
 import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
-import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, applySyncStatuses, updateSyncControls } from './app-sync.js';
+import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
+import { readProjectResponse, pausedStateText, showPauseIndicator } from './atlassian-pause.js';
 
 // The projects the dropdown offers, from /api/projects
 let availableProjects = [];
@@ -14,7 +15,22 @@ let currentProject = null;
 // the URL carries and what the filter pass applies
 let filters = defaultFilters();
 let currentApiResult = null;
-let reloadInterval = 100;
+let reloadInterval = null;
+// The end of the Atlassian pause the last /api/pull-requests answer of the
+// current project announced (epoch ms), 0 when it announced none
+let pausedUntil = 0;
+// One check just after the end of the pause, scheduled with the periodic checks
+let pauseEndTimer = null;
+// Counts the project switches: a load or a check compares it after its fetch,
+// so the answer of a fetch started before a later switch is dropped, even when
+// the switch came back to the same project (Back then Forward)
+let loadGeneration = 0;
+// While a project load is in flight no check is sent: it would build the same
+// data again and could paint over the loading message
+let projectLoading = false;
+// Whether the first render of the current project lets a focused search box win over the URL
+// (see restoreFiltersFromUrl); kept for a check that renders it when the load got no data
+let loadPrefersTypedText = true;
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
@@ -167,8 +183,13 @@ async function loadProjects() {
 // selections are cleared whatever the URL says, there is nothing to restore
 // them against.
 async function selectProject(projectName, { fromUrl = false } = {}) {
-    // The SYNC statuses belong to the project being left
+    // The SYNC statuses and the checks belong to the project being left: a
+    // check of the new project during its load could replace the loading message
+    stopPeriodicChecking();
     resetSyncStatuses();
+    const generation = ++loadGeneration;
+    projectLoading = false;
+    loadPrefersTypedText = !fromUrl;
     // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
     currentApiResult = null;
     currentProject = projectName || null;
@@ -178,6 +199,7 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     // The refresh time belongs to the data being left
     const lastRefreshElement = document.getElementById('lastRefreshTime');
     if (lastRefreshElement) lastRefreshElement.textContent = '';
+    setPause(0);
 
     if (!currentProject) {
         clearFilterOptions();
@@ -185,7 +207,6 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
         readFilterControls();
         if (!fromUrl) updateUrlWithFilters();
         setToolbarVisible(false);
-        stopPeriodicChecking();
         showEmptyState();
         applyFilters(); // no tree to filter: refreshes the badge and the tab title
         return;
@@ -197,13 +218,23 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
         updateUrlWithFilters();
     }
     showLoadingState();
-    const apiResult = await fetchData(projectName);
-    // Back and Forward make quick switches easy: a late response for a project no longer selected is dropped
-    if (currentProject !== projectName) return;
-    renderEverything(apiResult, { preferTypedText: !fromUrl });
+    projectLoading = true;
+    const { data, pausedUntil: until } = await fetchData(projectName);
+    // Back and Forward make quick switches easy: a late response of a load replaced since is dropped
+    if (generation !== loadGeneration) return;
+    projectLoading = false;
+    setPause(until);
+    renderProjectLoad(data);
+    // A hidden tab starts them when it becomes visible again
+    if (!document.hidden) startPeriodicChecking();
+}
+
+// The first render of a project: by its load, or by a later check when the
+// load got no data (a failure, or the Atlassian pause)
+function renderProjectLoad(data) {
+    renderEverything(data, { preferTypedText: loadPrefersTypedText });
     // The address bar catches up with the filters the render validated, without a new entry
-    if (apiResult) updateUrlWithFilters({ replace: true });
-    startPeriodicChecking();
+    if (data) updateUrlWithFilters({ replace: true });
 }
 
 // Back and Forward: the page follows the URL, never the other way round.
@@ -252,6 +283,10 @@ function showErrorState() {
     showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
 }
 
+function showPausedState() {
+    showStateMessage('fas fa-hourglass-half', pausedStateText(currentProject, pausedUntil));
+}
+
 // Copies the filter controls into the filters object and refreshes the
 // controls that depend on them (the Work select, the clear button)
 function readFilterControls() {
@@ -292,6 +327,9 @@ function handleTextFilterInput() {
 function handleSyncLoadEnd() {
     if (!syncStatusesLoaded()) filters.sync = 'Show all';
     applyFilters();
+    // A 429 of the SYNC load pauses every Atlassian request: the banner shows it now, not at the next check
+    const syncPause = syncPauseEnd();
+    if (syncPause > Math.max(pausedUntil, Date.now())) setPause(syncPause);
 }
 
 function updateTextFilterClearButton() {
@@ -346,7 +384,11 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     if (!apiResult) {
         currentApiResult = null;
         setToolbarVisible(false);
-        showErrorState();
+        if (pausedUntil) {
+            showPausedState();
+        } else {
+            showErrorState();
+        }
         return;
     }
 
@@ -397,17 +439,34 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     }
 }
 
+// The answer of /api/pull-requests/:project: { data }, { pausedUntil } during
+// an Atlassian pause, {} on any other failure
 async function fetchData(project) {
     try {
         const response = await fetch(`/api/pull-requests/${encodeURIComponent(project)}`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return await response.json();
+        const result = await readProjectResponse(response);
+        if (!result.data && !result.pausedUntil) console.error(`Error fetching pull requests: HTTP ${response.status}`);
+        return result;
     } catch (error) {
         console.error('Error fetching pull requests:', error);
-        return null;
+        return {};
     }
+}
+
+// Keeps the end of the pause the last answer announced (0: none), shows it in
+// the banner and, while the checks run, moves the check at its end
+function setPause(until) {
+    pausedUntil = until || 0;
+    showPauseIndicator(pausedUntil);
+    if (reloadInterval) schedulePauseEndCheck();
+}
+
+function schedulePauseEndCheck() {
+    clearTimeout(pauseEndTimer);
+    pauseEndTimer = null;
+    const remaining = pausedUntil - Date.now();
+    // A second after the end, so the server's pause is over
+    if (remaining > 0) pauseEndTimer = setTimeout(checkForUpdates, remaining + 1000);
 }
 
 async function checkForUpdates() {
@@ -415,6 +474,12 @@ async function checkForUpdates() {
     if (!project) {
         return;
     }
+    // During the pause the server answers 503 or the data already shown; the check at its end takes over.
+    // During a load, the load answers.
+    if (Date.now() < pausedUntil || projectLoading) {
+        return;
+    }
+    const generation = loadGeneration;
     // The refresh icon spins while a check runs, and marks it: a second check
     // meanwhile is skipped (before the try, so the finally below does not
     // stop the icon of the running check)
@@ -424,9 +489,15 @@ async function checkForUpdates() {
     }
     if (refreshIcon) refreshIcon.classList.add('checking');
     try {
-        const newData = await fetchData(project);
-        // A project switched to during the check has its own load: the late response of the project left is dropped
-        if (currentProject !== project || !newData) return;
+        const { data: newData, pausedUntil: until } = await fetchData(project);
+        // A project switched to during the check has its own load: the late response is dropped
+        if (generation !== loadGeneration) return;
+        setPause(until);
+        if (!newData) {
+            // The tree, if any, stays; without one the message follows this answer, paused or failed
+            if (!currentApiResult) renderEverything(null);
+            return;
+        }
 
         // Always update the refresh time
         const lastRefreshElement = document.getElementById('lastRefreshTime');
@@ -434,8 +505,10 @@ async function checkForUpdates() {
             lastRefreshElement.textContent = formatRefreshTime(newData.lastRefreshTime);
         }
 
-        // Re-render when the data changed, or when nothing is displayed yet because the last fetch failed
-        if (!currentApiResult || newData.dataHash !== currentApiResult.dataHash) {
+        // Nothing displayed yet because the load got no data: this is the load's render
+        if (!currentApiResult) {
+            renderProjectLoad(newData);
+        } else if (newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
             renderEverything(newData);
         }
@@ -453,6 +526,7 @@ function startPeriodicChecking(now) {
         setTimeout(checkForUpdates, 0); // run now
     }
     reloadInterval = setInterval(checkForUpdates, 120000); // Check every minute
+    schedulePauseEndCheck();
 }
 
 function stopPeriodicChecking() {
@@ -460,6 +534,8 @@ function stopPeriodicChecking() {
         clearInterval(reloadInterval);
         reloadInterval = null;
     }
+    clearTimeout(pauseEndTimer);
+    pauseEndTimer = null;
 }
 
 // Add event listener for visibility change

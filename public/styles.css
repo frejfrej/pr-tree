@@ -41,6 +41,8 @@
     --header-border: transparent;
     --header-control-bg: rgba(255, 255, 255, 0.14);
     --header-control-border: rgba(255, 255, 255, 0.35);
+    /* Warning icon and text on the banner, 4.5:1 or more against --header-bg */
+    --header-warning: #FFE380;
 
     --header-height: 48px;
     --sidebar-width: 280px;
@@ -86,6 +88,7 @@
     --header-border: #38414A;
     --header-control-bg: #22272B;
     --header-control-border: #38414A;
+    --header-warning: var(--warning-strong);
 }
 
 /* 2. Base ----------------------------------------------------------------- */
@@ -208,6 +211,8 @@ input {
 }
 
 .project-select {
+    /* Shrinks before the banner overflows a phone-width window */
+    min-width: 0;
     max-width: 240px;
     padding: 5px 28px 5px 10px;
     border-color: var(--header-control-border);
@@ -238,6 +243,15 @@ input {
 .last-refresh {
     font-style: italic;
     white-space: nowrap;
+}
+
+.atlassian-pause {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--header-warning);
+    white-space: nowrap;
+    cursor: help;
 }
 
 .refresh-icon {
@@ -1295,6 +1309,21 @@ select:disabled {
 
 /* 11. Responsive: below 900px the sidebar is a drawer over the tree -------- */
 @media (max-width: 899.98px) {
+    /* The pause indicator fits next to the project at 400px wide */
+    .app-header {
+        gap: 8px;
+    }
+
+    /* Visually hidden, still read in the status region: the icon is aria-hidden */
+    .atlassian-pause-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
     .app-name,
     .last-refresh {
         display: none;
