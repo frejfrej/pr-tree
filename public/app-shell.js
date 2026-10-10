@@ -224,6 +224,13 @@ function focusTextFilter() {
     input.select();
 }
 
+// Ctrl+F (Cmd+F on macOS) goes to the search box; pressed again from the box,
+// it is left to the browser's own find.
+export function isFindShortcut(event) {
+    return Boolean(event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
+        (event.key === 'f' || event.key === 'F');
+}
+
 // Registered in the capture phase: an open multi-select is still open here and
 // handles Escape itself, so the shell stays out of its way.
 function handleKeydown(event) {
@@ -239,6 +246,15 @@ function handleKeydown(event) {
             closeHelp();
         } else {
             closeSidebarDrawer();
+        }
+        return;
+    }
+
+    if (isFindShortcut(event)) {
+        const input = document.getElementById('textFilter');
+        if (input && event.target !== input && !isHelpOpen()) {
+            event.preventDefault();
+            focusTextFilter();
         }
         return;
     }

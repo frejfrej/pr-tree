@@ -68,9 +68,13 @@ test('every pull request is in the response shape the frontend reads', () => {
 });
 
 function deepestStack(data) {
-    const byDestination = data.pullRequestsByDestination;
+    const byDestination = new Map();
+    for (const pr of data.pullRequests) {
+        if (!byDestination.has(pr.destination.branch.name)) byDestination.set(pr.destination.branch.name, []);
+        byDestination.get(pr.destination.branch.name).push(pr);
+    }
     const depth = pr => {
-        const children = byDestination[pr.source.branch.name];
+        const children = byDestination.get(pr.source.branch.name);
         return children ? 1 + Math.max(...children.map(depth)) : 1;
     };
     const roots = data.pullRequests.filter(pr => !data.pullRequests.some(other => other.source.branch.name === pr.destination.branch.name));
@@ -80,7 +84,7 @@ function deepestStack(data) {
 test('SECOLLAB carries the real 24-deep stack of pull requests under feat/ai_investigations', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     assert.equal(deepestStack(data), 24);
-    assert.equal(data.pullRequestsByDestination['feat/ai_investigations'].length, 1);
+    assert.equal(data.pullRequests.filter(pr => pr.destination.branch.name === 'feat/ai_investigations').length, 1);
     const chainRepo = data.pullRequests.filter(pr => pr.source.branch.name === 'ai-mcp-tool-layer');
     assert.equal(chainRepo[0].source.repository.name, 'products.secollab');
 });
@@ -174,21 +178,22 @@ test('the filter index built on the SECOLLAB fixture links every pull request', 
     const inSprint = [...pullRequestsById.values()].filter(entry => entry.sprints.size > 0);
     assert.ok(inSprint.length > 10, `${inSprint.length} pull requests in a sprint`);
     const noFilter = { participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all' };
-    const rendered = { statusInProgress: false, statusInReview: false, hasSyncLabel: false };
     for (const entry of pullRequestsById.values()) {
-        assert.equal(evaluatePullRequest(entry, noFilter, rendered).visible, true);
+        assert.equal(evaluatePullRequest(entry, noFilter).visible, true);
     }
 });
 
 test('the filter index of the SECOLLAB fixture lists the fictional team as participants', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     const { pullRequestsById, participants } = buildFilterIndex(data);
-    assert.ok(participants.length >= 5, `${participants.length} participants`);
-    assert.deepEqual(participants, [...participants].sort((a, b) => a.localeCompare(b)));
+    const names = participants.map(option => option.value);
+    assert.ok(names.length >= 5, `${names.length} participants`);
+    assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
     const entries = [...pullRequestsById.values()];
-    assert.ok(entries.some(entry => entry.reviewers.has('Rovo Dev')), 'the fixture has Rovo Dev reviewing');
-    assert.ok(!participants.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
-    for (const name of participants) {
+    assert.ok(entries.some(entry => entry.pullRequest.participants.some(participant => participant.user.display_name === 'Rovo Dev')), 'the fixture has Rovo Dev reviewing');
+    assert.ok(!entries.some(entry => entry.reviewers.has('Rovo Dev')), 'Rovo Dev is never a reviewer (otherReviewers)');
+    assert.ok(!names.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
+    for (const name of names) {
         assert.ok(entries.some(entry => entry.assignees.has(name) || entry.reviewers.has(name)), `${name} is an assignee or a reviewer`);
     }
 });
@@ -211,7 +216,7 @@ test('the SECOLLAB fixture carries epics and parent-only issues with their hiera
     assert.ok(parentOnly.some(issue => issue.fields.issuetype.name === 'Epic'), 'epics are fetched as parents');
     assert.ok(parentOnly.some(issue => issue.fields.parent), 'a parent-only story carries its epic');
     const { pullRequestsById, epics } = buildFilterIndex(data);
-    assert.ok(epics.size >= 3, `${epics.size} epics`);
+    assert.ok(epics.length >= 3, `${epics.length} epics`);
     const linkedToSubtask = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
     assert.ok(linkedToSubtask.length > 0);
     assert.ok(linkedToSubtask.some(entry => entry.epics.size > 0), 'a pull request linked to a sub-task reaches its epic');
@@ -222,7 +227,7 @@ test('the filter index resolves a story for every pull request linked to an issu
     const { pullRequestsById, stories } = buildFilterIndex(data);
     const linked = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.length > 0);
     assert.ok(linked.every(entry => entry.stories.size > 0));
-    assert.ok(stories.size > 50, `${stories.size} stories`);
+    assert.ok(stories.length > 50, `${stories.length} stories`);
     const withSubtask = linked.find(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
     const subtask = withSubtask.linkedIssues.find(issue => issue.fields.issuetype.subtask);
     assert.ok(withSubtask.stories.has(subtask.fields.parent.key), 'the story of a sub-task is its parent');

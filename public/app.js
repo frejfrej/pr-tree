@@ -1,47 +1,26 @@
-import { initializeFilter, filterBranches, countActiveFilters, issueOptions } from './app-filter.js';
+import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
-import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, applySyncStatuses, updateSyncControls } from './app-sync.js';
+import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
-import { toggleChildren, toggleRootBranch, toggleRepository, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
+import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
+import { multiSelectFilters, defaultFilters } from './filter-registry.js';
 
 // The projects the dropdown offers, from /api/projects
 let availableProjects = [];
 let currentProject = null;
-let currentText = '';
-let currentSprints = [];
-let currentFixVersions = [];
-let currentEpics = [];
-let currentStories = [];
-let currentParticipants = [];
-let currentWork = 'all'; // 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees'
-let currentSync = "Show all";
+// The filters, in the shape of defaultFilters(): what the controls show, what
+// the URL carries and what the filter pass applies
+let filters = defaultFilters();
 let currentApiResult = null;
 let reloadInterval = 100;
-
-// Multi-select filters, in sidebar order
-const multiSelectIds = ['sprintSelect', 'fixVersionSelect', 'epicSelect', 'storySelect', 'participantSelect'];
-
-function currentFilters() {
-    return {
-        text: currentText,
-        participants: currentParticipants,
-        work: currentWork,
-        sprints: currentSprints,
-        fixVersions: currentFixVersions,
-        epics: currentEpics,
-        stories: currentStories,
-        sync: currentSync
-    };
-}
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
 // and the attention count in the tab title.
 function applyFilters() {
-    const filters = currentFilters();
-    const attentionCount = filterBranches(filters);
+    const attentionCount = filterBranches(filters, loadedSyncStatuses());
     updateActiveFilterBadge(countActiveFilters(filters));
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
@@ -52,10 +31,10 @@ function applyFilters() {
 function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
-    multiSelectIds.forEach(id => {
-        const multiSelect = getMultiSelect(id);
+    for (const { elementId } of multiSelectFilters) {
+        const multiSelect = getMultiSelect(elementId);
         if (multiSelect) multiSelect.clearAll(false);
-    });
+    }
     const workSelect = document.getElementById('workSelect');
     if (workSelect) workSelect.value = 'all';
     const syncSelect = document.getElementById('syncSelect');
@@ -65,12 +44,12 @@ function resetFilterControls() {
 // Empties the option lists of the multi-selects, and their selections
 // (setOptions keeps them), as before the first load
 function clearFilterOptions() {
-    multiSelectIds.forEach(id => {
-        const multiSelect = getMultiSelect(id);
-        if (!multiSelect) return;
+    for (const { elementId } of multiSelectFilters) {
+        const multiSelect = getMultiSelect(elementId);
+        if (!multiSelect) continue;
         multiSelect.setOptions([]);
         multiSelect.clearAll(false);
-    });
+    }
 }
 
 // Resets every filter and applies the result once.
@@ -84,7 +63,7 @@ function clearAllFilters() {
 // history entry instead of pushing one: while typing in the search box, and
 // when the address bar catches up after a load.
 function updateUrlWithFilters({ replace = false } = {}) {
-    const url = urlWithFilters(new URL(window.location), { project: currentProject, filters: currentFilters() });
+    const url = urlWithFilters(new URL(window.location), { project: currentProject, filters });
 
     // Update URL without reloading the page. Safari throws past 100 updates
     // per 30 seconds: the URL then catches up on the next change
@@ -120,30 +99,24 @@ function restoreMultiSelect(id, values) {
 // whitespace, the same filter: a query typed during a page load keeps its
 // trailing space.
 function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
-    const filters = filtersFromUrl(window.location.search);
-
-    currentSprints = restoreMultiSelect('sprintSelect', filters.sprints);
-    currentFixVersions = restoreMultiSelect('fixVersionSelect', filters.fixVersions);
-    currentEpics = restoreMultiSelect('epicSelect', filters.epics);
-    currentStories = restoreMultiSelect('storySelect', filters.stories);
-    currentParticipants = restoreMultiSelect('participantSelect', filters.participants);
+    const restored = filtersFromUrl(window.location.search);
+    for (const { key, elementId } of multiSelectFilters) restored[key] = restoreMultiSelect(elementId, restored[key]);
 
     const syncSelect = document.getElementById('syncSelect');
-    const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === filters.sync);
-    currentSync = (syncStatusesLoaded() && syncOffered) ? filters.sync : 'Show all';
-    if (syncSelect) syncSelect.value = currentSync;
+    const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === restored.sync);
+    restored.sync = (syncStatusesLoaded() && syncOffered) ? restored.sync : 'Show all';
+    if (syncSelect) syncSelect.value = restored.sync;
 
-    currentWork = filters.work;
-    updateWorkSelect();
-
-    currentText = filters.text;
     const textFilter = document.getElementById('textFilter');
     const typing = textFilter && document.activeElement === textFilter;
-    if (typing && (preferTypedText || textFilter.value.trim() === currentText)) {
-        currentText = textFilter.value;
+    if (typing && (preferTypedText || textFilter.value.trim() === restored.text)) {
+        restored.text = textFilter.value;
     } else if (textFilter) {
-        textFilter.value = currentText;
+        textFilter.value = restored.text;
     }
+
+    filters = restored;
+    updateWorkSelect();
     updateTextFilterClearButton();
 }
 
@@ -157,11 +130,11 @@ function initializeWorkFilter() {
 // state is back to "All work" (so a work=ready without a participant in
 // the URL is dropped) and the select is disabled; otherwise it shows the state
 function updateWorkSelect() {
-    if (currentParticipants.length === 0) currentWork = 'all';
+    if (filters.participants.length === 0) filters.work = 'all';
     const workSelect = document.getElementById('workSelect');
     if (workSelect) {
-        workSelect.disabled = currentParticipants.length === 0;
-        workSelect.value = currentWork;
+        workSelect.disabled = filters.participants.length === 0;
+        workSelect.value = filters.work;
     }
 }
 
@@ -279,30 +252,23 @@ function showErrorState() {
     showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
 }
 
-// Copies the filter controls into the state variables and refreshes the
+// Copies the filter controls into the filters object and refreshes the
 // controls that depend on them (the Work select, the clear button)
 function readFilterControls() {
+    const read = defaultFilters();
     const textFilter = document.getElementById('textFilter');
-    const participantMultiSelect = getMultiSelect('participantSelect');
-    const sprintMultiSelect = getMultiSelect('sprintSelect');
-    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
-    const epicMultiSelect = getMultiSelect('epicSelect');
-    const storyMultiSelect = getMultiSelect('storySelect');
-
-    currentText = textFilter ? textFilter.value : '';
-    currentParticipants = participantMultiSelect ? participantMultiSelect.getSelectedValues() : [];
-    currentSprints = sprintMultiSelect ? sprintMultiSelect.getSelectedValues() : [];
-    currentFixVersions = fixVersionMultiSelect ? fixVersionMultiSelect.getSelectedValues() : [];
-    currentEpics = epicMultiSelect ? epicMultiSelect.getSelectedValues() : [];
-    currentStories = storyMultiSelect ? storyMultiSelect.getSelectedValues() : [];
-
+    read.text = textFilter ? textFilter.value : '';
+    for (const { key, elementId } of multiSelectFilters) {
+        const multiSelect = getMultiSelect(elementId);
+        read[key] = multiSelect ? multiSelect.getSelectedValues() : [];
+    }
     // The Work and SYNC values come from regular select elements
     const workSelect = document.getElementById('workSelect');
     const syncSelect = document.getElementById('syncSelect');
-    currentWork = workSelect ? workSelect.value : 'all';
-    currentSync = syncSelect ? syncSelect.value : 'Show all';
+    read.work = workSelect ? workSelect.value : 'all';
+    read.sync = syncSelect ? syncSelect.value : 'Show all';
+    filters = read;
     updateWorkSelect();
-
     updateTextFilterClearButton();
 }
 
@@ -324,13 +290,13 @@ function handleTextFilterInput() {
 // while statuses are loaded (a first load may have failed), and the filters
 // run again so a selected SYNC filter uses the new statuses
 function handleSyncLoadEnd() {
-    if (!syncStatusesLoaded()) currentSync = 'Show all';
+    if (!syncStatusesLoaded()) filters.sync = 'Show all';
     applyFilters();
 }
 
 function updateTextFilterClearButton() {
     const clearButton = document.getElementById('textFilterClear');
-    if (clearButton) clearButton.hidden = currentText === '';
+    if (clearButton) clearButton.hidden = filters.text === '';
 }
 
 function initializeTextFilter() {
@@ -356,14 +322,6 @@ function initializeTextFilter() {
             textFilter.focus();
         });
     }
-}
-
-// Fills the participant multi-select from the index (the assignees and the
-// reviewers, sorted); the selection is restored from the URL afterwards, like
-// every other filter
-function populateParticipantFilter(participants) {
-    const multiSelect = getMultiSelect('participantSelect');
-    if (multiSelect) multiSelect.setOptions(participants.map(name => ({ value: name, label: name })));
 }
 
 // Function to format the refresh time
@@ -404,7 +362,6 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
         currentApiResult.pullRequests,
         currentApiResult.jiraIssuesMap,
         currentApiResult.jiraIssuesDetails,
-        new Map(Object.entries(currentApiResult.pullRequestsByDestination)),
         currentApiResult.jiraSiteName
     );
 
@@ -417,16 +374,16 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Restore toggle states after rendering
     restoreToggleStates(toggleStates);
 
-    // Re-apply the last loaded SYNC statuses (without fetching them again)
-    // before filters run, so the SYNC filter can rely on the rendered badges
+    // Re-paint the last loaded SYNC statuses (without fetching them again); the
+    // filters read the statuses themselves, so the order does not matter
     applySyncStatuses();
     // Reflect the current SYNC load state (statuses are only fetched on demand)
     updateSyncControls();
-    populateSprintFilter(currentApiResult.sprints);
-    populateFixVersionFilter([...currentApiResult.jiraIssuesDetails, ...(currentApiResult.orphanedIssues || [])]);
-    populateIssueFilter('epicSelect', filterIndex.epics);
-    populateIssueFilter('storySelect', filterIndex.stories);
-    populateParticipantFilter(filterIndex.participants);
+    // The option lists come from the index, under the registry keys
+    for (const { key, elementId } of multiSelectFilters) {
+        const multiSelect = getMultiSelect(elementId);
+        if (multiSelect) multiSelect.setOptions(filterIndex[key]);
+    }
 
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
     restoreFiltersFromUrl({ preferTypedText });
@@ -516,59 +473,9 @@ document.addEventListener('visibilitychange', function() {
     }
 });
 
-function populateSprintFilter(sprints) {
-    const sprintMultiSelect = getMultiSelect('sprintSelect');
-    if (!sprintMultiSelect) return;
-
-    // Sort sprints by name
-    const sortedSprints = sprints.sort((a, b) => a.name.localeCompare(b.name));
-
-    const sprintOptions = sortedSprints.map(sprint => ({
-        value: String(sprint.id),
-        label: sprint.name
-    }));
-    sprintMultiSelect.setOptions(sprintOptions);
-}
-
-function populateFixVersionFilter(jiraIssuesDetails) {
-    const fixVersionMultiSelect = getMultiSelect('fixVersionSelect');
-    if (!fixVersionMultiSelect) return;
-
-    // Extract all unique fix versions from jira issues, including project
-    const fixVersions = new Map();
-    jiraIssuesDetails.forEach(issue => {
-        if (issue.fields.fixVersions && issue.fields.fixVersions.length > 0) {
-            const project = issue.key.split('-')[0];
-            issue.fields.fixVersions.forEach(version => {
-                // Use version.id as key to avoid duplicates
-                if (!fixVersions.has(version.id)) {
-                    fixVersions.set(version.id, { id: version.id, name: version.name, project: project });
-                }
-            });
-        }
-    });
-
-    // Convert to array and sort by project then name
-    const sortedFixVersions = Array.from(fixVersions.values())
-        .sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
-
-    const fixVersionOptions = sortedFixVersions.map(version => ({
-        value: String(version.id),
-        label: `${version.name} (${version.project})`
-    }));
-    fixVersionMultiSelect.setOptions(fixVersionOptions);
-}
-
-// Fills an issue multi-select (epics or stories) from the index; the selection
-// is restored from the URL afterwards, like every other filter
-function populateIssueFilter(elementId, issues) {
-    const multiSelect = getMultiSelect(elementId);
-    if (multiSelect) multiSelect.setOptions(issueOptions(issues.values()));
-}
-
 // Initialize multi-select components
 function initializeMultiSelects() {
-    multiSelectIds.forEach(id => createMultiSelect(id, { onChange: handleFilterChange }));
+    for (const { elementId } of multiSelectFilters) createMultiSelect(elementId, { onChange: handleFilterChange });
 }
 
 // Update the DOMContentLoaded event listener
@@ -579,17 +486,13 @@ document.addEventListener('DOMContentLoaded', function() {
     showEmptyState();
     loadProjects();
     initializePopovers();
+    document.getElementById('pull-requests').addEventListener('click', handleTreeClick);
     initializeWorkFilter();
     initializeSyncControls({
         getProject: () => currentProject,
-        getSyncFilter: () => currentSync,
+        getSyncFilter: () => filters.sync,
         onFilterChange: handleFilterChange,
         onLoadEnd: handleSyncLoadEnd
     });
     window.addEventListener('popstate', handlePopState);
 });
-
-// Export functions that need to be accessible globally
-window.toggleChildren = toggleChildren;
-window.toggleRootBranch = toggleRootBranch;
-window.toggleRepository = toggleRepository;

@@ -1,12 +1,33 @@
 /**
  * Multi-Select Component
  * A reusable multi-select dropdown component with checkbox-based selection.
+ * The markup of the dropdown is generated: the page only declares an empty
+ * element with the class and the id.
  */
 
 const instances = new Map();
 
 // Text and attribute values are both double-quoted here; quotes are escaped too
 const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+// The trigger and the dropdown of every multi-select; the element in index.html
+// is an empty <div class="multi-select" id="..."> and gets this markup at
+// construction (styles.css reserves its height until then)
+const multiSelectMarkup = `
+    <div class="multi-select-trigger" tabindex="0">
+        <span class="multi-select-display">Show all</span>
+        <i class="fas fa-chevron-down multi-select-arrow"></i>
+    </div>
+    <div class="multi-select-dropdown">
+        <div class="multi-select-search">
+            <input type="text" placeholder="Search..." class="multi-select-search-input">
+        </div>
+        <div class="multi-select-options"></div>
+        <div class="multi-select-actions">
+            <button type="button" class="multi-select-clear">Clear all</button>
+            <button type="button" class="multi-select-select-all">Select all</button>
+        </div>
+    </div>`;
 
 export class MultiSelect {
     constructor(elementId, options = {}) {
@@ -21,6 +42,7 @@ export class MultiSelect {
         this.onChange = options.onChange || null;
         this.searchText = '';
 
+        this.element.innerHTML = multiSelectMarkup;
         this.trigger = this.element.querySelector('.multi-select-trigger');
         this.dropdown = this.element.querySelector('.multi-select-dropdown');
         this.display = this.element.querySelector('.multi-select-display');
@@ -50,34 +72,28 @@ export class MultiSelect {
         });
 
         // Search functionality
-        if (this.searchInput) {
-            this.searchInput.addEventListener('input', (e) => {
-                this.searchText = e.target.value.toLowerCase();
-                this.renderOptions();
-            });
+        this.searchInput.addEventListener('input', (e) => {
+            this.searchText = e.target.value.toLowerCase();
+            this.renderOptions();
+        });
 
-            this.searchInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    this.close();
-                }
-            });
-        }
+        this.searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.close();
+            }
+        });
 
         // Clear all button
-        if (this.clearBtn) {
-            this.clearBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.clearAll();
-            });
-        }
+        this.clearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.clearAll();
+        });
 
         // Select all button
-        if (this.selectAllBtn) {
-            this.selectAllBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.selectAll();
-            });
-        }
+        this.selectAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectAll();
+        });
 
         // Close on outside click
         document.addEventListener('click', (e) => {
@@ -109,18 +125,14 @@ export class MultiSelect {
         });
 
         this.element.classList.add('open');
-        if (this.searchInput) {
-            this.searchInput.focus();
-        }
+        this.searchInput.focus();
     }
 
     close() {
         this.element.classList.remove('open');
-        if (this.searchInput) {
-            this.searchInput.value = '';
-            this.searchText = '';
-            this.renderOptions();
-        }
+        this.searchInput.value = '';
+        this.searchText = '';
+        this.renderOptions();
     }
 
     setOptions(options) {
@@ -143,8 +155,6 @@ export class MultiSelect {
     }
 
     renderOptions() {
-        if (!this.optionsContainer) return;
-
         const filteredOptions = this.options.filter(opt =>
             opt.label.toLowerCase().includes(this.searchText)
         );
@@ -182,8 +192,6 @@ export class MultiSelect {
     }
 
     updateDisplay() {
-        if (!this.display) return;
-
         if (this.selectedValues.length === 0) {
             this.display.textContent = 'Show all';
             this.display.classList.remove('has-selection');

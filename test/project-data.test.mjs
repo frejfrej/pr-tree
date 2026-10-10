@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProjectData, extractJiraIssues, createJiraIssuesMap, fillPullRequestsMap, calculateHash } from '../project-data.mjs';
+import { createProjectData } from '../project-data.mjs';
+import { RateLimitError } from '../atlassian-fetch.mjs';
 
 /**
  * The project data against a fake Atlassian: the documented rules of
@@ -40,8 +41,9 @@ const version = name => ({ id: name, name });
  * `commits(repo, include, exclude)` the number of commits; `issues` and
  * `parents` the pools answered to `issueKey in` and `key IN` queries;
  * `boards` per Jira project, `sprints` per board id, `sprintIssues` per
- * sprint id, `inReview` the issues in review; both searches are paged with a token like
- * the search endpoint, `maxResults` at a time.
+ * sprint id, `inReview` the issues in review; the parents, sprint and
+ * in-review searches are paged with a token like the search endpoint,
+ * `maxResults` at a time (a request without maxResults gets Jira's 50).
  * `intercept(url)` runs first: a Response it returns replaces the answer.
  */
 function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], parents = [], boards = {}, sprints = {}, sprintIssues = {}, inReview = [], intercept = () => undefined } = {}) {
@@ -83,7 +85,8 @@ function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], pare
             }
             if ((match = jql.match(/^key IN \(([^)]*)\)$/))) {
                 const keys = new Set(keysOf(match[1]));
-                return json({ issues: parents.filter(candidate => keys.has(candidate.key)) });
+                if (!searchParams.has('maxResults')) searchParams.set('maxResults', '50');
+                return json(page(parents.filter(candidate => keys.has(candidate.key)), searchParams));
             }
             if ((match = jql.match(/^sprint = (\d+) /))) return json(page(sprintIssues[match[1]] ?? [], searchParams, key => ({ key })));
             if (jql.includes('status = "In Review"')) return json(page(inReview, searchParams));
@@ -116,40 +119,6 @@ function setUp(atlassian) {
 const urlsMatching = (requests, pattern) => requests.map(request => request.url).filter(url => pattern.test(url));
 const jqlOf = url => new URL(url).searchParams.get('jql');
 
-test('extractJiraIssues finds the keys of the project regex in a title, in order', () => {
-    assert.deepEqual(extractJiraIssues('PROJ-12 and OTHER-3 but not FOO-4 or proj-5', project.jiraRegex), ['PROJ-12', 'OTHER-3']);
-    assert.deepEqual(extractJiraIssues('no key', project.jiraRegex), []);
-    const map = createJiraIssuesMap([pullRequest(1, { title: 'PROJ-1 PROJ-1 twice' }), pullRequest(2, { title: 'nothing' })], project.jiraRegex);
-    assert.deepEqual([...map], [[1, ['PROJ-1', 'PROJ-1']], [2, []]]);
-});
-
-test('fillPullRequestsMap keys the pull requests by destination branch name across repositories (a known limitation)', () => {
-    const byDestination = new Map();
-    const a = pullRequest(1, { repo: 'repo-a', destination: 'master' });
-    const b = pullRequest(2, { repo: 'repo-b', destination: 'master' });
-    const c = pullRequest(3, { repo: 'repo-b', destination: 'develop' });
-    fillPullRequestsMap([a, b, c], byDestination);
-    assert.deepEqual([...byDestination.keys()], ['master', 'develop']);
-    assert.deepEqual(byDestination.get('master'), [a, b]); // the master of repo-a and the master of repo-b share the entry
-});
-
-test('calculateHash is stable for the same data and changes when a commit moves', () => {
-    const data = () => ({
-        pullRequests: [pullRequest(1)], jiraIssuesMap: new Map([[1, ['PROJ-1']]]), jiraIssuesDetails: [issue('PROJ-1')],
-        sprints: [{ id: 1, name: 'S1' }], sprintIssues: { 1: ['PROJ-1'] }, orphanedIssues: []
-    });
-    const hash = calculateHash(data());
-    assert.match(hash, /^[0-9a-f]{32}$/);
-    assert.equal(calculateHash(data()), hash);
-    assert.equal(calculateHash({ ...data(), lastRefreshTime: 'later', pullRequestsByDestination: {} }), hash); // not part of the hash
-    const moved = data();
-    moved.pullRequests[0].source.commit.hash = 's1-moved';
-    assert.notEqual(calculateHash(moved), hash);
-    const orphan = data();
-    orphan.orphanedIssues.push(issue('PROJ-9'));
-    assert.notEqual(calculateHash(orphan), hash);
-});
-
 test('the pull requests of each repository are fetched 50 per page, following next, and the response has the documented shape', async () => {
     const a1 = pullRequest(1, { repo: 'repo-a' }), a2 = pullRequest(2, { repo: 'repo-a', title: 'OTHER-7 no proj key' }), b3 = pullRequest(3, { repo: 'repo-b', destination: 'develop' });
     const { buildProjectData, requests, logs } = setUp(fakeAtlassian({
@@ -160,11 +129,10 @@ test('the pull requests of each repository are fetched 50 per page, following ne
     const data = await buildProjectData('P', project);
     assert.deepEqual(urlsMatching(requests, /pullrequests/), [pullRequestsUrl('repo-a'), `${pullRequestsUrl('repo-a')}&page=2`, pullRequestsUrl('repo-b')]);
     assert.deepEqual(requests[0].options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
-    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'pullRequestsByDestination', 'sprintIssues', 'sprints']);
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.deepEqual(data.pullRequests.map(pr => [pr.id, pr.commitsAhead, pr.commitsBehind]), [[1, 3, 1], [2, 3, 1], [3, 3, 1]]);
     assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['OTHER-7'], 3: ['PROJ-3'] });
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'OTHER-7']); // PROJ-3 is not in Jira
-    assert.deepEqual(Object.keys(data.pullRequestsByDestination), ['master', 'develop']);
     assert.equal(data.jiraSiteName, jiraSiteName);
     assert.deepEqual([data.sprints, data.sprintIssues, data.orphanedIssues], [[], {}, []]);
     assert.match(data.dataHash, /^[0-9a-f]{32}$/);
@@ -205,9 +173,10 @@ test('an issue without fix versions inherits the fix versions of its parent, epi
         issue('PROJ-13', { type: 'Sub-task', parent: 'PROJ-14', fixVersions: [] }) // its parent has none either
     ];
     const parents = [issue('PROJ-1', { type: 'Epic', fixVersions: [v2] }), issue('PROJ-14', { type: 'Story', fixVersions: [] })];
-    const { fetchJiraIssuesDetails } = setUp(fakeAtlassian({ issues, parents }));
-    const details = await fetchJiraIssuesDetails(['PROJ-10', 'PROJ-11', 'PROJ-12', 'PROJ-13'], ['PROJ']);
-    const versions = Object.fromEntries(details.map(i => [i.key, i.fields.fixVersions.map(v => v.name)]));
+    const pullRequests = [10, 11, 12, 13].map(n => pullRequest(n, { title: `PROJ-${n} change` }));
+    const { buildProjectData } = setUp(fakeAtlassian({ pullRequests: { 'repo-a': [pullRequests] }, issues, parents }));
+    const data = await buildProjectData('P', project);
+    const versions = Object.fromEntries(data.jiraIssuesDetails.map(i => [i.key, i.fields.fixVersions.map(v => v.name)]));
     assert.deepEqual(versions, { 'PROJ-10': ['2.0'], 'PROJ-11': ['2.0'], 'PROJ-12': ['3.0'], 'PROJ-13': [], 'PROJ-1': ['2.0'], 'PROJ-14': [] });
 });
 
@@ -282,6 +251,44 @@ test('a failed parent request is logged and leaves the issues without their pare
     assert.deepEqual(logs.error, ['Error fetching parent issues: Request failed with status code 502']);
 });
 
+test('the parents are read page by page: more than a page of them all come back', async () => {
+    const keys = Array.from({ length: 120 }, (_, i) => `PROJ-${i + 1}`);
+    const pullRequests = keys.map((key, i) => pullRequest(i + 1, { title: `${key} change` }));
+    const issues = keys.map((key, i) => issue(key, { parent: `PROJ-${1001 + i}` }));
+    const parents = keys.map((key, i) => issue(`PROJ-${1001 + i}`, { type: 'Epic' }));
+    const { buildProjectData, requests } = setUp(fakeAtlassian({ pullRequests: { 'repo-a': [pullRequests] }, issues, parents }));
+    const data = await buildProjectData('P', project);
+    const parentUrls = urlsMatching(requests, /search\/jql/).filter(url => jqlOf(url).startsWith('key IN'));
+    assert.deepEqual(parentUrls.map(url => [new URL(url).searchParams.get('maxResults'), new URL(url).searchParams.get('nextPageToken')]), [['100', null], ['100', 'page-100']]);
+    assert.equal(data.jiraIssuesDetails.length, 240); // 120 linked issues, then their 120 parents
+});
+
+test('a rate-limit pause ends the build from a fetcher that otherwise goes on after a failure, without an error line', async () => {
+    const fetchers = {
+        parents: url => jqlOf(url)?.startsWith('key IN'),
+        boards: url => url.includes('projectKeyOrId=PROJ'),
+        'sprints of a board': url => /\/board\/1\/sprint/.test(url),
+        'sprint issues': url => url.includes('sprint%20%3D%207'),
+        'commit counts': url => url.includes('/commits?')
+    };
+    for (const [name, matches] of Object.entries(fetchers)) {
+        const { buildProjectData, logs } = setUp(fakeAtlassian({
+            pullRequests: { 'repo-a': [[pullRequest(1)]] },
+            issues: [issue('PROJ-1', { parent: 'PROJ-100' })],
+            parents: [issue('PROJ-100', { type: 'Epic' })],
+            boards: { PROJ: [{ id: 1, name: 'Board 1' }] },
+            sprints: { 1: [{ id: 7, name: 'Sprint 7' }] },
+            sprintIssues: { 7: ['PROJ-1'] },
+            intercept: url => {
+                if (matches(url)) throw new RateLimitError();
+                return undefined;
+            }
+        }));
+        await assert.rejects(buildProjectData('P', project), RateLimitError, name);
+        assert.deepEqual(logs.error, [], name);
+    }
+});
+
 test('the active sprints of every scrum board of each Jira project, once each, and their issues 100 at a time', async () => {
     const shared = { id: 7, name: 'Sprint 7', state: 'active' };
     const { buildProjectData, requests, logs } = setUp(fakeAtlassian({
@@ -352,7 +359,7 @@ test('a failed commits request leaves the count null and is logged; a failed pul
     const { buildProjectData, logs } = setUp(failing);
     const data = await buildProjectData('P', project);
     assert.deepEqual([data.pullRequests[0].commitsAhead, data.pullRequests[0].commitsBehind], [null, 0]);
-    assert.ok(logs.error.some(line => line.startsWith('Failed to fetch commits ahead for feat-1 compared to master in repo-a (HTTP 500')), logs.error);
+    assert.deepEqual(logs.error, ['Error fetching commits ahead for feat-1 compared to master in repo-a: Request failed with status code 500']);
 
     const broken = setUp(fakeAtlassian({ intercept: url => (url.includes('/pullrequests') ? new Response('', { status: 401 }) : undefined) }));
     await assert.rejects(broken.buildProjectData('P', project), { message: 'Request failed with status code 401' });
@@ -382,6 +389,33 @@ test('a Jira failure: the sprints of a project are skipped and logged, a failed 
     assert.deepEqual(orphans.logs.error, ['Error fetching orphaned issues: Request failed with status code 403']);
 });
 
+test('a boards response without a list skips the project\'s sprints and the build goes on', async () => {
+    const { buildProjectData, logs } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] },
+        boards: { OTHER: [{ id: 3, name: 'Board 3' }] },
+        sprints: { 3: [{ id: 9, name: 'Sprint 9' }] },
+        intercept: url => (url.includes('projectKeyOrId=PROJ') ? new Response('{"total":0}', { status: 200 }) : undefined)
+    }));
+    const data = await buildProjectData('P', project);
+    assert.deepEqual(data.sprints, [{ id: 9, name: 'Sprint 9' }]);
+    assert.deepEqual(logs.error, []);
+});
+
+test('a failed sprints request of one board skips that board only and is logged; a long Jira error body is cut at 200 characters', async () => {
+    const skipped = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] },
+        boards: { PROJ: [{ id: 1, name: 'Board 1' }, { id: 2, name: 'Board 2' }], OTHER: [{ id: 3, name: 'Board 3' }] },
+        sprints: { 1: [{ id: 7, name: 'Sprint 7' }], 2: [{ id: 8, name: 'Sprint 8' }], 3: [{ id: 9, name: 'Sprint 9' }] },
+        intercept: url => (url.includes('/board/2/sprint') ? new Response('', { status: 502 }) : undefined)
+    }));
+    const data = await skipped.buildProjectData('P', project);
+    assert.deepEqual(data.sprints, [{ id: 7, name: 'Sprint 7' }, { id: 9, name: 'Sprint 9' }]); // the other boards keep their sprints
+    assert.deepEqual(skipped.logs.error, ['Error fetching the sprints of board Board 2 (project PROJ): Request failed with status code 502']);
+
+    const long = setUp(fakeAtlassian({ intercept: url => (url.includes('In%20Review') ? new Response('x'.repeat(500), { status: 500 }) : undefined) }));
+    await assert.rejects(long.buildProjectData('P', project), { message: `Request failed with status code 500: ${'x'.repeat(200)}` });
+});
+
 test('a commits request that throws gives a null count; a failed Jira batch fails the build with the body; a failed parents fetch is logged and the build goes on', async () => {
     const thrown = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },
@@ -389,14 +423,14 @@ test('a commits request that throws gives a null count; a failed Jira batch fail
     }));
     const data = await thrown.buildProjectData('P', project);
     assert.deepEqual([data.pullRequests[0].commitsAhead, data.pullRequests[0].commitsBehind], [0, null]);
-    assert.deepEqual(thrown.logs.error, ['Error fetching commits ahead: socket hang up']);
+    assert.deepEqual(thrown.logs.error, ['Error fetching commits ahead for master compared to feat-1 in repo-a: socket hang up']);
 
     const batch = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },
         intercept: url => (url.includes('issueKey%20in') ? new Response('{"errorMessages":["bad jql"]}', { status: 400, statusText: 'Bad Request' }) : undefined)
     }));
-    await assert.rejects(batch.buildProjectData('P', project), { message: 'Request failed with status code: 400, status text: Bad Request, body: {"errorMessages":["bad jql"]}' });
-    assert.deepEqual(batch.logs.error, ['Error in fetchJiraIssuesDetails: Request failed with status code: 400, status text: Bad Request, body: {"errorMessages":["bad jql"]}']);
+    await assert.rejects(batch.buildProjectData('P', project), { message: 'Request failed with status code 400: {"errorMessages":["bad jql"]}' });
+    assert.deepEqual(batch.logs.error, ['Error in fetchJiraIssuesDetails: Request failed with status code 400: {"errorMessages":["bad jql"]}']);
 
     const parents = setUp(fakeAtlassian({
         pullRequests: { 'repo-a': [[pullRequest(1)]] },

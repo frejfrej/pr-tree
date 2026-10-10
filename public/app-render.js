@@ -4,14 +4,17 @@
  *
  * Nothing here depends on the filter state: the tree is rendered in full, and
  * the filter pass (app-filter.js) hides and counts on the rendered result.
- * The inline onclick handlers of the tree call the toggle functions that
- * app.js installs on window; the click of a repository or root branch is on
- * the whole header (the mouse), and the toggle button inside it, a real
- * button with a name and aria-expanded, reaches the same handler when the
- * keyboard activates it, since that click bubbles. toggleButton renders
- * every one of them, and tree-toggle.js keeps aria-expanded in step. The pull-request and issue links carry, as data
- * attributes, what the popovers show; initializePopovers reads them back, so
- * the writer and the reader of those attributes live together.
+ * The tree is rendered per repository, the stacked pull requests found through
+ * the destination map of that repository, so two repositories sharing a branch
+ * name never show each other's pull requests under it.
+ * The tree carries no inline handler: app.js installs one click listener on
+ * the pane (handleTreeClick in tree-toggle.js), which toggles the block a
+ * click lands on and leaves the links alone; toggleButton renders every
+ * chevron button, a real button with a name and aria-expanded, and
+ * tree-toggle.js keeps aria-expanded in step. The pull-request and issue
+ * links carry, as data attributes, what the popovers show;
+ * initializePopovers reads them back, so the writer and the reader of those
+ * attributes live together.
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
@@ -25,6 +28,8 @@
  * Nothing here touches the DOM at import time, so the rendering can be
  * unit-tested with node:test.
  */
+
+import { otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 
 /**
  * The text as HTML: the five characters that can end an attribute or start a
@@ -44,13 +49,30 @@ export function escapeHtml(text) {
 }
 
 // The chevron button of a collapsible block. `name` is the accessible name
-// (escaped); the chevrons are decoration. `onclick` is only given for the
-// pull-request button, the others rely on the click of their header.
-function toggleButton(name, onclick = '') {
-    return `<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle ${name}"${onclick ? ` onclick="${onclick}"` : ''}>
+// (escaped); the chevrons are decoration. No handler of its own: the click
+// listener of the pane toggles the block a click lands on.
+function toggleButton(name) {
+    return `<button type="button" class="toggle-button" aria-expanded="true" aria-label="Toggle ${name}">
                         <i class="fas fa-chevron-down" aria-hidden="true"></i>
                         <i class="fas fa-chevron-right" aria-hidden="true"></i>
                     </button>`;
+}
+
+/**
+ * The pull requests by destination branch name: the stacked pull requests of
+ * a pull request are those whose destination is its source branch. Built per
+ * repository, so two repositories sharing a branch name do not see each
+ * other's pull requests.
+ * @returns {Map<string, object[]>}
+ */
+export function pullRequestsByDestination(pullRequests) {
+    const byDestination = new Map();
+    for (const pullRequest of pullRequests) {
+        const destination = pullRequest.destination.branch.name;
+        if (!byDestination.has(destination)) byDestination.set(destination, []);
+        byDestination.get(destination).push(pullRequest);
+    }
+    return byDestination;
 }
 
 /**
@@ -58,7 +80,7 @@ function toggleButton(name, onclick = '') {
  * the pull requests nested under their parents, most recently updated first.
  * Ends with the hidden no-match message the filter pass shows when needed.
  */
-export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName) {
+export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName) {
     // Group pull requests by repository
     const pullRequestsByRepo = pullRequests.reduce((acc, pr) => {
         const repoName = pr.source.repository.name;
@@ -71,10 +93,11 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
+        const byDestination = pullRequestsByDestination(repoPullRequests);
         const pullRequestCount = repoPullRequests.length;
         html += `
             <div class="repository">
-                <div class="repository-header" onclick="toggleRepository(this)">
+                <div class="repository-header">
                     ${toggleButton(escapeHtml(repoName))}
                     <h2 class="repository-name">${escapeHtml(repoName)}</h2>
                     <div class="repo-pr-counter" title="${pullRequestCount} pull request${pullRequestCount !== 1 ? 's' : ''}">
@@ -82,7 +105,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
                     </div>
                 </div>
                 <div class="repository-content">
-                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName)}
+                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName)}
                 </div>
             </div>
         `;
@@ -108,12 +131,12 @@ export function findRootBranches(pullRequests) {
 }
 
 /** Total pull requests in a branch including all descendants */
-export function calculateTotalPullRequests(pullRequests, pullRequestsByDestination) {
+export function calculateTotalPullRequests(pullRequests, byDestination) {
     let total = pullRequests.length;
     for (const pullRequest of pullRequests) {
         const sourceBranch = pullRequest.source.branch.name;
-        if (pullRequestsByDestination.has(sourceBranch)) {
-            total += calculateTotalPullRequests(pullRequestsByDestination.get(sourceBranch), pullRequestsByDestination);
+        if (byDestination.has(sourceBranch)) {
+            total += calculateTotalPullRequests(byDestination.get(sourceBranch), byDestination);
         }
     }
     return total;
@@ -126,7 +149,7 @@ function getBranchUrl(branchName, pullRequest) {
 }
 
 // Function to recursively render the pull-requests
-function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
+function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
     let html = '';
     if (level === 0) {
         const rootBranches = findRootBranches(pullRequests);
@@ -134,16 +157,16 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
             const rootPullRequests = pullRequests.filter(pullRequest => rootBranch === pullRequest.destination.branch.name);
             // Sort by updated_on date in descending order (most recent first)
             rootPullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
-            const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, pullRequestsByDestination);
+            const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, byDestination);
 
             const branchUrl = getBranchUrl(rootBranch, rootPullRequests[0]);
 
             html += `
                 <div class="root-branch">
-                    <div class="root-branch-header" onclick="toggleRootBranch(this)">
+                    <div class="root-branch-header">
                         ${toggleButton(escapeHtml(rootBranch))}
                         <h3 class="root-branch-name">
-                            <a href="${escapeHtml(branchUrl)}" target="_blank" onclick="event.stopPropagation();" class="root-branch-link">
+                            <a href="${escapeHtml(branchUrl)}" target="_blank" class="root-branch-link">
                                 ${escapeHtml(rootBranch)}
                                 <i class="fas fa-external-link-alt external-link-icon"></i>
                             </a>
@@ -155,7 +178,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
                     <div class="root-branch-content">
             `;
             rootPullRequests.forEach(rootPullRequest => {
-                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, 1);
+                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, 1);
             });
             html += `
                     </div>
@@ -166,82 +189,68 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, pull
         // Sort by updated_on date in descending order (most recent first)
         pullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
         pullRequests.forEach(pullRequest => {
-            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level+1);
+            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level+1);
         });
     }
     return html;
 }
 
 /** How many pull requests are stacked, at any depth, on the given one */
-export function calculateDescendants(pullRequest, pullRequestsByDestination) {
+export function calculateDescendants(pullRequest, byDestination) {
     let count = 0;
     const sourceBranch = pullRequest.source.branch.name;
-    if (pullRequestsByDestination.has(sourceBranch)) {
-        const children = pullRequestsByDestination.get(sourceBranch);
+    if (byDestination.has(sourceBranch)) {
+        const children = byDestination.get(sourceBranch);
         count += children.length;
         for (const child of children) {
-            count += calculateDescendants(child, pullRequestsByDestination);
+            count += calculateDescendants(child, byDestination);
         }
     }
     return count;
 }
 
 // Function to recursively render a pull-request
-function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level = 0) {
+function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
-    let hasOtherParticipants = false;
-    let allOtherParticipantsApproved = true;
 
-    for (const participant of pullRequest.participants) {
-        // Exclude author and Rovo Dev agent
-        if (participant.user.account_id !== pullRequest.author.account_id &&
-            participant.user.display_name !== 'Rovo Dev') {
-            hasOtherParticipants = true;
-            if (participant.approved) {
-                approvedDetails += renderParticipant(participant.user, "approved");
-            } else if (participant.state === "changes_requested") {
-                requestedChangesDetails += renderParticipant(participant.user, "requestedChanges");
-                allOtherParticipantsApproved = false;
-            } else {
-                notYetDecidedDetails += renderParticipant(participant.user, "toReview");
-                allOtherParticipantsApproved = false;
-            }
+    // The reviewers: every participant but the author and Rovo Dev
+    const reviewers = otherReviewers(pullRequest);
+    for (const participant of reviewers) {
+        if (participant.approved) {
+            approvedDetails += renderParticipant(participant.user, "approved");
+        } else if (participant.state === "changes_requested") {
+            requestedChangesDetails += renderParticipant(participant.user, "requestedChanges");
+        } else {
+            notYetDecidedDetails += renderParticipant(participant.user, "toReview");
         }
     }
 
-    let noOtherParticipantsAlert = !hasOtherParticipants ?
+    let noOtherParticipantsAlert = reviewers.length === 0 ?
         `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
 
+    // The linked issues, in the order of the map; null for a pull request the map does not know
     const jiraIssues = jiraIssuesMap["" + pullRequest.id];
+    const linkedIssues = jiraIssues
+        ? jiraIssues.map(issue => jiraIssuesDetails.find(details => details.key === issue)).filter(issueDetails => issueDetails)
+        : null;
+    // The band: one computation with the filter index (pull-request-status.js)
+    const bandClass = statusClass(pullRequest, linkedIssues);
 
-    let statusClass = "";
     let alertsHtml = "";
     let jiraIssuesHtml = "";
-    if (jiraIssues) {
-        const jiraIssuesDetailsForPullRequest = jiraIssues.map(issue => jiraIssuesDetails.find(details => details.key === issue)).filter(issueDetails => issueDetails);
-        const jiraIssuesStatuses = jiraIssuesDetailsForPullRequest.map(issueDetails => issueDetails.fields.status.name);
-
-        if (jiraIssuesStatuses.includes("In Progress")) {
-            statusClass = "status-in-progress";
-        } else if (jiraIssuesStatuses.includes("In Review")) {
-            statusClass = hasOtherParticipants && allOtherParticipantsApproved ? "status-in-review-all-approved" : "status-in-review";
-        } else if (jiraIssuesStatuses.every(status => status === "Resolved" || status === "Closed")) {
-            statusClass = "status-resolved";
-        }
-
-        const uniqueJiraIssuesStatuses = new Set(jiraIssuesStatuses);
+    if (linkedIssues) {
+        const uniqueJiraIssuesStatuses = new Set(linkedIssues.map(issueDetails => issueDetails.fields.status?.name));
         let sameStatusIcon = uniqueJiraIssuesStatuses.size > 1 ?
             `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
-        jiraIssuesHtml = jiraIssuesDetailsForPullRequest.map(issueDetails => {
-            const priority = issueDetails.fields.priority;
+        jiraIssuesHtml = linkedIssues.map(issueDetails => {
             return `<li>${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
                        data-issue-key="${escapeHtml(issueDetails.key)}"
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
-                       ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status.name)})
+                       ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status?.name ?? 'no status')})
                     </a></li>`;
         }).join('');
 
@@ -258,14 +267,13 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     }
 
     const sourceBranch = pullRequest.source.branch.name;
-    const hasChildren = pullRequestsByDestination.has(sourceBranch);
-    const descendantCount = calculateDescendants(pullRequest, pullRequestsByDestination);
+    const hasChildren = byDestination.has(sourceBranch);
+    const descendantCount = calculateDescendants(pullRequest, byDestination);
     const isRootPullRequest = level === 1;
 
-    const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests', 'toggleChildren(this)') : '';
+    const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests') : '';
 
     // Combine both counters in a container
-    const spec = pullRequest.destination.commit?.hash + '..' + pullRequest.source.commit?.hash;
     const countersHtml = `
         <div class="counters-container">
             ${(isRootPullRequest || hasChildren) ? `
@@ -276,8 +284,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
             ` : ''}
             <div class="conflicts-counter"
                  data-id="conflicts_${pullRequest.id}"
-                 data-repo-name="${escapeHtml(pullRequest.source.repository.name)}"
-                 data-spec="${escapeHtml(spec)}">
+                 data-sync-key="${escapeHtml(syncKey(pullRequest))}">
             </div>
         </div>
     `;
@@ -286,7 +293,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
     const renderedDescription = pullRequest.rendered.description.html || 'No description provided.';
 
     let html = `
-        <div class="pull-request ${statusClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${pullRequest.id}">
+        <div class="pull-request ${bandClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${pullRequest.id}">
             ${countersHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">
@@ -329,7 +336,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, pullRe
         </div>
     `;
     if (hasChildren) {
-        html += `<div class="children">${renderPullRequests(pullRequestsByDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, pullRequestsByDestination, jiraSiteName, level + 1)}</div>`;
+        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level + 1)}</div>`;
     }
     return html;
 }
@@ -391,7 +398,7 @@ export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } 
     const count = issues.length;
     return `
         <div class="repository orphaned-issues">
-            <div class="repository-header" onclick="toggleRepository(this)">
+            <div class="repository-header">
                 ${toggleButton('Jira issues in review without a pull request')}
                 <h2 class="repository-name"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Jira issues in review without a pull request</h2>
                 <div class="repo-pr-counter" title="${count} issue${count !== 1 ? 's' : ''}">

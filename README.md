@@ -4,7 +4,7 @@
 * Application layout
     * A top banner shows the app name, the project selector, the refresh status, the theme toggle, the help and GitHub links and the version
     * Filters live in a left sidebar that stays in place while the pull-request tree scrolls
-    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser; `/` focuses the search box
+    * The sidebar can be hidden with the banner button or the `F` key; the choice is remembered by the browser; `/` or Ctrl+F (Cmd+F on macOS) focuses the search box
     * On windows narrower than 900px the sidebar becomes a drawer over the tree
     * The badge on the sidebar button shows how many filters are active; "Clear filters" resets them all
     * Repository and branch headers stick to the top of the tree while scrolling
@@ -26,7 +26,7 @@
     * If the pull request is open but related issues are closed or in review
 * Provides a text filter
     * Keeps the pull requests whose title, source branch name or linked issue keys contain every word typed (case-insensitive)
-    * `/` focuses the search box, Escape clears it
+    * `/` or Ctrl+F (Cmd+F on macOS) focuses the search box, Escape clears it; Ctrl+F pressed again from the box opens the browser's own find
 * Provides an epic filter
     * Keeps the pull requests whose linked issues belong to the selected epics; a pull request linked to a sub-task follows the epic of its parent story
 * Provides a story filter
@@ -83,6 +83,12 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.11.0
+    * More than 50 parent issues (epics and stories named by the linked and orphaned issues) no longer lose the ones past the 50th: the parents are read page by page, like the other Jira searches
+    * A pull request linking an issue Jira returns without a status (a key of a project outside the configured ones, fetched only as the parent of another linked issue) no longer stops the whole tree from rendering: it shows "(no status)"
+    * An HTTP 429 in the middle of a load now ends it (the page is told requests are paused) instead of producing data without its sprints, parents or commit counts, served for the whole 10-minute pause
+    * The response of `/api/pull-requests/:project` no longer carries `pullRequestsByDestination`: every pull request was serialized twice, once in the list and once under its destination branch (on the fixture data, SECOLLAB's response goes from 1.62 MB to 0.91 MB, OSLC's from 0.35 MB to 0.20 MB); the tree groups the pull requests per repository itself, so two repositories sharing a branch name no longer show each other's pull requests under it (#42)
+    * No behaviour change: one filter registry drives the filter state, the URL parameters, the option lists (built by the filter index now) and the filter controls; the multi-select builds its own markup; the filter pass reads the status band and the SYNC result of a pull request from the data instead of the rendered tree; the server and the fixture generator share one assembly of a project's data (`project-assembly.mjs`); the Atlassian requests of the project data go through one helper per API (a failed Jira request now reports Jira's error message in the log, and a board whose sprints cannot be fetched is logged instead of skipped silently); the tree has one click listener instead of inline handlers (#42)
 * Version 2.10.3
     * `sync-cache.json` drops the conflict results computed under another version of the conflict rule (older or newer) the next time it is written, instead of carrying them for 90 days (#51)
     * Light theme: the OK and SYNC badges are a darker green and red (4.7:1 and 5.2:1 with their white text, the WCAG AA minimum being 4.5:1; they were at 2.7:1 and 3.2:1) and the `?` and `!` badges a slightly darker grey; the three badges now have fill tokens of their own, so the status and muted-text colours no longer drive them; the dark theme is unchanged (#50)
@@ -140,7 +146,7 @@
     * SYNC follows the URL through Back and Forward while its statuses are loaded
 * Version 2.4.0
     * Text filter at the top of the sidebar: matches the pull-request title, the source branch name and the linked issue keys, every word typed must match
-        * `/` focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean
+        * `/` or Ctrl+F focuses it, Escape clears it, restored from the URL (`q`), the URL is replaced while typing so the history stays clean
     * Epic filter: pull requests of the selected epics, resolved through the parent story when the pull request is linked to a sub-task
         * The server now fetches the summary, type and parent of parent issues (previously their fix versions only)
         * Fixture data carries epics

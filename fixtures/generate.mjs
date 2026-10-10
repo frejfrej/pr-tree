@@ -9,10 +9,13 @@
  * a repository shared by two projects (products.web.oslc) is consistent.
  *
  * Everything is generated from a seeded PRNG: the output is stable across
- * runs, which keeps the server's dataHash stable and the smart reload quiet.
+ * runs, which keeps the dataHash stable and the smart reload quiet. The
+ * response is assembled by project-assembly.mjs, the module the server uses
+ * on the real Atlassian responses: one shape, one hash.
  */
 
 import crypto from 'crypto';
+import { createJiraIssuesMap, missingParentKeys, assembleProjectData } from '../project-assembly.mjs';
 
 export const workspace = 'sodius';
 export const jiraSiteName = 'sodiuswillert';
@@ -593,13 +596,10 @@ function repositoryData(repoName, options) {
     return repositoryCache.get(cacheKey);
 }
 
-function extractJiraIssues(title, jiraRegex) {
-    return title.match(jiraRegex) || [];
-}
-
 /**
  * Builds the /api/pull-requests/:project response for a project, in the exact
- * shape produced by buildProjectData() in index.mjs.
+ * shape produced by buildProjectData() in project-data.mjs, through the same
+ * assembleProjectData.
  */
 export function generateProjectData(projectName, projectConfig, { scale = 1, chainDepth = deepChain.depth } = {}) {
     const random = createRandom(`project-${projectName}-${scale}`);
@@ -617,12 +617,9 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
         }
     }
 
-    // Same regex-based extraction as the server: only keys matching the project regex count
-    const jiraIssuesMap = {};
-    for (const pullRequest of pullRequests) {
-        jiraIssuesMap[pullRequest.id] = extractJiraIssues(pullRequest.title, projectConfig.jiraRegex);
-    }
-    const allJiraIssues = Object.values(jiraIssuesMap).flat();
+    // Same extraction as the server: only keys matching the project regex count
+    const jiraIssuesMap = createJiraIssuesMap(pullRequests, projectConfig.jiraRegex);
+    const allJiraIssues = [...jiraIssuesMap.values()].flat();
 
     // Issue details only for the configured Jira projects (the JQL filters on project)
     const jiraIssuesDetails = [];
@@ -673,14 +670,13 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
         });
     }
 
-    // Parents (stories of sub-tasks, epics of standard issues) are fetched by the
-    // server with their summary, type, fix versions and parent
-    for (const issue of [...jiraIssuesDetails, ...orphanedIssues]) {
-        const parentKey = issue.fields.parent?.key;
-        if (parentKey && !seen.has(parentKey) && knownIssues.has(parentKey)) {
-            seen.add(parentKey);
-            const parent = knownIssues.get(parentKey);
-            jiraIssuesDetails.push({
+    // The parents the server fetches for the linked and orphaned issues (summary,
+    // type, fix versions, parent), taken from the issues known here
+    const parents = missingParentKeys([...jiraIssuesDetails, ...orphanedIssues])
+        .filter(key => knownIssues.has(key))
+        .map(key => {
+            const parent = knownIssues.get(key);
+            return {
                 id: parent.id,
                 key: parent.key,
                 self: parent.self,
@@ -690,31 +686,15 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
                     fixVersions: parent.fields.fixVersions,
                     ...(parent.fields.parent ? { parent: parent.fields.parent } : {})
                 }
-            });
-        }
-    }
-    // Sub-tasks inherit the fix versions of their parent (the orphaned issues too)
-    for (const issue of [...jiraIssuesDetails, ...orphanedIssues]) {
-        if (issue.fields.parent && (!issue.fields.fixVersions || issue.fields.fixVersions.length === 0)) {
-            const parent = jiraIssuesDetails.find(candidate => candidate.key === issue.fields.parent.key);
-            if (parent?.fields.fixVersions?.length > 0) {
-                issue.fields.fixVersions = parent.fields.fixVersions;
-            }
-        }
-    }
-
-    const pullRequestsByDestination = {};
-    for (const pullRequest of pullRequests) {
-        const destination = pullRequest.destination.branch.name;
-        (pullRequestsByDestination[destination] ??= []).push(pullRequest);
-    }
+            };
+        });
 
     // Sprints: the linked issues of the project are spread over the sprints,
     // the remaining slots are filled with issues that have no pull request
     const sprints = sprintDefinitions.map(({ id, name }) => ({ id, name }));
     const counts = sprintIssueCounts[projectName] || {};
     const sprintIssues = {};
-    const linkedKeys = jiraIssuesDetails.map(issue => issue.key).filter(key => key.split('-')[0] !== 'WEBOSLC');
+    const linkedKeys = [...jiraIssuesDetails, ...parents].map(issue => issue.key).filter(key => key.split('-')[0] !== 'WEBOSLC');
     for (const sprint of sprintDefinitions) {
         const target = Math.round((counts[sprint.id] ?? 0) * scale);
         const keys = [];
@@ -733,35 +713,10 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
         sprintIssues[sprint.id] = keys;
     }
 
-    const data = {
-        pullRequests,
-        jiraIssuesMap,
-        jiraIssuesDetails,
-        pullRequestsByDestination,
-        jiraSiteName,
-        sprints,
-        sprintIssues,
-        orphanedIssues
-    };
     return {
         lastRefreshTime: new Date().toISOString(),
-        ...data,
-        dataHash: calculateHash(data)
+        ...assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, jiraSiteName })
     };
-}
-
-// Same hash as buildProjectData() in index.mjs, so the smart reload behaves as in production
-function calculateHash(data) {
-    const hash = crypto.createHash('md5');
-    hash.update(JSON.stringify({
-        pullRequests: data.pullRequests,
-        jiraIssuesMap: data.jiraIssuesMap,
-        jiraIssuesDetails: data.jiraIssuesDetails,
-        sprints: data.sprints,
-        sprintIssues: data.sprintIssues,
-        orphanedIssues: data.orphanedIssues
-    }));
-    return hash.digest('hex');
 }
 
 const conflictFiles = [

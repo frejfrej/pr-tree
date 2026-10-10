@@ -4,7 +4,8 @@
  * to the SYNC filter, never automatically (the server computes them, which is
  * expensive); they are painted onto the conflicts counters of the rendered
  * tree and kept, so an automatic re-render repaints them without a new fetch.
- * The SYNC filter (app-filter.js) relies on the painted badges.
+ * The SYNC filter (app-filter.js) reads the loaded statuses, which app.js
+ * passes to the filter pass (loadedSyncStatuses).
  *
  * The module owns the loaded statuses and the SYNC controls. The selected
  * project and the selected SYNC filter belong to app.js and are read through
@@ -51,6 +52,11 @@ export function syncStatusesLoaded() {
     return Boolean(currentSyncStatuses);
 }
 
+/** The statuses of the last load, by "repo/destHash..sourceHash"; null while none is loaded */
+export function loadedSyncStatuses() {
+    return currentSyncStatuses ? currentSyncStatuses.statuses : null;
+}
+
 /**
  * Forgets the loaded statuses, a failed load and a load in flight: they belong
  * to the project being left (the response of the load in flight is dropped
@@ -81,7 +87,7 @@ async function loadSyncStatuses() {
     syncStatusLoading = true;
     updateSyncControls();
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
-        if (!counter.dataset.spec.includes('undefined')) {
+        if (!counter.dataset.syncKey.includes('undefined')) {
             counter.innerHTML = '<div class="conflicts-spinner"></div>';
         }
     });
@@ -132,9 +138,9 @@ export function conflictsTitle(files, reason) {
 /** Renders the stored SYNC statuses onto the conflicts counters: OK, SYNC, or ? with the reason */
 export function applySyncStatuses() {
     document.querySelectorAll('.conflicts-counter').forEach(counter => {
-        const { repoName, spec } = counter.dataset;
-        if (spec.includes('undefined')) {
-            counter.replaceChildren(badge('conflicts-error', `Invalid spec provided ${spec}`, '!'));
+        const { syncKey } = counter.dataset;
+        if (syncKey.includes('undefined')) {
+            counter.replaceChildren(badge('conflicts-error', `Invalid spec provided ${syncKey}`, '!'));
             return;
         }
         if (!currentSyncStatuses) {
@@ -142,7 +148,7 @@ export function applySyncStatuses() {
             return;
         }
 
-        const status = currentSyncStatuses.statuses[`${repoName}/${spec}`];
+        const status = currentSyncStatuses.statuses[syncKey];
         if (!status) {
             counter.replaceChildren(badge('conflicts-error', 'SYNC status unknown - use the SYNC load button to refresh', '?'));
         } else if (status.error) {
