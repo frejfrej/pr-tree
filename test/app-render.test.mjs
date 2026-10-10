@@ -158,7 +158,17 @@ test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion
     assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses">'), 2);
     assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants">'), 1);
     assert.ok(html.includes('href="https://bitbucket.org/ws/repo-one/branch/release%2F2026.09"'));
-    assert.ok(html.includes('data-spec="undefined..s6"'));
+    assert.ok(html.includes('data-sync-key="repo-one/undefined..s6"'));
+});
+
+test('renderRepositories renders a linked issue that is a parent-only entry, without a status', () => {
+    // A key the regex accepts but the Jira projects exclude, fetched only as the parent of another
+    // linked issue: the details hold it without a status (before, the render threw on status.name)
+    const linked = pullRequest(9, { source: 'feat/p', destination: 'main' });
+    const details = [{ key: 'WEB-1', fields: { summary: 'Cross-project epic', issuetype: { name: 'Epic' } } }];
+    const html = renderRepositories([linked], { '9': ['WEB-1'] }, details, 'site');
+    assert.ok(html.includes('WEB-1 (no status)'));
+    assert.equal(count(html, 'title="JIRA issues have different statuses"'), 0);
 });
 
 test('renderRepositories renders the issues, participants, commit badges and alerts of a pull request', () => {
@@ -179,8 +189,7 @@ test('renderRepositories writes what the popovers and the SYNC badges read back'
     const html = renderSample();
     assert.ok(html.includes(`data-rendered-title="${encodeURIComponent('<p>PR 1</p>')}"`));
     assert.ok(html.includes(`data-rendered-description="${encodeURIComponent('No description provided.')}"`));
-    assert.ok(html.includes('data-repo-name="repo-one"'));
-    assert.ok(html.includes('data-spec="d1..s1"'));
+    assert.ok(html.includes('data-sync-key="repo-one/d1..s1"')); // the key of a SYNC statuses response (syncKey)
 });
 
 test('renderRepositories renders every pull request of the fixture projects once, deep stack included', () => {

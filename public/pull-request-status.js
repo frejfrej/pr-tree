@@ -2,8 +2,8 @@
  * The status band of a pull request: the class the tree paints on it, from
  * the statuses of its linked issues and the state of its reviews. The render
  * (app-render.js) and the filter index (app-filter.js) both call it, so the
- * band painted and the band the attention rule reads are one computation.
- * Pure: no DOM.
+ * band painted and the band the attention rule reads are one computation;
+ * the same goes for its reviewers and its SYNC key. Pure: no DOM.
  */
 
 // The Atlassian agent reviews pull requests too: never a reviewer to count,
@@ -15,6 +15,15 @@ export function otherReviewers(pullRequest) {
     return pullRequest.participants.filter(participant =>
         participant.user.uuid !== pullRequest.author.uuid &&
         participant.user.display_name !== atlassianAgent);
+}
+
+/**
+ * The key of a pull request in a SYNC statuses response,
+ * "repo/destHash..sourceHash" (the server's key, sync-statuses.mjs); a
+ * missing hash reads "undefined", a key no response holds (the ! badge)
+ */
+export function syncKey(pullRequest) {
+    return `${pullRequest.source?.repository?.name}/${pullRequest.destination?.commit?.hash}..${pullRequest.source?.commit?.hash}`;
 }
 
 /**

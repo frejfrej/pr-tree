@@ -29,7 +29,7 @@
  * unit-tested with node:test.
  */
 
-import { otherReviewers, statusClass } from './pull-request-status.js';
+import { otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 
 /**
  * The text as HTML: the five characters that can end an attribute or start a
@@ -241,7 +241,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     let alertsHtml = "";
     let jiraIssuesHtml = "";
     if (linkedIssues) {
-        const uniqueJiraIssuesStatuses = new Set(linkedIssues.map(issueDetails => issueDetails.fields.status.name));
+        const uniqueJiraIssuesStatuses = new Set(linkedIssues.map(issueDetails => issueDetails.fields.status?.name));
         let sameStatusIcon = uniqueJiraIssuesStatuses.size > 1 ?
             `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
@@ -250,7 +250,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                        data-issue-key="${escapeHtml(issueDetails.key)}"
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
-                       ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status.name)})
+                       ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status?.name ?? 'no status')})
                     </a></li>`;
         }).join('');
 
@@ -274,7 +274,6 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     const toggleButtonHtml = hasChildren ? toggleButton('the stacked pull requests') : '';
 
     // Combine both counters in a container
-    const spec = pullRequest.destination.commit?.hash + '..' + pullRequest.source.commit?.hash;
     const countersHtml = `
         <div class="counters-container">
             ${(isRootPullRequest || hasChildren) ? `
@@ -285,8 +284,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
             ` : ''}
             <div class="conflicts-counter"
                  data-id="conflicts_${pullRequest.id}"
-                 data-repo-name="${escapeHtml(pullRequest.source.repository.name)}"
-                 data-spec="${escapeHtml(spec)}">
+                 data-sync-key="${escapeHtml(syncKey(pullRequest))}">
             </div>
         </div>
     `;
