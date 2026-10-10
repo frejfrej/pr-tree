@@ -65,6 +65,10 @@ test('the app and the API still answer', async () => {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-type'), /^text\/html/);
+    // Every select of the app page has an accessible name: the .filter-label spans are not labels (#62)
+    const selects = (await page.text()).match(/<select\b[^>]*>/g);
+    assert.ok(selects.length >= 3, 'the project, Work and SYNC selects');
+    for (const select of selects) assert.match(select, /\baria-label="[^"]+"/, select);
     const version = await (await fetch(`${baseUrl}/api/version`)).json();
     const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
     assert.equal(version.version, packageJson.version);
