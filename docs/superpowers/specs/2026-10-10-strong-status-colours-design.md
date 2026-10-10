@@ -33,12 +33,12 @@ filter.
    |---|---|---|---|
    | `--success-strong` | #1F845A | 4.66:1 | `var(--success-color)`, 8.16:1 |
    | `--error-strong` | #C9372C | 5.16:1 | `var(--error-color)`, 5.83:1 |
-   | `--attention-strong` | #C9372C | 5.16:1 | `var(--attention-color)`, 6.07:1 |
+   | `--attention-strong` | `var(--error-strong)` | 5.16:1 | `var(--attention-color)`, 6.07:1 |
    | `--warning-strong` | #946F00 | 4.63:1 | `var(--warning-color)`, 10.57:1 |
    | `--neutral-strong` | #626F86 | 5.08:1 | `var(--text-muted)`, 5.70:1 |
 
    The light values of success, error and neutral are those of the SYNC badge
-   tokens (Atlassian's green, red and neutral 700); attention takes the error
+   tokens (Atlassian's green, red and neutral 700); attention refers to the error
    value, as the plain attention and error colours are already the same
    #FF5630. Warning is Atlassian's yellow 700: 4.5:1 is more than the 3:1 an
    icon needs, but every strong token then obeys the same rule. The dark
@@ -48,16 +48,19 @@ filter.
 2. **The three SYNC badge tokens are removed**: `.conflicts-ok` uses
    `--success-strong`, `.conflicts-count` `--error-strong`, `.conflicts-error`
    `--neutral-strong`. Same values in both themes as before.
-3. **Rules**: `.header-badge` is filled with `--attention-strong`; the two
+3. **Rules**: `.header-badge` is filled with `--attention-strong`, with a
+   1.5px ring in `--header-text`: the fill is 1.32:1 against the light banner
+   #0052CC (#FF5630 was 2.15:1), the ring 6.82:1 light and 8.95:1 dark; the
+   `.state-message.error` icon takes `--error-strong` (#FF5630 is 2.91:1 on
+   `--background-color`, where it sits; #C9372C is 4.73:1); the two
    `.needs-attention` links are coloured `--attention-strong`; the commit
    badges take `--success-strong` / `--error-strong` for their text and their
    border (one colour per badge; a pale border round dark text looked
    washed out); `.sync-warning` takes `--warning-strong`; the approved and
    changes-requested reviewer icons take `--success-strong` /
    `--error-strong`.
-4. **The plain status colours stay** for the status borders of the cards,
-   the warnings box border and the 32px error icon of the state messages,
-   where they are not under text. (The status borders of the cards are below
+4. **The plain status colours stay** for the status borders of the cards
+   and the warnings box border, where they are not under text. (The status borders of the cards are below
    3:1 in the light theme too; they are not in the issue, and the band is
    doubled by the status text of each linked issue.)
 5. **A test** (`test/styles.test.mjs`) reads the two token blocks of
@@ -79,7 +82,7 @@ filter.
   links, the `-n` badges and the changes-requested icons a darker red, the
   `+n` badges and the approved icons a darker green, the SYNC warning icon a
   darker amber. The SYNC badges look as they did.
-- Dark theme: identical to today.
+- Dark theme: identical to today, but for the ring of the active-filter count.
 
 ## 5. Code structure
 

@@ -28,7 +28,7 @@
        which the status colours above miss; those stay for borders */
     --success-strong: #1F845A;
     --error-strong: #C9372C;
-    --attention-strong: #C9372C;
+    --attention-strong: var(--error-strong);
     --warning-strong: #946F00;
     --neutral-strong: #626F86;
     --on-accent-text: #FFFFFF;
@@ -198,6 +198,8 @@ input {
     padding: 0 4px;
     border-radius: 8px;
     background-color: var(--attention-strong);
+    /* The fill is as dark as the banner it sits on: the ring keeps its edge visible */
+    box-shadow: 0 0 0 1.5px var(--header-text);
     color: var(--on-accent-text);
     font-size: 11px;
     font-weight: 700;
@@ -1288,7 +1290,7 @@ select:disabled {
 }
 
 .state-message.error i {
-    color: var(--error-color);
+    color: var(--error-strong);
 }
 
 /* 11. Responsive: below 900px the sidebar is a drawer over the tree -------- */
