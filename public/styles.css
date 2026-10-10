@@ -23,11 +23,14 @@
     --error-color: #FF5630;
     --in-review-color: #0065FF;
     --danger-bg: #FFEBE6;
-    /* Fills of the SYNC badges: 4.5:1 or more with --on-accent-text (WCAG AA
-       for their 12px bold text), which the status colours above miss */
-    --badge-ok-bg: #1F845A;
-    --badge-sync-bg: #C9372C;
-    --badge-neutral-bg: #626F86;
+    /* Status colours for text, icons and fills under --on-accent-text: 4.5:1
+       or more against --surface-color and with --on-accent-text (WCAG AA),
+       which the status colours above miss; those stay for borders */
+    --success-strong: #1F845A;
+    --error-strong: #C9372C;
+    --attention-strong: var(--error-strong);
+    --warning-strong: #946F00;
+    --neutral-strong: #626F86;
     --on-accent-text: #FFFFFF;
     --shadow-color: rgba(9, 30, 66, 0.15);
     --focus-ring: rgba(0, 82, 204, 0.25);
@@ -68,9 +71,11 @@
     --error-color: #F87168;
     --in-review-color: #579DFF;
     --danger-bg: #42221F;
-    --badge-ok-bg: #4BCE97;
-    --badge-sync-bg: #F87168;
-    --badge-neutral-bg: #8C9BAB;
+    --success-strong: var(--success-color);
+    --error-strong: var(--error-color);
+    --attention-strong: var(--attention-color);
+    --warning-strong: var(--warning-color);
+    --neutral-strong: var(--text-muted);
     --on-accent-text: #1D2125;
     --shadow-color: rgba(0, 0, 0, 0.5);
     --focus-ring: rgba(87, 157, 255, 0.35);
@@ -192,7 +197,9 @@ input {
     height: 16px;
     padding: 0 4px;
     border-radius: 8px;
-    background-color: var(--attention-color);
+    background-color: var(--attention-strong);
+    /* The fill is as dark as the banner it sits on: the ring keeps its edge visible */
+    box-shadow: 0 0 0 1.5px var(--header-text);
     color: var(--on-accent-text);
     font-size: 11px;
     font-weight: 700;
@@ -494,7 +501,7 @@ select:disabled {
 
 .sync-warning {
     flex-shrink: 0;
-    color: var(--warning-color);
+    color: var(--warning-strong);
     cursor: help;
 }
 
@@ -898,7 +905,7 @@ select:disabled {
 }
 
 .pull-request.needs-attention .pull-request-link {
-    color: var(--attention-color);
+    color: var(--attention-strong);
 }
 
 .pull-request-header {
@@ -937,8 +944,8 @@ select:disabled {
     font-size: 12px;
 }
 
-.icon.fa-check-circle { color: var(--success-color); }
-.icon.fa-times-circle { color: var(--error-color); }
+.icon.fa-check-circle { color: var(--success-strong); }
+.icon.fa-times-circle { color: var(--error-strong); }
 .icon.fa-question-circle { color: var(--primary-color); }
 .icon.fa-user { color: var(--text-color); }
 
@@ -1027,14 +1034,14 @@ select:disabled {
     justify-content: center;
     padding: 2px 8px;
     border-radius: 12px;
-    background-color: var(--badge-sync-bg);
+    background-color: var(--error-strong);
     color: var(--on-accent-text);
     font-size: 12px;
     font-weight: bold;
 }
 
 .conflicts-ok {
-    background-color: var(--badge-ok-bg);
+    background-color: var(--success-strong);
 }
 
 .conflicts-spinner {
@@ -1053,7 +1060,7 @@ select:disabled {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background-color: var(--badge-neutral-bg);
+    background-color: var(--neutral-strong);
     color: var(--on-accent-text);
     font-size: 12px;
     font-weight: bold;
@@ -1072,13 +1079,13 @@ select:disabled {
 }
 
 .commit-badge-ahead {
-    border-color: var(--success-color);
-    color: var(--success-color);
+    border-color: var(--success-strong);
+    color: var(--success-strong);
 }
 
 .commit-badge-behind {
-    border-color: var(--error-color);
-    color: var(--error-color);
+    border-color: var(--error-strong);
+    color: var(--error-strong);
 }
 
 .commit-badge i {
@@ -1111,7 +1118,7 @@ select:disabled {
 }
 
 .orphaned-issue.needs-attention .jira-issue-link {
-    color: var(--attention-color);
+    color: var(--attention-strong);
 }
 
 .orphaned-issue-unassigned {
@@ -1283,7 +1290,7 @@ select:disabled {
 }
 
 .state-message.error i {
-    color: var(--error-color);
+    color: var(--error-strong);
 }
 
 /* 11. Responsive: below 900px the sidebar is a drawer over the tree -------- */

@@ -83,6 +83,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 2.11.2
+    * Light theme: the highlighted links of the pull requests and orphaned issues that need attention, the active-filter count (now ringed in the banner's text colour, so it stands out from the blue banner), the `-n` commit badges, the changes-requested reviewer icons and the icon of a failed load are a darker red, the `+n` commit badges and the approved reviewer icons a darker green, and the SYNC warning icon a darker amber, so each one reaches the WCAG AA contrast with its background (4.5:1; they were between 1.9:1 and 3.2:1); the SYNC badges and the colours of the dark theme are unchanged, the ring of the active-filter count is drawn in both themes (#76)
 * Version 2.11.1
     * Every filter of the sidebar is named by its visible label: the Work and SYNC labels are real labels (a click on them focuses the select once it is enabled: Work with a participant selected, SYNC once its statuses are loaded), and the Sprint, Fix version, Epic, Story and Participants dropdowns are announced as buttons with their label, their selection and whether they are open ("Sprint, Show all, collapsed"); before, a screen reader announced them as "Show all" with no role (#62)
     * The SYNC load button is announced as "Load SYNC status" instead of "Load"
