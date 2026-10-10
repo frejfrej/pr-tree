@@ -505,6 +505,7 @@ The application integrates with a Jira workflow where:
 - **Blue**: Informational badges (review status)
 - **Yellow**: Priority indicators
 - **Gray**: Neutral/inactive state, SYNC not checked
+- The OK, SYNC and `?`/`!` badges are filled with dedicated colour tokens whose contrast with their text is at least 4.5:1 (WCAG AA) in both themes
 
 #### Status Badges
 - Rounded corners with 4px radius
