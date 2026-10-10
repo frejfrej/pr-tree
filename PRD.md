@@ -443,7 +443,7 @@ The application integrates with a Jira workflow where:
 **Cache TTLs:**
 - Project data: 120 seconds
 - Projects list: 300 seconds
-- Conflicts: kept on disk (`sync-cache.json`) across restarts; a result older than 90 days, or computed under an older version of the conflict rule, is dropped the next time the file is written
+- Conflicts: kept on disk (`sync-cache.json`) across restarts; a result older than 90 days, or computed under another version of the conflict rule, is dropped the next time the file is written
 
 **Hash-Based Change Detection:**
 - Compute MD5 hash of PR + Jira data

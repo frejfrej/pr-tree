@@ -1,4 +1,4 @@
-import { conflictRuleVersion, decideFromDiffstat, parseUnifiedDiff, conflictingFiles } from './conflicts.mjs';
+import { decideFromDiffstat, parseUnifiedDiff, conflictingFiles } from './conflicts.mjs';
 import { RateLimitError, failureReason } from './atlassian-fetch.mjs';
 
 /**
@@ -16,16 +16,6 @@ export const filesPerPatchRequest = 20;
 // More files to check than this skips the patches: the pull request is not
 // checked, or only partly when the diffstats already proved a conflict
 export const maxFilesToCheck = 100;
-
-// The keys of sync-cache.json start with the version of the conflict rule: a
-// result computed under another version is never looked up again, and the
-// server drops it at the next write (the keep option of openSyncCache)
-const cacheKeyPrefix = `${conflictRuleVersion}:`;
-
-/** Whether a sync-cache.json key was stored under the current conflict rule */
-export function isCurrentCacheKey(key) {
-    return key.startsWith(cacheKeyPrefix);
-}
 
 // Serializes conflict computations: one SYNC load asks for every pull request of
 // a project at once, and each computation makes many Bitbucket calls of its own.
@@ -64,7 +54,7 @@ function checkPatch(basePath, patch, diffstat) {
  * @param {string} options.workspace - the Bitbucket workspace slug
  * @param {string} options.bbAuth - the Base64 credentials of the Authorization header
  * @param {{ error: (message: string) => void, performance: (message: string) => void }} options.log - the error and performance logs
- * @param {ReturnType<import('./sync-cache.mjs').openSyncCache>} options.syncCache - the opened sync-cache.json
+ * @param {ReturnType<import('./sync-cache.mjs').openSyncCache>} options.syncCache - the opened sync-cache.json, keyed by "repo/destHash..sourceHash" (opened with the current conflictRuleVersion)
  * @param {number} [options.timeoutMs=30000] - the timeout of one request
  * @param {number} [options.maxConcurrent=4] - conflict computations at once
  * @param {() => number} [options.now] - clock, for the durations logged
@@ -205,15 +195,13 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
             }
 
             const key = `${repoName}/${spec}`;
-            // A result stored under another version of the conflict rule is not reused
-            const cacheKey = cacheKeyPrefix + key;
             try {
-                let result = syncCache.get(cacheKey);
+                let result = syncCache.get(key);
                 if (!result) {
                     computed++;
                     result = await conflictsLimiter(() => computeConflicts(repoName, spec));
                     // Complete results only: a failure or a partial SYNC is computed again at the next load
-                    if (!result.error && !result.reason) syncCache.set(cacheKey, result);
+                    if (!result.error && !result.reason) syncCache.set(key, result);
                 }
                 statuses[key] = result;
             } catch (error) {
