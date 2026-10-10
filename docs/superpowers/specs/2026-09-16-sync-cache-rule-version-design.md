@@ -76,3 +76,27 @@ survive the save) and passes with the change; every other test unchanged.
 
 Branch `claude/sync-cache-rule-version` from `claude/sync-select-name` (PR
 #71), one pull request stacked on #71.
+
+## 8. Revision after the review of PR #72 (2026-10-10)
+
+Decisions 1 and 3 are replaced; decision 2 stands.
+
+- **`ruleVersion` instead of `keep`.** The review found the key format split
+  across modules: `sync-statuses.mjs` built the prefixed keys and exported a
+  predicate that `index.mjs` had to remember to pass back, and any other
+  caller of `openSyncCache` that forgot it silently kept every entry.
+  `openSyncCache(filePath, { ruleVersion, ... })` now takes the version
+  (required: a `TypeError` without an integer), puts `<ruleVersion>:` in front
+  of every key in `get` and `set`, and drops the entries of any other version
+  at save. `isCurrentCacheKey`, the `keep` option and the prefix in
+  `sync-statuses.mjs` are gone; callers use `repo/dest..source`, and
+  `index.mjs` passes `conflictRuleVersion`.
+- **Another version, older or newer.** The code always dropped every version
+  but the current one, while the README, CLAUDE.md, PRD.md and a comment said
+  "older". Kept, the docs corrected: a result of a newer rule is of no use to
+  an older checkout. The cost is known: the file is git-ignored and shared by
+  every checkout of the directory, so going back and forth between branches at
+  different rule versions recomputes at each switch.
+- **`size` counts the current version.** Now that the module knows the
+  versions, `size` (and so the startup line "N conflict results loaded")
+  counts the results it can return, not the dead entries still in the file.

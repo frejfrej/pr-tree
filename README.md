@@ -84,7 +84,7 @@
 
 ## Changelog:
 * Version 2.10.3
-    * `sync-cache.json` drops the conflict results computed under an older version of the conflict rule the next time it is written, instead of carrying them for 90 days (#51)
+    * `sync-cache.json` drops the conflict results computed under another version of the conflict rule (older or newer) the next time it is written, instead of carrying them for 90 days (#51)
     * Light theme: the OK and SYNC badges are a darker green and red (4.7:1 and 5.2:1 with their white text, the WCAG AA minimum being 4.5:1; they were at 2.7:1 and 3.2:1) and the `?` and `!` badges a slightly darker grey; the three badges now have fill tokens of their own, so the status and muted-text colours no longer drive them; the dark theme is unchanged (#50)
 * Version 2.10.2
     * The SYNC select has an accessible name ("SYNC"), like the project and Work selects; a screen reader no longer announces it by its current option only (#62)

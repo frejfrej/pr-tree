@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createSyncStatuses, filesPerPatchRequest, maxFilesToCheck, isCurrentCacheKey } from '../sync-statuses.mjs';
+import { createSyncStatuses, filesPerPatchRequest, maxFilesToCheck } from '../sync-statuses.mjs';
 import { conflictRuleVersion } from '../conflicts.mjs';
-import { openSyncCache } from '../sync-cache.mjs';
+import { openSyncCache as openSyncCacheOf } from '../sync-cache.mjs';
 import { RateLimitError } from '../atlassian-fetch.mjs';
 
 /**
@@ -24,7 +24,7 @@ const dest = 'dddd';
 const source = 'ssss';
 const spec = `${dest}..${source}`;
 const key = `${repo}/${spec}`;
-const cacheKey = `${conflictRuleVersion}:${key}`;
+const fileKey = `${conflictRuleVersion}:${key}`; // the key in sync-cache.json
 const api = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repo}`;
 const diffstatUrl = (side, other) => `${api}/diffstat/${side}..${other}?pagelen=500`;
 const diffUrl = (side, other, paths) => `${api}/diff/${side}..${other}?topic=true&${paths.map(p => `path=${encodeURIComponent(p)}`).join('&')}`;
@@ -33,6 +33,9 @@ const tempDirectories = [];
 after(() => {
     for (const directory of tempDirectories) rmSync(directory, { recursive: true, force: true });
 });
+// What the server opens: the keys under the current conflict rule
+const openSyncCache = file => openSyncCacheOf(file, { ruleVersion: conflictRuleVersion });
+
 function tempFile() {
     const directory = mkdtempSync(path.join(tmpdir(), 'sync-statuses-'));
     tempDirectories.push(directory);
@@ -312,8 +315,8 @@ test('a complete result is stored under the rule-version prefix, and found again
     const first = setUp(fakeBitbucket({ ...bothSides, ...sameLine }), { cache });
     const result = { conflicts: true, files: ['f.txt'] };
     assert.deepEqual(await first.computeSyncStatuses('PROJ', [pullRequest()]), { [key]: result });
-    assert.deepEqual(cache.get(cacheKey), result);
-    assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [cacheKey]); // saved at the end of the load
+    assert.deepEqual(cache.get(key), result);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [fileKey]); // saved at the end of the load
 
     // A restart: the file is read again, the same pull request costs no request
     const restarted = setUp(fakeBitbucket({ ...bothSides, ...sameLine }), { cache: openSyncCache(file) });
@@ -324,12 +327,14 @@ test('a complete result is stored under the rule-version prefix, and found again
 
 test('a result stored under another version of the conflict rule is not reused, and goes at the next write', async () => {
     const file = tempFile();
-    const cache = openSyncCache(file, { keep: isCurrentCacheKey }); // what the server passes
-    cache.set(`${conflictRuleVersion - 1}:${key}`, { conflicts: false });
+    const older = openSyncCacheOf(file, { ruleVersion: conflictRuleVersion - 1 });
+    older.set(key, { conflicts: false });
+    await older.save();
+    const cache = openSyncCache(file);
     const { computeSyncStatuses, requests } = setUp(fakeBitbucket({ ...bothSides, ...sameLine }), { cache });
     assert.deepEqual(await computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { conflicts: true, files: ['f.txt'] } });
     assert.equal(requests.length, 4);
-    assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [cacheKey]); // the older entry went with the save
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [fileKey]); // the older entry went with the save
 });
 
 test('a partial or failed result is not stored', async () => {
@@ -348,8 +353,8 @@ test('a partial or failed result is not stored', async () => {
     const statuses = await computeSyncStatuses('PROJ', [pullRequest(), pullRequest('eeee')]);
     assert.equal(statuses[key].reason, 'Request failed with status code 502'); // partial
     assert.equal(statuses[`${repo}/eeee..${source}`].error, true); // failed
-    assert.equal(cache.get(cacheKey), null);
-    assert.equal(cache.get(`${conflictRuleVersion}:${repo}/eeee..${source}`), null);
+    assert.equal(cache.get(key), null);
+    assert.equal(cache.get(`${repo}/eeee..${source}`), null);
     assert.equal(openSyncCache(file).size, 0, 'nothing reached the disk');
 });
 
@@ -374,7 +379,7 @@ test('at most four computations run at once', async () => {
 
 test('the summary log line counts the pull requests computed, not checked and partly checked', async () => {
     const cache = openSyncCache(tempFile());
-    cache.set(`${conflictRuleVersion}:${repo}/c..c`, { conflicts: false });
+    cache.set(`${repo}/c..c`, { conflicts: false });
     const failDiffs = (count, url) => (url.includes('/diff/') ? new Response('', { status: 502 }) : undefined);
     const { computeSyncStatuses, logs } = setUp(fakeBitbucket({
         diffstats: {
