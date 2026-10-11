@@ -451,9 +451,12 @@ The application integrates with a Jira workflow where:
 - SYNC statuses: 300 seconds for the response; each pull request's result is read from `sync-cache.json` first
 - Everything else is in memory and lost on restart
 
+**Shared Builds:**
+- Concurrent requests for an entry being built (project data, SYNC statuses, projects list) share the build in flight; a failure is not cached
+
 **Hash-Based Change Detection:**
-- Compute MD5 hash of PR + Jira data
-- Only fetch commit counts when hash changes
+- Compute MD5 hash of PR + Jira data; the page re-renders only when it changes
+- The commit counts of a pull request are fetched only when its source or destination commit moves (remembered per project from its last build), at most 10 requests at once
 - Prevents Bitbucket API rate limiting (HTTP 429)
 
 **Rate-Limit Pause:**
