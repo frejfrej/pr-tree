@@ -18,7 +18,7 @@ import { createSyncStatuses } from './sync-statuses.mjs';
 import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 import { conflictRuleVersion } from './conflicts.mjs';
-import { allowedHostnames, createRequestGuard } from './request-guard.mjs';
+import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost, loopbackHostnames } from './request-guard.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
@@ -27,12 +27,12 @@ const fixtureSource = fixtureOptions.enabled ? createFixtureSource(config, { sca
 
 const app = express();
 const port = process.env.PORT || 3000;
-// The loopback interface unless PR_TREE_HOST opens another one (0.0.0.0 for every interface)
+// The loopback interface, IPv4 and IPv6, unless PR_TREE_HOST opens another one (0.0.0.0 for every interface)
 const host = process.env.PR_TREE_HOST || '127.0.0.1';
-const hostnames = allowedHostnames({
+const hostnames = hostnameMatcher({
     host,
     extraHosts: (process.env.PR_TREE_ALLOWED_HOSTS || '').split(',').map(name => name.trim()).filter(Boolean),
-    interfaces: os.networkInterfaces(),
+    networkInterfaces: os.networkInterfaces,
     machineName: os.hostname()
 });
 
@@ -50,7 +50,7 @@ const license = packageJson.license;
 
 // First in the chain: requests addressed to another name (DNS rebinding) and
 // /api requests sent by a page of another site get a 403 (request-guard.mjs)
-app.use(createRequestGuard({ allowedHostnames: hostnames, log: message => log(message, errorLogStream) }));
+app.use(createRequestGuard({ isAllowedHostname: hostnames.isAllowed, log: message => log(message, errorLogStream) }));
 
 // Serve all files in the public folder
 app.use(express.static('public'));
@@ -259,8 +259,15 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
 
 const server = app.listen(port, host, () => {
     // The port actually bound: PORT=0 lets the OS pick one (the server test does that)
-    log(`Server is running at http://localhost:${server.address().port}`, accessLogStream);
-    log(`Listening on ${host}, answering to the host names ${[...hostnames].join(', ')}`, accessLogStream);
+    const boundPort = server.address().port;
+    // localhost unless only another address is bound: the loopback interface is then not listened on
+    const urlHost = isWildcardHost(host) || loopbackHostnames.includes(canonicalHostname(host)) ? 'localhost' : canonicalHostname(host);
+    log(`Server is running at http://${urlHost}:${boundPort}`, accessLogStream);
+    log(`Listening on ${host}, answering to the host names ${[...hostnames.names].join(', ')}`, accessLogStream);
+    if (!process.env.PR_TREE_HOST) {
+        // localhost may resolve to ::1 alone (an /etc/hosts entry): the IPv6 loopback answers too, on the same port
+        app.listen(boundPort, '::1').on('error', error => log(`Not listening on ::1: ${error.message}`, errorLogStream));
+    }
     if (fixtureSource) {
         log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
     }

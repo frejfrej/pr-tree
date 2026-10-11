@@ -347,7 +347,7 @@ The application integrates with a Jira workflow where:
 - **NFR-SEC3**: Application must use HTTPS when deployed outside localhost
 - **NFR-SEC4**: No sensitive data logged to access/error logs
 - **NFR-SEC5**: Only the `public/` directory and `README.md` are served over HTTP; no other file of the project directory (configuration, logs, sources) is reachable
-- **NFR-SEC6**: The server listens on the loopback interface unless `PR_TREE_HOST` opens another one; it answers only requests whose `Host` is one of its own names (loopback names, the bound address, `PR_TREE_ALLOWED_HOSTS`), and refuses the `/api` requests a browser marks as sent by another site (`Sec-Fetch-Site`)
+- **NFR-SEC6**: The server listens on the loopback addresses (127.0.0.1 and ::1) unless `PR_TREE_HOST` opens another one; it answers only requests whose `Host` is one of its own names (loopback names, the bound address, `PR_TREE_ALLOWED_HOSTS`), and refuses the `/api` requests a browser marks as sent by another site (`Sec-Fetch-Site`)
 
 ### 6.6 Maintainability
 - **NFR-M1**: Code must follow consistent naming conventions (camelCase)

@@ -317,6 +317,17 @@ test('the server listens on the loopback interface only by default: the other ad
         const socket = connect({ host: addresses[0].address, port: Number(new URL(baseUrl).port) });
         socket.on('connect', () => { socket.destroy(); resolve(null); });
         socket.on('error', resolve);
+        // An interface that drops packets (a VPN, a firewall) never answers: unreachable as well
+        socket.setTimeout(2000, () => { socket.destroy(); resolve({ code: 'ETIMEDOUT' }); });
     });
-    assert.equal(error?.code, 'ECONNREFUSED', `${addresses[0].address} must not be reachable`);
+    assert.ok(['ECONNREFUSED', 'ETIMEDOUT'].includes(error?.code), `${addresses[0].address} must not be reachable`);
+});
+
+test('the IPv6 loopback answers too, on the same port: localhost may resolve to ::1 alone (#98)', async t => {
+    if (!Object.values(networkInterfaces()).flat().some(({ address, internal }) => internal && address === '::1')) {
+        t.skip('no IPv6 loopback');
+        return;
+    }
+    const response = await fetch(`http://[::1]:${new URL(baseUrl).port}/api/version`);
+    assert.equal(response.status, 200);
 });

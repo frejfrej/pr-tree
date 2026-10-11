@@ -78,8 +78,8 @@
 * Go to http://localhost:3000
 
 ## Network access
-* The dashboard listens on 127.0.0.1 only: it is reachable from the machine it runs on, at http://localhost:3000 (or http://127.0.0.1:3000)
-* To open it from other machines, start it with `PR_TREE_HOST=0.0.0.0 npm start`: it then listens on every interface and answers to the machine's addresses and name (as they are when the server starts); anyone who can reach the port can read the pull requests and Jira issues it shows, and start SYNC loads on your Bitbucket token
+* The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): it is reachable from the machine it runs on, at http://localhost:3000
+* To open it from other machines, start it with `PR_TREE_HOST=0.0.0.0 npm start`: it then listens on every interface and answers to the machine's addresses (including those it gets later, on another Wi-Fi or a VPN) and its name (`Mac`, `Mac.local`); `PR_TREE_HOST=192.168.1.20` listens on that address only; anyone who can reach the port can read the pull requests and Jira issues it shows, and start SYNC loads on your Bitbucket token
 * It answers only to the names it knows: a request for another name gets a 403 (this stops a web page whose domain is redirected to your machine from reading the dashboard). List other names, comma separated, in `PR_TREE_ALLOWED_HOSTS` (for instance `PR_TREE_ALLOWED_HOSTS=dashboard.example.com`)
 * A web page of another site open in your browser cannot call the dashboard's API: the browser marks such requests (`Sec-Fetch-Site`) and the server refuses them, so a page cannot start SYNC loads behind your back. Links to the dashboard from other sites still open it
 
@@ -91,10 +91,10 @@
 
 ## Changelog:
 * Version 3.1.0
-    * The dashboard listens on 127.0.0.1 only: on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)
+    * The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)
     * The server answers only requests addressed to one of its names (localhost, 127.0.0.1, [::1], plus the bound address and `PR_TREE_ALLOWED_HOSTS`): a web page whose domain is redirected to 127.0.0.1 (DNS rebinding) gets a 403 instead of the `/api` answers
     * An `/api` request that the browser marks as sent by another site gets a 403: a page open in another tab could start SYNC loads in a loop until Bitbucket's rate limit paused the dashboard for 10 minutes. The page itself, a link from another site, `curl` and scripts are unaffected
-    * Refused requests are logged in `error.log`, once a minute at most for the same reason
+    * Refused requests are logged in `error.log`, one line a minute at most for each of the two reasons
 * Version 3.0.1
     * The page loads nothing from a CDN any more: Font Awesome 5.15.3 (its stylesheet and fonts) and Marked are served by the dashboard itself, from `public/vendor/`, as published on npm. Marked came from an unversioned CDN address with no integrity check (it served 15.0.12 of 2025): a changed or compromised file would have run on the page that reads the `/api` answers. The dashboard also works offline or behind a proxy that blocks the CDNs, and a slow CDN no longer holds back its start
     * The help modal uses Marked 18.0.14, imported only when the help is first opened, so nothing waits for it at page load; the README renders the same. When the help content cannot be loaded, opening the help again retries, instead of showing the error until the page is reloaded

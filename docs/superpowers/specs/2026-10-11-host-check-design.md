@@ -18,7 +18,7 @@ quota until a 429 pauses the dashboard for 10 minutes. Spec 2026-09-10
 
 ## 2. Decisions
 
-1. **Bind 127.0.0.1 by default**, `PR_TREE_HOST` to open another address
+1. **Bind 127.0.0.1 and ::1 by default** (section 5), `PR_TREE_HOST` to open another address
    (`0.0.0.0` for every interface). Not `HOST`: shells and container images
    set it (zsh defines `$HOST`, some profiles export it), which would open the
    dashboard by accident; `PR_TREE_` matches the fixture variables. Not
@@ -55,8 +55,6 @@ quota until a 429 pauses the dashboard for 10 minutes. Spec 2026-09-10
 
 - Authentication: a process of the machine, or of the network when opened,
   can still call the API with an accepted name.
-- Interface addresses that change after startup (DHCP): restart, or list the
-  name in `PR_TREE_ALLOWED_HOSTS`.
 - HTTPS (NFR-SEC3).
 
 ## 4. Verification
@@ -71,3 +69,31 @@ the LAN address, the machine name and an allowed name, 403 for another;
 Chrome on the fixture server: SECOLLAB, the SYNC load and the help work at
 `localhost`, and a `no-cors` fetch from `127.0.0.1:3100` (another site) to
 `localhost:3100/api/sync-statuses` is refused before any computation.
+
+## 5. Review round
+
+The /code-review of #123 led to:
+
+- **The log limit per kind**, not per message: a loop over random paths or
+  random subdomains wrote a line for each and grew the map without bound.
+- **::1 listened on too** when `PR_TREE_HOST` is not set, on the port bound
+  for 127.0.0.1 (a failure there is logged, not fatal): before #98 the
+  dual-stack bind answered `http://[::1]` and a `localhost` resolving to ::1
+  alone, and the guard accepted `[::1]` that nothing listened on.
+- **The startup URL** is the bound address when `PR_TREE_HOST` is one
+  specific address (nothing listens on loopback then), and the 403 no longer
+  says to open the dashboard at localhost.
+- **Addresses read again** on a name not known, for a wildcard: an address
+  the machine gets later (Wi-Fi, VPN) is accepted without a restart. The
+  machine name is accepted as `name`, `name.local` and the full name.
+- **Canonical names** (`canonicalHostname`): a trailing dot dropped, IPv6
+  compressed (`[0:0:0:0:0:0:0:1]` is `[::1]`, `::0` is a wildcard), a zone
+  identifier malformed; link-local addresses are not listed (a browser cannot
+  reach them without a zone identifier).
+- **The loopback-only test** times out after 2 seconds on an interface that
+  drops packets, instead of waiting for the system's SYN timeout.
+
+Not taken: a custom header or a POST on the SYNC endpoint for browsers that
+send no `Sec-Fetch-Site` (Safari before 16.4, 2023). Every browser of NFR-C1
+(latest two versions) sends it; the page and its tests would change for
+browsers outside the supported set.
