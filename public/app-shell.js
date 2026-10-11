@@ -283,20 +283,28 @@ function listOf(words, joiner) {
     return words.length > 1 ? `${words.slice(0, -1).join(', ')} ${joiner} ${words[words.length - 1]}` : words[0];
 }
 
-/** The tooltip of the partial-data indicator for the gaps of a response (in their order) */
+/** The tooltip of the partial-data indicator for the gaps of a response (in their order); a part not known here is skipped */
 export function partialDataTitle(incomplete) {
     const parts = incomplete.map(part => partialDataParts[part]).filter(Boolean);
+    if (parts.length === 0) return 'Jira did not answer for part of the data: some filters may lack values. The next automatic check retries.';
     const missing = parts.map(part => part.missing).join(', and for ');
     const filters = parts.flatMap(part => part.filters);
     return `Jira did not answer for ${missing}: the ${listOf(filters, 'and')} ${filters.length > 1 ? 'filters' : 'filter'} may lack values. The next automatic check retries.`;
 }
 
-/** Shows the banner indicator while the data rendered has gaps, hides it otherwise (no data, or complete data) */
+/**
+ * Shows the banner indicator while the data rendered has gaps, hides it
+ * otherwise (no data, or complete data). The text is written when shown, so
+ * the status region announces it
+ */
 export function showPartialDataIndicator(incomplete = []) {
     const indicator = document.getElementById('partialData');
     if (!indicator) return;
-    indicator.hidden = incomplete.length === 0;
-    indicator.title = incomplete.length ? partialDataTitle(incomplete) : '';
+    const partial = incomplete.length > 0;
+    indicator.hidden = !partial;
+    indicator.title = partial ? partialDataTitle(incomplete) : '';
+    const text = indicator.querySelector('.partial-data-text');
+    if (text) text.textContent = partial ? 'Partial data' : '';
 }
 
 // -------------------------------------------------------- filters and tree

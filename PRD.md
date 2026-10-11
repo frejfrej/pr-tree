@@ -214,7 +214,7 @@ The application integrates with a Jira workflow where:
 - Page automatically updates every 2 minutes when active
 - No visible UI update if data unchanged
 - A refresh never rewrites the URL: a filter value the refreshed data no longer offers leaves the sidebar but stays in the URL, and comes back when a later refresh offers it again, unless a user action (filter change, search, project load, Back/Forward) rewrote the URL meanwhile
-- Data a Jira failure left partial (no epics and stories, or missing sprints) is flagged "Partial data" in the banner, is cached 30 seconds only, and a project load or Back/Forward over it leaves the URL alone, so the next complete render restores the values it lacked
+- Data a Jira failure left partial (no epics and stories, or missing sprints) is flagged "Partial data" in the banner, is cached 30 seconds only, and a project load or Back/Forward over it keeps the URL values of the filters the gap feeds (Epic, Story, Fix version; Sprint), so the next complete render restores the values it lacked
 - Refresh timestamp updates in real-time
 - Loading spinner appears during checks
 - No updates occur when tab in background

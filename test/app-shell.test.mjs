@@ -32,3 +32,8 @@ test('the tooltip of the partial-data indicator names the parts missing and the 
     assert.equal(partialDataTitle(['sprints']), 'Jira did not answer for some sprints or their issues: the Sprint filter may lack values. The next automatic check retries.');
     assert.equal(partialDataTitle(['parents', 'sprints']), 'Jira did not answer for the epics and stories, and for some sprints or their issues: the Epic, Story, Fix version and Sprint filters may lack values. The next automatic check retries.');
 });
+
+test('the tooltip of the partial-data indicator skips a part it does not know, and stays readable with none known', () => {
+    assert.equal(partialDataTitle(['orphaned', 'sprints']), partialDataTitle(['sprints']));
+    assert.equal(partialDataTitle(['orphaned']), 'Jira did not answer for part of the data: some filters may lack values. The next automatic check retries.');
+});

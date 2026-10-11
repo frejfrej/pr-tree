@@ -52,18 +52,32 @@ would build the whole project again (every repository's pull-request pages,
 the Jira searches) while Jira is failing. During a rate-limit pause
 `raiseAllCacheTtls` raises it like any entry; nothing can be fetched then.
 
+When the failure lasts (a JQL Jira refuses every time), each request
+after the 30 seconds rebuilds the whole project: the checks of the open
+tabs did so already with the 2-minute TTL; the extra ones are a SYNC load or
+another tab between two checks. Accepted: a lasting failure is a bug to fix
+on its own, and the log says which request fails.
+
 The page's check stays every 2 minutes: checking sooner after a partial
 response would rebuild the project every 30 seconds per open tab for as long
 as Jira fails.
 
-### 2.3 A load over partial data leaves the URL alone
+### 2.3 A load over partial data keeps the URL of the filters a gap feeds
 
 `renderProjectLoad` and `handlePopState` replace the URL with the filters
-the render kept only when the data is complete. Over partial data the URL
-keeps the values the data does not offer, as after a refresh (#61): the next
-complete render restores them. The state and the sidebar drop them as
-before; a user action meanwhile (filter change, search) writes the URL from
-the sidebar, as everywhere else.
+the render kept, except the filters a gap feeds, which keep the values of
+the URL (`filtersKeptOverGaps`, app-url.js): the Epic, Story and Fix version
+filters for `parents`, the Sprint filter for `sprints`. The values the
+data does not offer stay in the URL, as after a refresh (#61), and the next
+complete render restores them; the other filters are cleaned as on complete
+data (a stale value of a shared link, `work` without a participant). The
+state and the sidebar drop the values as before; a user action meanwhile
+(filter change, search) writes the URL from the sidebar, as everywhere else
+(the accepted cost of #61). A part the page does not know keeps nothing.
+
+The first version left the whole URL alone over partial data; the
+/code-review of #95 found that a gap of sprints then kept a stale epic or a
+`work` without a participant in the URL until the next user action.
 
 ### 2.4 The banner says so
 
@@ -72,8 +86,11 @@ A "Partial data" indicator next to the refresh time (app-shell.js,
 indicator, shown while the data rendered has gaps. Its tooltip names them:
 the epics and stories (the Epic, Story and Fix version filters may lack
 values), some sprints or their issues (the Sprint filter), and says that
-the next check retries. Below 900px the text is visually hidden, the icon
-stays, like the pause indicator. It follows the data rendered: a project
+the next check retries (a part the page does not know gets a generic
+tooltip). The text is written when the indicator is shown and cleared when
+hidden, as for the pause indicator, so the status region announces it.
+Below 900px the text is visually hidden, the icon stays, like the pause
+indicator. It follows the data rendered: a project
 switch hides it, a check without data leaves it.
 
 ## 3. Out of scope
@@ -85,9 +102,9 @@ switch hides it, a check without data leaves it.
 - **Bitbucket failures and the orphaned issues and linked issues searches**
   fail the build (500), nothing is cached.
 - **A deferred URL catch-up** (replace the URL at the first complete render
-  after a partial load): a value gone for good from a shared link then stays
-  in the URL until the next user action. Accepted: it is not applied while
-  the data does not offer it, and the next user action cleans it.
+  after a partial load): a value gone for good from a filter a gap fed then
+  stays in the URL until the next user action. Accepted: it is not applied
+  while the data does not offer it, and the next user action cleans it.
 
 ## 4. Tests
 
@@ -95,7 +112,8 @@ switch hides it, a check without data leaves it.
   clean build gives `[]`, the hash differs with the gaps alone.
 - cache: a response with gaps gets the short TTL, one without the default.
 - project-assembly and fixtures: `incomplete: []` in the shape.
-- app-shell: the indicator's tooltip text per gap (`showPartialDataIndicator`
+- app-url: `filtersKeptOverGaps` per gap, without gaps, with an unknown part.
+- app-shell: the indicator's tooltip text per gap and for an unknown part (`showPartialDataIndicator`
   itself, like `showPauseIndicator`, is checked manually).
 - app.js (untested module): manual check with `window.fetch` overridden to
   answer `incomplete: ['parents']`.

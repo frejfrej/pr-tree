@@ -19,3 +19,12 @@ Spec: `docs/superpowers/specs/2026-10-11-partial-response-design.md`.
 5. `npm test`; manual check in the fixture server with `window.fetch`
    overridden, both themes, below 900px.
 6. Commit, push, pull request against master closing #91.
+7. **After the /code-review**: only the filters a gap feeds keep the URL's
+   values (`filtersKeptOverGaps`, app-url.js, tested), the others are
+   cleaned as on complete data; the tooltip skips an unknown part (generic
+   text when none is known); the indicator's text is written when shown so
+   the status region announces it; the spec notes the rebuilds of a lasting
+   failure. Turned down: Back/Forward then a filter change dropping the
+   value (#61's accepted cost), the tooltip-only explanation and its wording
+   (as the pause indicator), the `gaps` defaults and the predicate written
+   three times (each gap is tested through `buildProjectData`).
