@@ -132,7 +132,8 @@ test('the pull requests of each repository are fetched 50 per page, following ne
     const { signal, ...options } = requests[0].options;
     assert.deepEqual(options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
     assert.ok(signal instanceof AbortSignal);
-    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'incomplete', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
+    assert.deepEqual(data.incomplete, []); // nothing failed
     assert.deepEqual(data.pullRequests.map(pr => [pr.id, pr.commitsAhead, pr.commitsBehind]), [[1, 3, 1], [2, 3, 1], [3, 3, 1]]);
     assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['OTHER-7'], 3: ['PROJ-3'] });
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'OTHER-7']); // PROJ-3 is not in Jira
@@ -251,6 +252,7 @@ test('a failed parent request is logged and leaves the issues without their pare
     const data = await buildProjectData('P', project);
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1']); // no parent-only entry, the build goes on
     assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions, []);
+    assert.deepEqual(data.incomplete, ['parents']);
     assert.deepEqual(logs.error, ['Error fetching parent issues: Request failed with status code 502']);
 });
 
@@ -499,6 +501,7 @@ test('a Jira failure: the sprints of a project are skipped and logged, a failed 
     const data = await skipped.buildProjectData('P', project);
     assert.deepEqual(data.sprints, [{ id: 9, name: 'Sprint 9' }]);
     assert.equal(data.sprintIssues[9].length, 100); // the first page is kept, the failed second one ends the sprint
+    assert.deepEqual(data.incomplete, ['sprints']);
     assert.deepEqual(skipped.logs.error, ['Error fetching sprints for project PROJ: boards unreachable', 'Error fetching issues for sprint 9: Request failed with status code 502']);
     assert.ok(skipped.logs.access.includes('Retrieved a total of 100 issues for sprint 9'));
 
@@ -516,6 +519,7 @@ test('a boards response without a list skips the project\'s sprints and the buil
     }));
     const data = await buildProjectData('P', project);
     assert.deepEqual(data.sprints, [{ id: 9, name: 'Sprint 9' }]);
+    assert.deepEqual(data.incomplete, []); // no board is no failure
     assert.deepEqual(logs.error, []);
 });
 
@@ -528,6 +532,7 @@ test('a failed sprints request of one board skips that board only and is logged;
     }));
     const data = await skipped.buildProjectData('P', project);
     assert.deepEqual(data.sprints, [{ id: 7, name: 'Sprint 7' }, { id: 9, name: 'Sprint 9' }]); // the other boards keep their sprints
+    assert.deepEqual(data.incomplete, ['sprints']);
     assert.deepEqual(skipped.logs.error, ['Error fetching the sprints of board Board 2 (project PROJ): Request failed with status code 502']);
 
     const long = setUp(fakeAtlassian({ intercept: url => (url.includes('In%20Review') ? new Response('x'.repeat(500), { status: 500 }) : undefined) }));
@@ -541,6 +546,7 @@ test('a commits request that throws gives a null count; a failed Jira batch fail
     }));
     const data = await thrown.buildProjectData('P', project);
     assert.deepEqual([data.pullRequests[0].commitsAhead, data.pullRequests[0].commitsBehind], [0, null]);
+    assert.deepEqual(data.incomplete, []); // a failed count is fetched again at the next build anyway
     assert.deepEqual(thrown.logs.error, ['Error fetching commits ahead for master compared to feat-1 in repo-a: socket hang up']);
 
     const batch = setUp(fakeAtlassian({
@@ -557,5 +563,36 @@ test('a commits request that throws gives a null count; a failed Jira batch fail
     }));
     const withoutParents = await parents.buildProjectData('P', project);
     assert.deepEqual(withoutParents.jiraIssuesDetails.map(i => i.key), ['PROJ-1']);
+    assert.deepEqual(withoutParents.incomplete, ['parents']);
     assert.deepEqual(parents.logs.error, ['Error fetching parent issues: Jira unreachable']);
+});
+
+test('the gaps of a build are named in a fixed order, belong to that build only, and change the hash on their own', async () => {
+    // A board whose sprints another board lists too: the data is the same with or without the failure
+    let failing = true;
+    const { buildProjectData } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] },
+        issues: [issue('PROJ-1', { parent: 'PROJ-500' })],
+        parents: [issue('PROJ-500', { type: 'Epic' })],
+        boards: { PROJ: [{ id: 1, name: 'Board 1' }, { id: 2, name: 'Board 2' }] },
+        sprints: { 1: [{ id: 7, name: 'Sprint 7' }], 2: [{ id: 7, name: 'Sprint 7' }] },
+        intercept: url => {
+            if (!failing) return undefined;
+            if (url.includes('/board/2/sprint') || url.includes('key%20IN')) return new Response('', { status: 502 });
+            return undefined;
+        }
+    }));
+    const partial = await buildProjectData('P', project);
+    assert.deepEqual(partial.incomplete, ['parents', 'sprints']);
+    failing = false;
+    const complete = await buildProjectData('P', project);
+    assert.deepEqual(complete.incomplete, []);
+    assert.deepEqual(complete.sprints, partial.sprints);
+    failing = true;
+    const sprintsOnly = await buildProjectData('P', { ...project, jiraRegex: /(OTHER-\d+)/g }); // no linked issue, no parent to fetch
+    assert.deepEqual(sprintsOnly.incomplete, ['sprints']);
+    failing = false;
+    const sprintsComplete = await buildProjectData('P', { ...project, jiraRegex: /(OTHER-\d+)/g });
+    assert.deepEqual(sprintsComplete.sprints, sprintsOnly.sprints);
+    assert.notEqual(sprintsComplete.dataHash, sprintsOnly.dataHash); // the page re-renders when only the completeness changed
 });

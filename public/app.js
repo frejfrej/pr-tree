@@ -3,7 +3,7 @@ import { renderRepositories, renderOrphanedIssues, initializePopovers } from './
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
-import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
+import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
@@ -198,9 +198,10 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     updateSyncControls();
     updateDocumentTitle({ project: currentProject, attentionCount: 0 });
     closeSidebarDrawer();
-    // The refresh time belongs to the data being left
+    // The refresh time and the gaps belong to the data being left
     const lastRefreshElement = document.getElementById('lastRefreshTime');
     if (lastRefreshElement) lastRefreshElement.textContent = '';
+    showPartialDataIndicator();
 
     if (!currentProject) {
         clearFilterOptions();
@@ -231,12 +232,19 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     if (!document.hidden) startPeriodicChecking(Boolean(result.pausedUntil) && !pausedUntil);
 }
 
+// Whether a tolerated Jira failure left gaps in the data (the server names them in `incomplete`)
+function isPartial(data) {
+    return Boolean(data.incomplete && data.incomplete.length);
+}
+
 // The first render of a project: by its load, or by a later check when the
 // load got no data (a failure, or the Atlassian pause)
 function renderProjectLoad(data) {
     renderEverything(data, { preferTypedText: loadPrefersTypedText });
-    // The address bar catches up with the filters the render validated, without a new entry
-    updateUrlWithFilters({ replace: true });
+    // The address bar catches up with the filters the render validated, without
+    // a new entry. Not over partial data: the URL keeps the epic, story or
+    // sprint the data lacks, and the next complete render restores it (#91)
+    if (!isPartial(data)) updateUrlWithFilters({ replace: true });
 }
 
 // Takes the server's pause from an answer of a load or a check (see
@@ -261,8 +269,8 @@ function takeAnswer(result) {
 // of that URL. Same project: the filters are restored from the URL and
 // applied, then the URL is replaced with what was kept, as a project load
 // does after its render (a value the options no longer offer since a refresh
-// is dropped from the entry). Nothing here pushes a history entry. Browsers
-// no longer fire popstate on page load.
+// is dropped from the entry; partial data leaves the URL alone). Nothing
+// here pushes a history entry. Browsers no longer fire popstate on page load.
 function handlePopState() {
     const projectName = projectFromUrl(window.location.search, availableProjects);
     if (projectName !== currentProject) {
@@ -274,7 +282,8 @@ function handlePopState() {
     if (!currentApiResult) return;
     restoreFiltersFromUrl({ preferTypedText: false });
     applyFilters();
-    updateUrlWithFilters({ replace: true });
+    // As after a load, partial data leaves the URL alone (#91)
+    if (!isPartial(currentApiResult)) updateUrlWithFilters({ replace: true });
 }
 
 // Messages shown in the main pane instead of the tree. Built with DOM nodes so
@@ -448,6 +457,8 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     if (lastRefreshElement && currentApiResult.lastRefreshTime) {
         lastRefreshElement.textContent = formatRefreshTime(currentApiResult.lastRefreshTime);
     }
+    // The hash covers the gaps: a change of completeness alone renders here too
+    showPartialDataIndicator(currentApiResult.incomplete);
 }
 
 // The answer of /api/pull-requests/:project: { data }, { pausedUntil } during
@@ -526,7 +537,7 @@ async function checkForUpdates() {
             // dropped from the sidebar but kept in the URL, so it comes back
             // when a later refresh offers it again, unless a user action
             // rewrote the URL meanwhile (a Jira failure gives a response
-            // without epics, stories or sprints; #61)
+            // without epics, stories or sprints, marked incomplete; #61, #91)
             renderEverything(newData);
         }
     } catch (error) {

@@ -256,7 +256,8 @@ input {
     white-space: nowrap;
 }
 
-.atlassian-pause {
+.atlassian-pause,
+.partial-data {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1326,7 +1327,8 @@ select:disabled {
     }
 
     /* Visually hidden, still read in the status region: the icon is aria-hidden */
-    .atlassian-pause-text {
+    .atlassian-pause-text,
+    .partial-data-text {
         position: absolute;
         width: 1px;
         height: 1px;

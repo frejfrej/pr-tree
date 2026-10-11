@@ -177,9 +177,10 @@ test('the pull requests of a project have the documented shape, and the same dat
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^application\/json/);
     const data = await response.json();
-    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'rateLimitedUntil', 'sprintIssues', 'sprints']);
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'incomplete', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'rateLimitedUntil', 'sprintIssues', 'sprints']);
     assert.ok(!Number.isNaN(Date.parse(data.lastRefreshTime)), 'lastRefreshTime is a date');
     assert.equal(data.rateLimitedUntil, null, 'no pause in fixture mode');
+    assert.deepEqual(data.incomplete, [], 'the fixtures have no gap');
     assert.ok(Array.isArray(data.pullRequests) && data.pullRequests.length > 0);
     assert.ok(Array.isArray(data.jiraIssuesDetails) && Array.isArray(data.sprints) && Array.isArray(data.orphanedIssues));
     for (const pullRequest of data.pullRequests) {

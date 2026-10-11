@@ -37,6 +37,7 @@ test('generation is deterministic: same dataHash on every call', () => {
     const first = generateProjectData('SECOLLAB', projects.SECOLLAB);
     const second = generateProjectData('SECOLLAB', projects.SECOLLAB);
     assert.equal(first.dataHash, second.dataHash);
+    assert.deepEqual(first.incomplete, []);
 });
 
 test('a repository shared by two projects yields the same pull requests in both', () => {
