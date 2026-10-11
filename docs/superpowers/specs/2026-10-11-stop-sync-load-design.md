@@ -31,18 +31,24 @@ project; two loads of one project share one build, cache.mjs). Every Bitbucket
 request of the load counts:
 
 - **a failure**: the request times out, fetch rejects (a network failure),
-  the body cannot be read, or Bitbucket answers 5xx;
-- **an answer**: any other status (2xx, 4xx: Bitbucket is up) with its body
-  read. It resets the count.
+  the body cannot be read or parsed (a gateway's HTML page answered 200 to a
+  diffstat request), or Bitbucket answers 5xx, 401 or 403 (an expired token
+  fails every request at once);
+- **an answer**: any other status (2xx, a 404: Bitbucket is up) with its body
+  read and parsed. It resets the count.
 
 A RateLimitError counts as neither (the pause stops every check already), nor
 does a request stopped on purpose (the other side of a check, #52, or the
 load itself): `signal.aborted` on the signal the request was given apart from
 its timeout.
 
-**8 failures in a row** (`maxConsecutiveFailures`, an option of
-`createSyncStatuses`) abort the load's controller. The three kinds of failure
-count together: an outage mixes timeouts, resets and 502s, and requiring one
+**Failures of 8 pull requests in a row** (`maxConsecutiveFailures`, an option
+of `createSyncStatuses`) abort the load's controller. A check counts one
+failure at most: the two sides of a pull request whose diffs are too heavy
+can time out together, and the stop is about pull requests, not requests
+(a heavy check's own diffstats answer before its diffs, and the next checks'
+diffstats answer too, so a few heavy pull requests in a row do not stop a
+load while Bitbucket is up). The kinds of failure count together: an outage mixes timeouts, resets and 502s, and requiring one
 kind would let the alternation keep the load going. 8 is two rounds of the 4
 checks the limiter runs at once: with hanging requests the load stops after
 about a minute instead of 25, with fast 5xx after 8 requests instead of 200.
@@ -60,18 +66,22 @@ every project, the stop is not.
   follows the load's. The requests in flight are aborted.
 - `computeConflicts` checks the signal before its first request: the checks
   waiting in the limiter end at once, without a request, and free their slot.
-- A check that ends after the stop reports the stop's reason instead of its
-  own error (the abort error of a request in flight says nothing useful):
-  `SYNC load stopped after 8 Bitbucket failures in a row, the last one:
-  Request failed with status code 503` (the short message of the last
-  failure). A check the diffstats already proved conflicting is partly
-  checked with that reason, as for any other failure.
+- A request the stop aborts, and a check the stop ends before its first
+  request, reject with the stop's reason (the abort error of a request in
+  flight says nothing useful): `SYNC load stopped after Bitbucket failed for
+  8 pull requests in a row, the last one: Request failed with status code
+  503` (the short message of the last failure). A check the diffstats already
+  proved conflicting is partly checked with that reason, as for any other
+  failure. A check that fails on its own after the stop (a diff that answered
+  just in time but does not match its diffstat, a 404) keeps its own reason
+  and its log line, and so do the failures that led to the stop.
 - Results read from sync-cache.json need no request and are still answered;
   complete results computed before the stop are stored as usual.
 - Logs: one error line for the stop, `Sync statuses of SECOLLAB: SYNC load
   stopped after ...`; the checks ended by the stop log nothing each (200
-  identical lines otherwise); the summary performance line ends with
-  `, stopped after repeated Bitbucket failures`.
+  identical lines otherwise); the summary performance line counts as
+  computed the checks started only, and ends with `, stopped after repeated
+  Bitbucket failures`.
 
 ### 2.3 The response and the cache
 
@@ -84,7 +94,9 @@ computes again. The build in flight is still shared with a second request
 waiting on it. `getOrBuild` (cache.mjs) takes `keep: false` next to the data:
 nothing is cached. (A TTL of 0 was the first idea, but node-cache reads it as
 "never expires", which a cache test relies on.) During a rate-limit pause the
-pause's TTL wins: a new load could not send anything before its end anyway.
+pause's TTL wins: a new load could not send anything before its end anyway;
+the page then shows the rate-limit warning, not the stop (a 429 counts no
+failure, so both in one load is rare).
 
 ### 2.4 On the page
 
@@ -93,8 +105,8 @@ button to try again` while the loaded statuses were stopped (after the
 failed-load and rate-limit warnings, which it does not replace). The `?`
 badges carry the reason in their tooltip, as any "not checked" reason.
 
-Fixture mode: the fixture statuses have no `stopped`; the page reads a
-missing field as `null`.
+Every answer of the endpoint carries `stopped`: `null` in fixture mode and in
+the answer sent when a rate-limit pause leaves no project data.
 
 ## 3. Turned down
 
@@ -102,11 +114,12 @@ missing field as `null`.
   2.1.
 - **A count per server**, shared by the loads of two projects: one project's
   repositories failing (a permission removed) would stop the other's load.
-- **Counting 401 and 403**: they answer at once, so a load over an expired
-  token is quick already, and the project load fails on them first.
 - **A share of failures** (for example half of the last 20 requests) instead
   of a run: a run is simpler to reason about, and an answer between two
   failures shows Bitbucket is up.
+- **Leaving 401 and 403 out** (the first version): they answer at once, but
+  over cached project data an expired token still sent one request and wrote
+  one log line per pull request (found by the /code-review of #96).
 - **A short TTL instead of no cache for a stopped load**: a click within the
   TTL would get the stopped answer again.
 - **A listener per request instead of `AbortSignal.any`**, for the leaks

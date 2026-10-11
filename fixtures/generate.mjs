@@ -771,6 +771,7 @@ export function generateSyncStatuses(projectData) {
         lastRefreshTime: new Date().toISOString(),
         rateLimited: false,
         rateLimitedUntil: null,
+        stopped: null,
         statuses
     };
 }

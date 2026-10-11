@@ -233,6 +233,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 lastRefreshTime: new Date().toISOString(),
                 rateLimited: true,
                 rateLimitedUntil: new Date(atlassian.rateLimitedUntil()).toISOString(),
+                stopped: null,
                 statuses: {}
             });
             return;

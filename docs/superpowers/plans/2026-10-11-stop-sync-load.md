@@ -27,3 +27,11 @@ Spec: `docs/superpowers/specs/2026-10-11-stop-sync-load-design.md`.
    manual check with an overridden `window.fetch` on the fixture server.
 6. **Docs**: README changelog line under 2.12.0, PRD.md (endpoint, cache).
 7. `npm test`, commit, push, pull request against master closing #93.
+8. **After the /code-review**: 401, 403 and an unreadable body (a parse
+   failure) count as failures, the answer is noted only after the parse; a
+   check counts one failure at most (both sides of a heavy pull request);
+   only the requests and checks the stop ends take its reason, a check that
+   fails on its own keeps its reason and log line; `computed` counts the
+   checks started; `stopped: null` in the fixture and pause answers, checked
+   in server.test.mjs. The stopped-and-rate-limited answer keeps the pause's
+   TTL and warning (spec 2.3).

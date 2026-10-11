@@ -43,7 +43,7 @@ function checkPatch(basePath, patch, diffstat) {
  * @param {ReturnType<import('./sync-cache.mjs').openSyncCache>} options.syncCache - the opened sync-cache.json, keyed by "repo/destHash..sourceHash" (opened with the current conflictRuleVersion)
  * @param {number} [options.timeoutMs=30000] - the timeout of one request
  * @param {number} [options.maxConcurrent=4] - conflict computations at once
- * @param {number} [options.maxConsecutiveFailures=8] - failed requests in a row that stop a load
+ * @param {number} [options.maxConsecutiveFailures=8] - pull requests in a row whose requests fail that stop a load
  * @param {() => number} [options.now] - clock, for the durations logged
  */
 export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, timeoutMs = 30000, maxConcurrent = 4, maxConsecutiveFailures = 8, now = () => Date.now() }) {
@@ -51,32 +51,46 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
     // computation makes many Bitbucket calls of its own
     const conflictsLimiter = createLimiter(maxConcurrent);
 
-    // The stop of one load: maxConsecutiveFailures failed requests in a row (two
-    // rounds of the limiter by default) abort `signal`, which every request and
-    // check of the load follows; a request that gets an answer resets the count.
-    // The count is the load's: the limiter is shared by the loads of every project.
+    // The stop of one load: the requests of maxConsecutiveFailures checks in a row
+    // fail (two rounds of the limiter by default), with no answer between them,
+    // and `signal` is aborted with the reason, which every request and check of the
+    // load follows. A check counts one failure at most: the two sides of a pull
+    // request whose diffs are too heavy time out together, and the next checks'
+    // diffstats answer. The count is the load's: the limiter is shared by the
+    // loads of every project.
     function createLoad() {
         const controller = new AbortController();
         let failures = 0;
+        const answered = () => { failures = 0; };
         return {
             signal: controller.signal,
-            answered() { failures = 0; },
-            failed(error) {
-                if (controller.signal.aborted) return;
-                failures++;
-                if (failures >= maxConsecutiveFailures) {
-                    controller.abort(new Error(`SYNC load stopped after ${failures} Bitbucket failures in a row, the last one: ${failureReason(error)}`));
-                }
+            // What the requests of one check report
+            check() {
+                let failed = false;
+                return {
+                    signal: controller.signal,
+                    answered,
+                    failed(error) {
+                        if (failed || controller.signal.aborted) return;
+                        failed = true;
+                        failures++;
+                        if (failures >= maxConsecutiveFailures) {
+                            controller.abort(new Error(`SYNC load stopped after Bitbucket failed for ${failures} pull requests in a row, the last one: ${failureReason(error)}`));
+                        }
+                    }
+                };
             }
         };
     }
 
-    // One Bitbucket request of a load, its body as text. `signal` stops it on
-    // purpose (the load, or the other side of a check) and is combined with the
-    // timeout. A timeout, a network failure, a body cut short or a 5xx counts
-    // towards the stop of the load; any other answer (a 404 too: Bitbucket is up)
-    // resets the count; a stop on purpose and the rate-limit pause count nothing.
-    async function fetchBitbucket(url, headers, load, signal) {
+    // One Bitbucket request of a check, its body read by `parse`. `signal` stops it
+    // on purpose (the load, or the other side of the check) and is combined with
+    // the timeout; a request stopped by the load rejects with the load's reason.
+    // A timeout, a network failure, a body cut short or unreadable, a 5xx, a 401
+    // or a 403 (an expired token fails every request too) counts towards the stop
+    // of the load; any other answer (a 404: Bitbucket is up) resets the count; a
+    // stop on purpose and the rate-limit pause count nothing.
+    async function fetchBitbucket(url, headers, requests, signal, parse = body => body) {
         let response;
         let body;
         try {
@@ -85,30 +99,31 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
                 signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
                 headers: { 'Authorization': `Basic ${bbAuth}`, ...headers }
             });
-            if (response.ok) body = await response.text();
+            if (response.ok) body = parse(await response.text());
         } catch (error) {
-            if (!signal.aborted && !(error instanceof RateLimitError)) load.failed(error);
+            if (requests.signal.aborted) throw requests.signal.reason;
+            if (!signal.aborted && !(error instanceof RateLimitError)) requests.failed(error);
             throw error;
         }
         if (!response.ok) {
             await response.arrayBuffer().catch(() => {}); // release the socket
             const error = new Error(`Request failed with status code ${response.status}`);
-            if (response.status >= 500) load.failed(error);
-            else load.answered();
+            if (response.status >= 500 || response.status === 401 || response.status === 403) requests.failed(error);
+            else requests.answered();
             throw error;
         }
-        load.answered();
+        requests.answered();
         return body;
     }
 
     // Returns a Map of touched file path -> {status, sidePath, linesAdded, linesRemoved} for one side of a merge.
     // Bitbucket's diffstat/{a}..{b} is a topic (three-dot) diff: changes on side `a` since merge-base(a, b).
     // Renamed files are keyed by their old path (so both sides match) but read from their new path.
-    async function fetchDiffstatFiles(repoName, sideCommit, otherCommit, load) {
+    async function fetchDiffstatFiles(repoName, sideCommit, otherCommit, requests) {
         const files = new Map();
         let url = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/diffstat/${sideCommit}..${otherCommit}?pagelen=500`;
         while (url) {
-            const page = JSON.parse(await fetchBitbucket(url, { 'Accept': 'application/json' }, load, load.signal));
+            const page = await fetchBitbucket(url, { 'Accept': 'application/json' }, requests, requests.signal, body => JSON.parse(body));
             for (const entry of page.values || []) {
                 const oldPath = entry.old && entry.old.path;
                 const newPath = entry.new && entry.new.path;
@@ -123,14 +138,14 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
     // by conflicts.mjs. Bitbucket's diff/{a}..{b}?topic=true is the three-dot diff
     // of side `a` (checked against diffstat on 2026-09-11); `path` can be repeated.
     // `signal` stops the side: no next request, the one in flight aborted.
-    async function fetchPatch(repoName, sideCommit, otherCommit, filePaths, load, signal) {
+    async function fetchPatch(repoName, sideCommit, otherCommit, filePaths, requests, signal) {
         const files = new Map();
         for (let i = 0; i < filePaths.length; i += filesPerPatchRequest) {
             signal.throwIfAborted();
             const paths = new Set(filePaths.slice(i, i + filesPerPatchRequest).flat());
             const query = [...paths].map(p => `path=${encodeURIComponent(p)}`).join('&');
             const url = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/diff/${sideCommit}..${otherCommit}?topic=true&${query}`;
-            for (const [basePath, file] of parseUnifiedDiff(await fetchBitbucket(url, {}, load, signal))) {
+            for (const [basePath, file] of parseUnifiedDiff(await fetchBitbucket(url, {}, requests, signal))) {
                 files.set(basePath, file);
             }
         }
@@ -151,10 +166,11 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
         load.signal.throwIfAborted();
         const startTime = now();
         const [destCommit, sourceCommit] = spec.split('..');
+        const requests = load.check();
 
-        const sourceFiles = await fetchDiffstatFiles(repoName, sourceCommit, destCommit, load);
+        const sourceFiles = await fetchDiffstatFiles(repoName, sourceCommit, destCommit, requests);
         if (sourceFiles.size === 0) return { conflicts: false };
-        const destFiles = await fetchDiffstatFiles(repoName, destCommit, sourceCommit, load);
+        const destFiles = await fetchDiffstatFiles(repoName, destCommit, sourceCommit, requests);
         const { conflicting, toCheck } = decideFromDiffstat(sourceFiles, destFiles);
         const known = [...conflicting].sort();
         if (toCheck.length > maxFilesToCheck) {
@@ -171,8 +187,8 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
                 // The base path and the path on each side: a renamed file is found under both
                 const filePaths = toCheck.map(basePath => [basePath, sourceFiles.get(basePath).sidePath, destFiles.get(basePath).sidePath]);
                 const [sourcePatch, destPatch] = await Promise.all([
-                    fetchPatch(repoName, sourceCommit, destCommit, filePaths, load, signal),
-                    fetchPatch(repoName, destCommit, sourceCommit, filePaths, load, signal)
+                    fetchPatch(repoName, sourceCommit, destCommit, filePaths, requests, signal),
+                    fetchPatch(repoName, destCommit, sourceCommit, filePaths, requests, signal)
                 ]);
                 for (const basePath of toCheck) {
                     checkPatch(basePath, sourcePatch, sourceFiles);
@@ -184,9 +200,8 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
                 stop.abort(error);
                 // Nothing known yet: the caller reports the pull request not checked
                 if (known.length === 0) throw error;
-                // After the stop of the load, its reason: the error of a request it aborted says nothing (logged once by the caller)
-                if (load.signal.aborted) return { conflicts: true, files: known, reason: failureReason(load.signal.reason) };
-                if (!(error instanceof RateLimitError)) {
+                // The stop of the load is logged once, by the caller
+                if (!(error instanceof RateLimitError) && error !== load.signal.reason) {
                     log.error(`Conflict check for ${repoName} ${spec} incomplete, ${known.length} conflicting files known from the diffstats: ${error.message}`);
                 }
                 return { conflicts: true, files: known, reason: failureReason(error) };
@@ -205,8 +220,9 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
      * maxConcurrent at once), and only a complete result is stored; a pull
      * request without commit hashes on both sides gets no entry (the
      * frontend flags it as invalid). The cache is saved once at the end.
-     * Repeated Bitbucket failures stop the load (createLoad): the checks not
-     * done yet report the stop's reason, `stopped` too.
+     * Repeated Bitbucket failures stop the load (createLoad): the checks the
+     * stop ends report its reason, `stopped` too; `computed` counts the checks
+     * started, not the ones that ended before their first request.
      * @param {string} projectName - for the log lines
      * @param {object[]} pullRequests - Bitbucket pull requests
      * @returns {Promise<{ statuses: Record<string, { conflicts: boolean, files?: string[], reason?: string } | { error: true, reason: string }>, stopped: string|null }>}
@@ -226,19 +242,21 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
             try {
                 let result = syncCache.get(key);
                 if (!result) {
-                    computed++;
-                    result = await conflictsLimiter(() => computeConflicts(repoName, spec, load));
+                    result = await conflictsLimiter(() => {
+                        load.signal.throwIfAborted();
+                        computed++;
+                        return computeConflicts(repoName, spec, load);
+                    });
                     // Complete results only: a failure or a partial SYNC is computed again at the next load
                     if (!result.error && !result.reason) syncCache.set(key, result);
                 }
                 statuses[key] = result;
             } catch (error) {
-                // After the stop of the load, its reason, logged once below
-                const failure = load.signal.aborted ? load.signal.reason : error;
-                if (!load.signal.aborted && !(error instanceof RateLimitError)) {
+                // The stop of the load is logged once, below
+                if (!(error instanceof RateLimitError) && error !== load.signal.reason) {
                     log.error(`Error computing sync status for ${repoName} ${spec}: ${error.message}`);
                 }
-                statuses[key] = { error: true, reason: failureReason(failure) };
+                statuses[key] = { error: true, reason: failureReason(error) };
             }
         }));
         const stopped = load.signal.aborted ? load.signal.reason.message : null;

@@ -473,7 +473,7 @@ The application integrates with a Jira workflow where:
 | `/api/version` | GET | None | Application version metadata |
 | `/api/projects` | GET | 300s | List of configured projects |
 | `/api/pull-requests/:project` | GET | 120s (30s with `incomplete`) | Comprehensive project data; `incomplete` names the parts a tolerated Jira failure left out (`parents`, `sprints`) |
-| `/api/sync-statuses/:project` | GET | 300s (none when `stopped`) | SYNC (conflict) status of every open pull request, loaded on demand; `stopped` is the reason the load was stopped after 8 Bitbucket failures in a row (timeouts, network failures, 5xx), `null` otherwise |
+| `/api/sync-statuses/:project` | GET | 300s (none when `stopped`) | SYNC (conflict) status of every open pull request, loaded on demand; `stopped` is the reason the load was stopped after Bitbucket failed for 8 pull requests in a row (timeouts, network failures, unreadable answers, 5xx, 401, 403), `null` otherwise |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
 During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
