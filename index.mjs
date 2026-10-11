@@ -63,8 +63,8 @@ app.use(securityHeaders);
 // /api requests sent by a page of another site get a 403 (request-guard.mjs)
 app.use(createRequestGuard({ isAllowedHostname: hostnames.isAllowed, log: message => log(message, errorLogStream) }));
 
-// Serve all files in the public folder
-app.use(express.static('public'));
+// Serve all files in the public folder of the dashboard, wherever it is started from (#107)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // The help modal fetches the README from the root. This route is the only
 // thing served from the project directory: a static middleware mounted on it
