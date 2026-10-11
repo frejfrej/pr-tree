@@ -30,7 +30,7 @@
  */
 
 import { otherReviewers, statusClass, syncKey } from './pull-request-status.js';
-import { pullRequestKey } from './pull-request-key.mjs';
+import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 
 /**
  * The text as HTML: the five characters that can end an attribute or start a
@@ -161,11 +161,11 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
             const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, byDestination);
 
             const branchUrl = getBranchUrl(rootBranch, rootPullRequests[0]);
-            // Repositories share root branch names (master): its collapse state is kept by both (#103)
-            const rootBranchKey = `${rootPullRequests[0].source.repository.name}/${rootBranch}`;
+            // Repositories share root branch names (master): each one keeps its own collapse state (#103)
+            const branchKey = rootBranchKey(rootPullRequests[0].source.repository.name, rootBranch);
 
             html += `
-                <div class="root-branch" data-root-branch-key="${escapeHtml(rootBranchKey)}">
+                <div class="root-branch" data-root-branch-key="${escapeHtml(branchKey)}">
                     <div class="root-branch-header">
                         ${toggleButton(escapeHtml(rootBranch))}
                         <h3 class="root-branch-name">

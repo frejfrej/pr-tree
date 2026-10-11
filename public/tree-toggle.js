@@ -103,66 +103,36 @@ export function expandAll() {
     setAllCollapsed(false);
 }
 
+// What a re-render puts back, by kind: the key of an element and how to collapse it.
+// Two repositories share branch names and pull-request ids, so the root branches and
+// the pull requests are known by keys that name their repository (pull-request-key.mjs)
+const collapsibleKinds = {
+    repositories: { selector: '.repository', keyOf: element => element.querySelector('.repository-name')?.textContent.trim(), setCollapsed: setRepositoryCollapsed },
+    rootBranches: { selector: '.root-branch', keyOf: element => element.dataset.rootBranchKey, setCollapsed: setRootBranchCollapsed },
+    pullRequests: { selector: '.pull-request', keyOf: element => element.dataset.id, setCollapsed: setPullRequestCollapsed }
+};
+
 /**
- * Snapshot of what is collapsed, keyed by repository name, root branch key
- * (repository/branch, #103) and pull request key (repository/id, #99): two
- * repositories share branch names and pull-request ids. A re-render can then
- * put the tree back as the user left it.
+ * The keys of what is collapsed, per kind: repository names, root branch keys
+ * (#103) and pull request keys (#99), so a re-render can put the tree back as
+ * the user left it.
+ * @returns {{ repositories: string[], rootBranches: string[], pullRequests: string[] }}
  */
 export function captureToggleStates() {
-    const states = { repositories: [], rootBranches: [], pullRequests: [] };
-
-    document.querySelectorAll('.repository').forEach(repository => {
-        const name = repository.querySelector('.repository-name');
-        if (name) {
-            states.repositories.push({
-                name: name.textContent.trim(),
-                collapsed: repository.classList.contains('collapsed')
-            });
-        }
-    });
-
-    document.querySelectorAll('.root-branch').forEach(rootBranch => {
-        states.rootBranches.push({
-            key: rootBranch.dataset.rootBranchKey,
-            collapsed: rootBranch.classList.contains('collapsed')
-        });
-    });
-
-    document.querySelectorAll('.pull-request').forEach(pullRequest => {
-        const children = pullRequest.nextElementSibling;
-        if (children && children.classList.contains('children')) {
-            states.pullRequests.push({
-                key: pullRequest.dataset.id,
-                collapsed: pullRequest.classList.contains('collapsed')
-            });
-        }
-    });
-
-    return states;
+    return Object.fromEntries(Object.entries(collapsibleKinds).map(([kind, { selector, keyOf }]) =>
+        [kind, [...document.querySelectorAll(`${selector}.collapsed`)].map(keyOf).filter(Boolean)]));
 }
 
+/** Collapses the elements whose keys captureToggleStates returned: one map of the rendered elements per kind with something to restore */
 export function restoreToggleStates(states) {
     if (!states) return;
-
-    states.repositories.filter(state => state.collapsed).forEach(state => {
-        const repository = Array.from(document.querySelectorAll('.repository')).find(candidate => {
-            const name = candidate.querySelector('.repository-name');
-            return name && name.textContent.trim() === state.name;
-        });
-        if (repository) setRepositoryCollapsed(repository, true);
-    });
-
-    // By key, "repository/branch" (#103) and "repository/id" (#99): one map of the
-    // rendered elements, built only when something of that kind was collapsed
-    const restore = (collapsedStates, selector, keyOf, setCollapsed) => {
-        if (collapsedStates.length === 0) return;
+    for (const [kind, { selector, keyOf, setCollapsed }] of Object.entries(collapsibleKinds)) {
+        const keys = states[kind];
+        if (keys.length === 0) continue;
         const elementsByKey = new Map([...document.querySelectorAll(selector)].map(element => [keyOf(element), element]));
-        for (const state of collapsedStates) {
-            const element = elementsByKey.get(state.key);
+        for (const key of keys) {
+            const element = elementsByKey.get(key);
             if (element) setCollapsed(element, true);
         }
-    };
-    restore(states.rootBranches.filter(state => state.collapsed), '.root-branch', element => element.dataset.rootBranchKey, setRootBranchCollapsed);
-    restore(states.pullRequests.filter(state => state.collapsed), '.pull-request', element => element.dataset.id, setPullRequestCollapsed);
+    }
 }

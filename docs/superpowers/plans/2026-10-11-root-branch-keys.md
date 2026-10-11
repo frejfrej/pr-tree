@@ -7,5 +7,5 @@ Spec: `docs/superpowers/specs/2026-10-11-root-branch-keys-design.md`.
    pull requests.
 3. Tests: tree-toggle (fake document), app-render (attribute, escaping,
    fixtures); `npm test`.
-4. Manual re-render check on fixture SECOLLAB; README 3.1.2, CLAUDE.md
+4. Manual re-render check on fixture SECOLLAB; README 3.1.0, CLAUDE.md
    pitfall 11, version; pull request closing #103.
