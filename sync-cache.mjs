@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
-import { rename, writeFile } from 'fs/promises';
+import * as fsPromises from 'fs/promises';
+import path from 'path';
 
 /**
  * The conflicts of pull requests by "repo/destHash..sourceHash", kept on disk
@@ -10,7 +11,9 @@ import { rename, writeFile } from 'fs/promises';
  * more than maxAgeDays ago are dropped when the file is written (merged pull
  * requests leave their hashes behind), and so are those of any other rule
  * version. Only successful results are meant to be stored; a failure is
- * retried by the caller at the next load.
+ * retried by the caller at the next load. A save is durable: the new file
+ * reaches the disk before it replaces the old one, so a power loss leaves
+ * one or the other, never an empty file.
  */
 
 export const syncCacheVersion = 1;
@@ -25,8 +28,9 @@ const dayMs = 24 * 60 * 60 * 1000;
  * @param {number} [options.maxAgeDays=90] - entries older than this are dropped at save
  * @param {() => number} [options.now] - clock, for the tests
  * @param {(error: Error) => void} [options.onError] - called when the file cannot be used
+ * @param {{ open: Function, rename: Function, unlink: Function }} [options.fileSystem] - fs/promises, for the tests
  */
-export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = () => Date.now(), onError = () => {} } = {}) {
+export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = () => Date.now(), onError = () => {}, fileSystem = fsPromises } = {}) {
     if (!Number.isInteger(ruleVersion)) throw new TypeError('openSyncCache needs the ruleVersion of its keys');
     const prefix = `${ruleVersion}:`;
     const entries = new Map(); // by file key, every version
@@ -55,16 +59,40 @@ export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = ()
         }
     }
 
-    // A temporary file then a rename: a crash never leaves a truncated cache
+    // A temporary file synced to the disk, then a rename: neither a crash nor
+    // a power loss leaves a truncated or empty cache. The temporary file goes
+    // when the write or the rename fails.
     async function write(content) {
         const temporary = `${filePath}.${process.pid}.tmp`;
         try {
-            await writeFile(temporary, content);
-            await rename(temporary, filePath);
-            return true;
+            const handle = await fileSystem.open(temporary, 'w');
+            try {
+                await handle.writeFile(content);
+                await handle.sync();
+            } finally {
+                await handle.close();
+            }
+            await fileSystem.rename(temporary, filePath);
         } catch (error) {
             dirty = true; // the next save writes the entries again
+            await fileSystem.unlink(temporary).catch(() => {});
             throw error;
+        }
+        await syncDirectory();
+        return true;
+    }
+
+    // The rename itself on the disk; best effort: Windows cannot open a
+    // directory, and some file systems refuse to sync one
+    async function syncDirectory() {
+        let handle;
+        try {
+            handle = await fileSystem.open(path.dirname(filePath), 'r');
+            await handle.sync();
+        } catch {
+            // the file is in place already
+        } finally {
+            await handle?.close().catch(() => {});
         }
     }
 

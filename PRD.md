@@ -229,7 +229,7 @@ The application integrates with a Jira workflow where:
 **Requirements:**
 - F6.1: Decide conflicts with the destination branch from Bitbucket's diffs of both sides since the merge base, with git's rule (the same result on both sides merging cleanly, overlapping or adjacent changes with different content, modify/delete, different renames, binaries, a file against a directory at the same path, files added on both sides with different modes); no file content is fetched
 - F6.2: Display a badge on each pull request once the statuses are loaded: OK, SYNC (possibly partial: the listed files conflict for sure, others could not be checked, with the reason in the tooltip), or ? with the reason it could not be checked
-- F6.3: Keep the results across restarts (`sync-cache.json`); a result never changes for a pair of commits, so only the pull requests whose commits moved are computed again
+- F6.3: Keep the results across restarts (`sync-cache.json`); a result never changes for a pair of commits, so only the pull requests whose commits moved are computed again; the file is written durably (synced to the disk before it replaces the previous one), so a crash or a power loss during a save leaves the previous results, never an empty file
 - F6.4: Load on demand only (the SYNC load button), never automatically
 
 **Acceptance Criteria:**
