@@ -18,6 +18,7 @@ import { createSyncStatuses } from './sync-statuses.mjs';
 import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 import { conflictRuleVersion } from './conflicts.mjs';
+import { createLogFile } from './log-file.mjs';
 import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost, loopbackHostnames } from './request-guard.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
@@ -72,10 +73,16 @@ app.get('/api/version', (req, res) => {
     res.json({ version, releaseDate, author, license });
 });
 
-// Create write streams for different log types
-const accessLogStream = fs.createWriteStream(path.join(__dirname, 'access.log'), { flags: 'a' });
-const errorLogStream = fs.createWriteStream(path.join(__dirname, 'error.log'), { flags: 'a' });
-const performanceLogStream = fs.createWriteStream(path.join(__dirname, 'performance.log'), { flags: 'a' });
+// The log files (log-file.mjs): rotated at 10 MB, three old files kept (access.log.1 to .3);
+// a file that cannot be written is reported on the console instead of crashing the server
+const openLogFile = name => createLogFile(path.join(__dirname, name), {
+    maxBytes: 10 * 1024 * 1024,
+    keep: 3,
+    onError: message => console.error(`${new Date().toISOString()} - ${message}`)
+});
+const accessLogStream = openLogFile('access.log');
+const errorLogStream = openLogFile('error.log');
+const performanceLogStream = openLogFile('performance.log');
 
 // Logging function
 function log(message, logStream) {
@@ -257,6 +264,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     }
 });
 
+const servers = [];
 const server = app.listen(port, host, () => {
     // The port actually bound: PORT=0 lets the OS pick one (the server test does that)
     const boundPort = server.address().port;
@@ -266,13 +274,27 @@ const server = app.listen(port, host, () => {
     log(`Listening on ${host}, answering to the host names ${[...hostnames.names].join(', ')}`, accessLogStream);
     if (!process.env.PR_TREE_HOST) {
         // localhost may resolve to ::1 alone (an /etc/hosts entry): the IPv6 loopback answers too, on the same port
-        app.listen(boundPort, '::1').on('error', error => log(`Not listening on ::1: ${error.message}`, errorLogStream));
+        servers.push(app.listen(boundPort, '::1').on('error', error => log(`Not listening on ::1: ${error.message}`, errorLogStream)));
     }
     if (fixtureSource) {
         log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
     }
 });
 
-// A SIGTERM (how the server test stops the server) ends the process normally: a process killed
-// by the signal writes no coverage, and npm run test:coverage would list every module but this one
-process.on('SIGTERM', () => process.exit(0));
+servers.push(server);
+
+// SIGTERM (how the server test stops the server) and SIGINT (Ctrl+C): no new connection, the
+// buffered log lines written, then a normal exit. A process killed by the signal loses those
+// lines and writes no coverage (npm run test:coverage would list every module but this one).
+// A second signal, or log files that take more than 2 seconds, exit at once.
+let shuttingDown = false;
+function shutDown(signal) {
+    if (shuttingDown) process.exit(0);
+    shuttingDown = true;
+    log(`Shutting down on ${signal} (pid ${process.pid})`, accessLogStream);
+    for (const listening of servers) listening.close();
+    setTimeout(() => process.exit(0), 2000).unref();
+    Promise.all([accessLogStream, errorLogStream, performanceLogStream].map(file => file.end())).then(() => process.exit(0));
+}
+process.on('SIGTERM', () => shutDown('SIGTERM'));
+process.on('SIGINT', () => shutDown('SIGINT'));

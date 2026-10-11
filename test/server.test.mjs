@@ -21,25 +21,31 @@ const root = path.resolve(import.meta.dirname, '..');
 let server;
 let baseUrl;
 
-before(async () => {
-    server = spawn(process.execPath, ['index.mjs', '--fixtures'], {
+// A fixture server on an ephemeral port, and its URL once it listens
+async function startServer() {
+    const child = spawn(process.execPath, ['index.mjs', '--fixtures'], {
         cwd: root,
         // The default address and names: a PR_TREE_HOST of the environment would change them
         env: { ...process.env, PORT: '0', PR_TREE_HOST: '', PR_TREE_ALLOWED_HOSTS: '' },
         stdio: ['ignore', 'pipe', 'pipe']
     });
-    baseUrl = await new Promise((resolve, reject) => {
+    const url = await new Promise((resolve, reject) => {
         let output = '';
-        server.stdout.on('data', chunk => {
+        child.stdout.on('data', chunk => {
             output += chunk;
             const match = output.match(/Server is running at (http:\/\/localhost:\d+)/);
             if (match) resolve(match[1]);
         });
-        server.stderr.on('data', chunk => { output += chunk; });
-        server.on('error', reject);
-        server.on('exit', code => reject(new Error(`server exited with code ${code}\n${output}`)));
+        child.stderr.on('data', chunk => { output += chunk; });
+        child.on('error', reject);
+        child.on('exit', code => reject(new Error(`server exited with code ${code}\n${output}`)));
         setTimeout(() => reject(new Error(`server did not start\n${output}`)), 10000).unref();
     });
+    return { child, url };
+}
+
+before(async () => {
+    ({ child: server, url: baseUrl } = await startServer());
 });
 
 after(async () => {
@@ -332,4 +338,15 @@ test('the IPv6 loopback answers too, on the same port: localhost may resolve to 
     }
     const response = await fetch(`http://[::1]:${new URL(baseUrl).port}/api/version`);
     assert.equal(response.status, 200);
+});
+
+test('Ctrl+C (SIGINT) ends the server normally, its last log line written to access.log first (#104)', async () => {
+    const { child } = await startServer();
+    const exited = once(child, 'exit');
+    child.kill('SIGINT');
+    const [code, signal] = await exited;
+    assert.deepEqual([code, signal], [0, null], 'a normal exit, not a death by the signal');
+    // The line is written by the stream the server ends before exiting: it is on disk now
+    const access = readFileSync(path.join(root, 'access.log'), 'utf8');
+    assert.ok(access.includes(`Shutting down on SIGINT (pid ${child.pid})`), 'the shutdown line is in access.log');
 });
