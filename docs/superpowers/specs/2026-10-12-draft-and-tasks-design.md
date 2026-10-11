@@ -67,3 +67,18 @@ request, so a pull request leaving the draft state re-renders the page.
   issue status; a second card style competes with it. The badge is enough.
 - **A three-way Drafts select** (all, hide, only): "only drafts" answers no
   question the issue raises; a checkbox is one click.
+
+## 5. After the /code-review of #135
+
+- `isDraft` in pull-request-status.js, called by the render and the index,
+  like the band and the reviewers.
+- A draft without reviewers no longer gets the "no other participants"
+  warning: that is the normal state of a draft.
+- The Work tooltip says "Ready for reviewers" leaves drafts out.
+- The task pill is a `commit-badge` with its own colours; the checkbox has
+  its own initialisation in app.js; the JSDoc of `filterBranches` and
+  `evaluateOrphanedIssue` lists `hideDrafts`.
+- Turned down: moving the scalar filters (Work, SYNC, Hide drafts) into the
+  registry, a refactor beyond this issue; keeping Hide drafts across a
+  project switch from the dropdown, which resets every filter, so this one
+  does the same.

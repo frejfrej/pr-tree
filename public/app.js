@@ -148,6 +148,9 @@ function initializeWorkFilter() {
     const workSelect = document.getElementById('workSelect');
     if (workSelect) workSelect.addEventListener('change', handleFilterChange);
     updateWorkSelect();
+}
+
+function initializeHideDraftsFilter() {
     const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
     if (hideDraftsCheckbox) hideDraftsCheckbox.addEventListener('change', handleFilterChange);
 }
@@ -600,6 +603,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializePopovers();
     document.getElementById('pull-requests').addEventListener('click', handleTreeClick);
     initializeWorkFilter();
+    initializeHideDraftsFilter();
     initializeSyncControls({
         getProject: () => currentProject,
         getSyncFilter: () => filters.sync,

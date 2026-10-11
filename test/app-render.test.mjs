@@ -192,7 +192,7 @@ test('renderRepositories renders the issues, participants, commit badges and ale
 test('renderRepositories marks a draft and counts its open tasks, nothing for a ready pull request without tasks (#119)', () => {
     const plain = renderSample();
     assert.equal(count(plain, 'class="draft-badge"'), 0);
-    assert.equal(count(plain, 'class="task-badge"'), 0);
+    assert.equal(count(plain, 'task-badge"'), 0);
     const draft = { ...stacked, draft: true, task_count: 2 };
     const oneTask = { ...recent, task_count: 1 };
     const html = renderRepositories([draft, child, approved, oneTask], jiraIssuesMap, jiraIssuesDetails, 'site');
@@ -201,8 +201,11 @@ test('renderRepositories marks a draft and counts its open tasks, nothing for a 
     assert.ok(html.includes('title="2 open tasks"'));
     assert.ok(html.includes('title="1 open task"'));
     assert.ok(html.includes('<i class="fas fa-tasks" role="img" aria-label="open tasks"></i>2'));
+    // A draft without reviewers is the normal state of a draft: no warning (PR 1 has a linked issue and no reviewer)
+    assert.ok(plain.includes('Pull request has no other participants'));
+    assert.ok(!html.includes('Pull request has no other participants'));
     for (const taskCount of [0, null, undefined, 'x']) {
-        assert.equal(count(renderRepositories([{ ...stacked, task_count: taskCount }], {}, [], 'site'), 'class="task-badge"'), 0, String(taskCount));
+        assert.equal(count(renderRepositories([{ ...stacked, task_count: taskCount }], {}, [], 'site'), 'task-badge"'), 0, String(taskCount));
     }
 });
 

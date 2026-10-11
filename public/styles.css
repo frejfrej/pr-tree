@@ -1131,20 +1131,8 @@ select:disabled {
 
 /* Open tasks: they wait for the author */
 .task-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 8px;
-    padding: 2px 8px;
-    border: 1px solid var(--warning-strong);
-    border-radius: 12px;
+    border-color: var(--warning-strong);
     color: var(--warning-strong);
-    font-size: 12px;
-    font-weight: 500;
-}
-
-.task-badge i {
-    font-size: 10px;
 }
 
 /* A draft: not ready for review, out of the reviewers' attention */

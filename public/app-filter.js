@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
-import { statusClass, otherReviewers, syncKey, atlassianAgent } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft } from './pull-request-status.js';
 import { pullRequestKey } from './pull-request-key.mjs';
 
 // The multi-selects compared with the set of the index entry named like the
@@ -250,7 +250,7 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             statusInProgress: band === 'status-in-progress',
             statusInReview: band === 'status-in-review',
             // A draft waits for no reviewer (computeAttention) and "Hide drafts" hides it
-            draft: pullRequest.draft === true,
+            draft: isDraft(pullRequest),
             // The key of this pull request in a SYNC statuses response, the one
             // the render writes on its badge (pull-request-status.js)
             syncKey: syncKey(pullRequest),
@@ -379,9 +379,9 @@ const reviewWorkValues = ['reviews', 'reviewers'];
  * review with no pull request: it waits for its assignee, so with
  * participants selected it is kept when assigned to one of them, under every
  * Work value but the review ones ("All reviews", "Ready for reviewers": nothing
- * here is reviewed); the SYNC filter does not apply.
+ * here is reviewed); the SYNC and Hide drafts filters do not apply.
  * @param {object} entry - an entry of buildFilterIndex().orphanedIssuesByKey
- * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync }
+ * @param {object} filters - { text, participants, work, hideDrafts, sprints, fixVersions, epics, stories, sync }
  * @returns {{ visible: boolean, attention: boolean }} attention: assigned to a selected participant
  */
 export function evaluateOrphanedIssue(entry, filters) {
@@ -406,7 +406,7 @@ export function evaluateOrphanedIssue(entry, filters) {
  * is hidden while no row is left; the attention of its visible rows is
  * counted. Everything a decision needs comes from the index and the loaded
  * SYNC statuses, nothing from what the tree shows.
- * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync }
+ * @param {object} filters - { text, participants, work, hideDrafts, sprints, fixVersions, epics, stories, sync }
  * @param {Record<string, object> | null} [syncStatuses] - the statuses of the last SYNC load by "repo/destHash..sourceHash", null while none is loaded
  * @returns {number} how many pull requests and orphaned issues are left shown and need attention
  */
