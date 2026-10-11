@@ -3,7 +3,7 @@
 **Date:** 2026-10-11
 **Issue:** #105
 **Target version:** 3.1.0 (the user holds the version at 3.1.0)
-**Status:** Decided alone (the user asked for the fix without a brainstorm)
+**Status:** Decided alone (the user asked for the fix without a brainstorm); decision 1 replaced by the review round (section 4)
 
 ## 1. Goal
 
@@ -15,12 +15,12 @@ fixture source, and the build then failed on `projectConfig.repositories`
 
 ## 2. Decisions
 
-1. **`Object.hasOwn`** at the three lookups of a name from the URL:
-   `projectConfigOf` in index.mjs (the project route's build and the SYNC
-   route's 404 check) and `getProjectData` in fixtures/index.mjs. Not a
-   null-prototype copy of the projects: `config.js` and `projects.js` stay as
-   they are, and `Object.keys` (the project list) already ignored inherited
-   names.
+1. **The projects in an object without a prototype**, made once in
+   index.mjs where the configuration is loaded (config.js or the fixtures):
+   every `config.projects[name]` then finds configured projects only, the
+   lookups of today and those to come (section 4; the first version guarded
+   each lookup with `Object.hasOwn`). `config.js` and `projects.js` stay as
+   they are.
 2. **The answers stay as documented** (PRD 7.5): an unknown project gets a
    500 from the project route and a 404 from the SYNC route. Turning the 500
    into a 404 is a change of its own.
@@ -29,6 +29,18 @@ fixture source, and the build then failed on `projectConfig.repositories`
 ## 3. Verification
 
 server.test.mjs: the four names get 404 from the SYNC route (a 500 before)
-and 500 from the project route; fixtures.test.mjs: the fixture source
-rejects them with "Project not found" (before: "projectConfig.repositories is
-not iterable"). Both fail without the fix.
+and 500 from the project route; it fails without the line of index.mjs
+(fixture mode goes through it as the real mode does).
+
+## 4. Review round
+
+The /code-review of #129 led to: the projects normalised once in index.mjs
+instead of `Object.hasOwn` at each lookup (a future lookup could not bring
+#105 back, and the rule is no longer written in index.mjs and in the
+fixture source). The fixture source keeps its plain lookup: index.mjs hands
+it the normalised configuration, and only tests call it directly; its
+`Object.hasOwn` and the fixture test of the inherited names are gone, so the
+server test is the one that exercises the line.
+
+Not taken: answering 404 instead of 500 from the project route for an
+unknown project (decision 2; left to the user).

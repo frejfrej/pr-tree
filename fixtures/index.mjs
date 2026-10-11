@@ -43,8 +43,7 @@ export function createFixtureSource(config, { scale = 1, chainDepth = deepChain.
     const projectData = new Map();
 
     function getProjectData(projectName) {
-        // An own property only: a name inherited from Object.prototype is an unknown project (#105)
-        const projectConfig = Object.hasOwn(config.projects, projectName) ? config.projects[projectName] : undefined;
+        const projectConfig = config.projects[projectName];
         if (!projectConfig) {
             throw new Error('Project not found');
         }

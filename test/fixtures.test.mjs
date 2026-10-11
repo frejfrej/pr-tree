@@ -178,11 +178,6 @@ test('the fixture source serves both configured projects and refreshes lastRefre
     assert.ok(second.lastRefreshTime >= first.lastRefreshTime);
     assert.equal((await source.buildProjectData('OSLC')).pullRequests.length, 24);
     await assert.rejects(source.buildProjectData('NOPE'), /Project not found/);
-    // Names inherited from Object.prototype are not projects (#105): before, the build failed on their "repositories"
-    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
-        await assert.rejects(source.buildProjectData(name), /Project not found/, name);
-        await assert.rejects(source.buildSyncStatuses(name), /Project not found/, name);
-    }
     assert.equal(Object.keys((await source.buildSyncStatuses('OSLC')).statuses).length, 24);
 });
 

@@ -24,6 +24,9 @@ import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost,
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
 const config = fixtureOptions.enabled ? fixtureConfig() : (await import('./config.js')).default;
+// Project names come from URLs: the projects go in an object without a prototype, so a name
+// inherited from Object.prototype (constructor, __proto__) is no project at any lookup (#105)
+config.projects = Object.assign(Object.create(null), config.projects);
 const fixtureSource = fixtureOptions.enabled ? createFixtureSource(config, { scale: fixtureOptions.scale, chainDepth: fixtureOptions.chainDepth }) : null;
 
 const app = express();
@@ -177,12 +180,8 @@ app.get('/api/projects', async (req, res) => {
     }
 });
 
-// The configuration of a project named in a URL: an own property only, so a name
-// inherited from Object.prototype (constructor, __proto__) is an unknown project (#105)
-const projectConfigOf = projectName => (Object.hasOwn(config.projects, projectName) ? config.projects[projectName] : undefined);
-
 async function buildProjectData(projectName) {
-    const projectConfig = projectConfigOf(projectName);
+    const projectConfig = config.projects[projectName];
     if (!projectConfig) {
         throw new Error('Project not found');
     }
@@ -221,7 +220,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     const startTime = Date.now();
     const projectName = req.params.project;
 
-    if (!projectConfigOf(projectName)) {
+    if (!config.projects[projectName]) {
         res.status(404).json({ error: 'Project not found' });
         return;
     }
