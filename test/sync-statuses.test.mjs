@@ -368,6 +368,7 @@ test('a complete result is stored under the rule-version prefix, and found again
     const result = { conflicts: true, files: ['f.txt'] };
     assert.deepEqual(await first.computeSyncStatuses('PROJ', [pullRequest()]), { [key]: result });
     assert.deepEqual(cache.get(key), result);
+    await cache.save(); // the load's save, not awaited by the load
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [fileKey]); // saved at the end of the load
 
     // A restart: the file is read again, the same pull request costs no request
@@ -386,6 +387,7 @@ test('a result stored under another version of the conflict rule is not reused, 
     const { computeSyncStatuses, requests } = setUp(fakeBitbucket({ ...bothSides, ...sameLine }), { cache });
     assert.deepEqual(await computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { conflicts: true, files: ['f.txt'] } });
     assert.equal(requests.length, 4);
+    await cache.save();
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [fileKey]); // the older entry went with the save
 });
 
@@ -425,9 +427,11 @@ test('an over-limit result is stored: the next load sends no request and logs no
         }
     });
     const expected = { [key]: { error: true, reason }, [otherKey]: { conflicts: true, files: ['g.txt'], reason } };
-    const first = setUp(bitbucket(), { cache: openSyncCache(file) });
+    const firstCache = openSyncCache(file);
+    const first = setUp(bitbucket(), { cache: firstCache });
     assert.deepEqual(await first.computeSyncStatuses('PROJ', [pullRequest(), pullRequest('eeee')]), expected);
     assert.equal(first.requests.length, 4);
+    await firstCache.save(); // the load's save, not awaited by the load
 
     const next = setUp(bitbucket(), { cache: openSyncCache(file) });
     assert.deepEqual(await next.computeSyncStatuses('PROJ', [pullRequest(), pullRequest('eeee')]), expected);
@@ -475,6 +479,7 @@ test('a cache that cannot be written is logged, the statuses are still returned'
     const cache = openSyncCache(path.join(tmpdir(), 'sync-statuses-missing-directory', 'sync-cache.json'));
     const { computeSyncStatuses, logs } = setUp(fakeBitbucket({ ...bothSides, ...sameLine }), { cache });
     assert.deepEqual(await computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { conflicts: true, files: ['f.txt'] } });
+    await cache.save().catch(() => {}); // after the load's save, not awaited by the load
     assert.equal(logs.error.length, 1);
     assert.match(logs.error[0], /^sync-cache\.json not written: ENOENT/);
 });

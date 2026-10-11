@@ -270,7 +270,8 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
         }));
         const stopped = load.signal.aborted ? load.signal.reason.message : null;
         if (stopped) log.error(`Sync statuses of ${projectName}: ${stopped}`);
-        await syncCache.save().catch(error => log.error(`sync-cache.json not written: ${error.message}`));
+        // Not awaited: the answer does not wait for the disk (two fsyncs)
+        syncCache.save().catch(error => log.error(`sync-cache.json not written: ${error.message}`));
         const results = Object.values(statuses);
         const notChecked = results.filter(status => status.error).length;
         const partlyChecked = results.filter(status => status.conflicts && status.reason).length;
