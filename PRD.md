@@ -455,7 +455,7 @@ The application integrates with a Jira workflow where:
 - Concurrent requests for an entry being built (project data, SYNC statuses, projects list) share the build in flight; a failure is not cached
 
 **Hash-Based Change Detection:**
-- Compute MD5 hash of PR + Jira data; the page re-renders only when it changes
+- Compute MD5 hash of PR (with their commit counts) + Jira data; the page re-renders only when it changes
 - The commit counts of a pull request are fetched only when its source or destination commit moves (remembered per project from its last build), at most 10 requests at once
 - Prevents Bitbucket API rate limiting (HTTP 429)
 

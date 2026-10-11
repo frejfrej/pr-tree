@@ -15,3 +15,6 @@ Spec: `docs/superpowers/specs/2026-10-11-project-build-requests-design.md` (#78,
 4. **Docs**: README changelog under 2.12.0, PRD 7.4 (change detection,
    shared builds), CLAUDE.md (file list, debug line, pitfall 17 removed).
 5. **Checks**: `npm test`, the fixture server serves both projects.
+6. **/code-review findings**: the counts before the assembly so the hash
+   covers them, kept after a failed build, the branch names escaped, the
+   request timeout, the limiter's synchronous throw.

@@ -129,7 +129,9 @@ test('the pull requests of each repository are fetched 50 per page, following ne
     }));
     const data = await buildProjectData('P', project);
     assert.deepEqual(urlsMatching(requests, /pullrequests/), [pullRequestsUrl('repo-a'), `${pullRequestsUrl('repo-a')}&page=2`, pullRequestsUrl('repo-b')]);
-    assert.deepEqual(requests[0].options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
+    const { signal, ...options } = requests[0].options;
+    assert.deepEqual(options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
+    assert.ok(signal instanceof AbortSignal);
     assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.deepEqual(data.pullRequests.map(pr => [pr.id, pr.commitsAhead, pr.commitsBehind]), [[1, 3, 1], [2, 3, 1], [3, 3, 1]]);
     assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['OTHER-7'], 3: ['PROJ-3'] });
@@ -383,10 +385,55 @@ test('a failed count is fetched again at the next build, and so is a pull reques
     assert.deepEqual(first.pullRequests.map(pr => [pr.commitsAhead, pr.commitsBehind]), [[null, 3], [3, 3]]);
     const second = await buildProjectData('P', oneRepository);
     assert.deepEqual(second.pullRequests.map(pr => [pr.commitsAhead, pr.commitsBehind]), [[3, 3], [3, 3]]);
+    assert.notEqual(second.dataHash, first.dataHash); // the hash covers the counts: the page renders the count fetched again
     assert.equal(commitsUrls(requests).length, 8); // both pull requests twice
     await buildProjectData('P', oneRepository);
     assert.equal(commitsUrls(requests).filter(url => url.includes('feat-1')).length, 4); // the first one is now remembered
     assert.equal(commitsUrls(requests).filter(url => url.includes('feat-2')).length, 6); // not the one without hashes
+});
+
+test('a build ended by a rate-limit pause keeps the counts it fetched for the next build', async () => {
+    let paused = true;
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1), pullRequest(2), pullRequest(3)]] },
+        commits: () => 1,
+        intercept: url => {
+            if (paused && url.includes('feat-3')) throw new RateLimitError();
+            return undefined;
+        }
+    }), { maxConcurrentCommitRequests: 1 });
+    const oneRepository = { ...project, repositories: ['repo-a'] };
+    await assert.rejects(buildProjectData('P', oneRepository), RateLimitError);
+    paused = false;
+    const before = commitsUrls(requests).length;
+    const data = await buildProjectData('P', oneRepository);
+    assert.deepEqual(commitsUrls(requests).slice(before).map(url => new URL(url).searchParams.get('include')), ['feat-3', 'master']);
+    assert.deepEqual(data.pullRequests.map(pr => pr.commitsAhead), [1, 1, 1]);
+});
+
+test('the branch names are escaped in the commits requests', async () => {
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1, { source: 'fix/a&b#1+c', destination: 'release/2.0' })]] },
+        commits: (repo, include) => (include === 'fix/a&b#1+c' ? 2 : 0)
+    }));
+    const data = await buildProjectData('P', { ...project, repositories: ['repo-a'] });
+    assert.deepEqual(commitsUrls(requests), [
+        `${bitbucket('repo-a')}/commits?include=fix%2Fa%26b%231%2Bc&exclude=release%2F2.0&pagelen=100`,
+        `${bitbucket('repo-a')}/commits?include=release%2F2.0&exclude=fix%2Fa%26b%231%2Bc&pagelen=100`
+    ]);
+    assert.equal(data.pullRequests[0].commitsAhead, 2);
+});
+
+test('a request that hangs fails the build after the timeout instead of holding it', async () => {
+    const atlassian = fakeAtlassian();
+    const hanging = {
+        requests: atlassian.requests,
+        fetch: (url, options) => (url.includes('/pullrequests')
+            ? new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)))
+            : atlassian.fetch(url, options))
+    };
+    const { buildProjectData } = setUp(hanging, { timeoutMs: 20 });
+    await assert.rejects(buildProjectData('P', project), { name: 'TimeoutError' });
 });
 
 test('no more commit requests at once than the limit', async () => {

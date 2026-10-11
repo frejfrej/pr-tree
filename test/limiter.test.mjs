@@ -31,6 +31,12 @@ test('no more than the limit run at once, the others start in order as slots fre
     assert.deepEqual(await Promise.all(results), [0, 1, 2, 3]);
 });
 
+test('a task that throws before returning its promise rejects its caller and frees its slot', async () => {
+    const limit = createLimiter(1);
+    await assert.rejects(limit(() => { throw new Error('thrown at once'); }), { message: 'thrown at once' });
+    assert.equal(await limit(async () => 'next'), 'next');
+});
+
 test('a rejection reaches its caller and frees its slot', async () => {
     const limit = createLimiter(1);
     const { tasks, started, releases } = controlledTasks(2);

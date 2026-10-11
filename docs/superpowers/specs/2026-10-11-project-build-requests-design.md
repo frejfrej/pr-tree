@@ -47,18 +47,23 @@ Neither fix covers the other: #84 alone leaves A, B, A alternating the slot;
    - A pull request without both commit hashes is fetched at every build
      (no key), as SYNC skips it.
    - A count that failed (`null`) is not remembered: the next build retries
-     it. A build that fails (a page of pull requests, a rate-limit pause)
-     leaves the memo as it was.
+     it. A count fetched joins the project's memo at once, so a build that
+     fails midway (a rate-limit pause at the 300th of 400 counts) keeps what
+     it fetched for the next build; only a successful build prunes the memo
+     to its own pull requests.
+   - The counts are fetched before the response is assembled, alongside the
+     Jira issues (they depend only on the pull requests), so the hash covers
+     them, as it already does in the fixture generator. Without that, a
+     failed count fetched again at the next build kept the hash unchanged
+     and the page never rendered it.
+   - The branch names are escaped in the commits query (`encodeURIComponent`):
+     a `&`, `#` or `+` in a branch name cut or changed the query before.
    - The requests still name the branches, not the hashes: the counts are
      what they are today, read when the key changes. Bitbucket may move a
      pull request's `destination.commit` only when the pull request is
      updated, so "behind" can lag when only the destination branch moves;
      today it lags the same way when nothing else changes, but any Jira
      change refreshed it incidentally, and that stops.
-   - The frontend's change detection is unaffected: the hash (computed
-     before the counts are added) covers the pull requests and so the
-     commit hashes of the key; a count that changes always comes with a
-     hash that changes.
 3. **At most 10 commit-count requests at once**. The counts to fetch were
    one `Promise.all` over every pull request, two requests each: ~400
    concurrent Bitbucket requests on SECOLLAB's first build. The limiter of
@@ -67,7 +72,11 @@ Neither fix covers the other: #84 alone leaves A, B, A alternating the slot;
    rounds of 10 on SECOLLAB); later builds fetch only the counts of the
    pull requests that moved. The limit is a `createProjectData` option
    (`maxConcurrentCommitRequests`, default 10).
-4. **The sprints run alongside the rest of the build**. The sprint chain
+4. **A request times out after 30 seconds** (`timeoutMs`, as in
+   sync-statuses.mjs). With the builds shared (1), a Bitbucket or Jira
+   request that hangs would otherwise hold every request for the project
+   until undici's own timeouts, minutes later.
+5. **The sprints run alongside the rest of the build**. The sprint chain
    (boards, active sprints, their issues) depends on nothing else of the
    build; it starts with the build and runs while the pull requests, the
    orphaned issues, the details and the parents are fetched one after the
@@ -100,4 +109,8 @@ Neither fix covers the other: #84 alone leaves A, B, A alternating the slot;
   build; no more than the limit of commit requests in flight; the sprint
   requests start before the pull requests are all fetched.
 - limiter.test.mjs: no more than the limit at once, the order of the queue,
-  a rejection passed through and the queue going on.
+  a rejection passed through and the queue going on, a task that throws
+  before returning its promise freeing its slot.
+- project-data.test.mjs, after the review: a count fetched again changes the
+  hash; a build ended by a rate-limit pause keeps its counts; the branch
+  names escaped; a hanging request fails the build after the timeout.

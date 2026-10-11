@@ -17,7 +17,8 @@ export function createLimiter(maxConcurrent) {
         if (active >= maxConcurrent || queue.length === 0) return;
         active++;
         const { task, resolve, reject } = queue.shift();
-        task().then(resolve, reject).finally(() => { active--; next(); });
+        // A task that throws before returning its promise rejects like one that rejects
+        new Promise(run => run(task())).then(resolve, reject).finally(() => { active--; next(); });
     };
     return task => new Promise((resolve, reject) => {
         queue.push({ task, resolve, reject });
