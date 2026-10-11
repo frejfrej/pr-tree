@@ -24,6 +24,9 @@ import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost,
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
 const config = fixtureOptions.enabled ? fixtureConfig() : (await import('./config.js')).default;
+// Project names come from URLs: the projects go in an object without a prototype, so a name
+// inherited from Object.prototype (constructor, __proto__) is no project at any lookup (#105)
+config.projects = Object.assign(Object.create(null), config.projects);
 const fixtureSource = fixtureOptions.enabled ? createFixtureSource(config, { scale: fixtureOptions.scale, chainDepth: fixtureOptions.chainDepth }) : null;
 
 const app = express();
@@ -191,6 +194,12 @@ async function buildProjectData(projectName) {
 app.get('/api/pull-requests/:project', async (req, res) => {
     const startTime = Date.now();
     const projectName = req.params.project;
+
+    // A mistyped or stale link: no build, no error.log line
+    if (!config.projects[projectName]) {
+        res.status(404).json({ error: 'Project not found' });
+        return;
+    }
 
     try {
         const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));

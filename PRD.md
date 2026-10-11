@@ -478,7 +478,7 @@ The application integrates with a Jira workflow where:
 | `/api/sync-statuses/:project` | GET | none (until the end of a rate-limit pause) | SYNC (conflict) status of every open pull request, loaded on demand; `stopped` is the reason the load was stopped after Bitbucket failed for 8 pull requests in a row (timeouts, network failures, unreadable answers, 5xx, 401, 403), `null` otherwise |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
-During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
+During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 404 with `{ error: 'Project not found' }` from both.
 
 Every route answers 403 with `{ error }` to a `Host` that is not a name of the server, and every `/api` route to a request with `Sec-Fetch-Site: cross-site` or `same-site` (NFR-SEC6).
 
