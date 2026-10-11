@@ -84,7 +84,7 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
-* Version 2.12.0
+* Version 3.0.0
     * During the 10-minute pause of the Atlassian requests after an HTTP 429, the page says so instead of failing silently: a project that cannot load meanwhile says "Atlassian requests are paused until 14:33 after a rate limit (HTTP 429)" instead of "Could not load", and the banner shows "Paused until 14:33" with a warning icon next to the refresh time while the tree is the data cached before the pause (below 900px, the icon only, the time in its tooltip) (#77)
     * The response of `/api/pull-requests/:project` carries `rateLimitedUntil`: the end of the pause in progress, `null` outside one
     * The page checks again a second after the end of the pause, so the project loads or refreshes at the time it announced instead of up to two minutes later, and the periodic checks send no request during the pause
