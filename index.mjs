@@ -21,6 +21,7 @@ import { conflictRuleVersion } from './conflicts.mjs';
 import { createLogFile } from './log-file.mjs';
 import { securityHeaders } from './security-headers.mjs';
 import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost, loopbackHostnames } from './request-guard.mjs';
+import { pageBuildHeader, pageBuildOf } from './page-build.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
@@ -64,7 +65,16 @@ app.use(securityHeaders);
 app.use(createRequestGuard({ isAllowedHostname: hostnames.isAllowed, log: message => log(message, errorLogStream) }));
 
 // Serve all files in the public folder of the dashboard, wherever it is started from (#107)
-app.use(express.static(path.join(__dirname, 'public')));
+const publicDirectory = path.join(__dirname, 'public');
+app.use(express.static(publicDirectory));
+
+// Every /api answer names the page this server serves (page-build.mjs): a tab still running
+// an earlier page asks for a reload instead of misreading the answers (#125)
+const pageBuild = pageBuildOf(publicDirectory);
+app.use('/api', (req, res, next) => {
+    res.set(pageBuildHeader, pageBuild);
+    next();
+});
 
 // The help modal fetches the README from the root. This route is the only
 // thing served from the project directory: a static middleware mounted on it
