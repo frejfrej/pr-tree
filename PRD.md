@@ -347,7 +347,8 @@ The application integrates with a Jira workflow where:
 - **NFR-SEC3**: Application must use HTTPS when deployed outside localhost
 - **NFR-SEC4**: No sensitive data logged to access/error logs
 - **NFR-SEC5**: Only the `public/` directory and `README.md` are served over HTTP; no other file of the project directory (configuration, logs, sources) is reachable
-- **NFR-SEC6**: The server listens on the loopback addresses (127.0.0.1 and ::1) unless `PR_TREE_HOST` opens another one; it answers only requests whose `Host` is one of its own names (loopback names, the bound address, `PR_TREE_ALLOWED_HOSTS`), and refuses the `/api` requests a browser marks as sent by another site (`Sec-Fetch-Site`)
+- **NFR-SEC6**: The server listens on the loopback addresses (127.0.0.1 and ::1) unless `PR_TREE_HOST` opens another one; it answers only requests whose `Host` is one of its own names (loopback names, the bound address, `PR_TREE_ALLOWED_HOSTS`), and refuses the `/api` requests a browser marks as sent by another site or by another port of the same host (`Sec-Fetch-Site: cross-site` or `same-site`)
+- **NFR-SEC7**: Every Bitbucket and Jira text, and every project name, reaches the page as text: through `escapeHtml` (`public/escape-html.js`, the one escape of the tree and of the filter options), `textContent` or DOM nodes. Only README.md and Bitbucket's rendered pull-request title and description are shown as HTML. The page loads no script, stylesheet or font from another origin (the libraries are vendored in `public/vendor/`); images do come from other origins: avatars and priority icons from Atlassian, and whatever a pull-request description shows
 
 ### 6.6 Maintainability
 - **NFR-M1**: Code must follow consistent naming conventions (camelCase)
@@ -768,8 +769,8 @@ The following are explicitly **not** part of current requirements:
 - **Authentication**: Basic Auth over HTTPS required for production
 - **Authorization**: Inherits Bitbucket/Jira permissions of configured user
 - **Input Validation**: Minimal (assumes trusted configuration)
-- **XSS Protection**: Markdown rendering with sanitization
-- **CSRF**: Not applicable (no state-changing operations from client)
+- **XSS Protection**: Escaping, not sanitization (NFR-SEC7): anyone with Jira write access can put `<script>` in a summary, so every such text is escaped. Nothing is sanitized; two sources are shown as HTML as they come: README.md in the help modal (`marked.parse`), a file of this repository, and the popover's pull-request title and description, Bitbucket's rendering of Markdown that anyone who can open a pull request writes. The second is safe only as long as Bitbucket's renderer drops raw HTML and script links: an assumption about a third party, not checked by this application; a Content-Security-Policy (#110) would contain a failure of it
+- **CSRF**: The `/api` requests a browser marks as sent by another site, or by another port of the same host, are refused (NFR-SEC6). They change no data of Bitbucket or Jira, but they do change the server's: a project load or a SYNC load spends the Atlassian quota (a 429 pauses every Atlassian request of the dashboard for 10 minutes), and a SYNC load writes `sync-cache.json`
 
 ### 14.3 Licensing
 - **Copyright**: François-Régis Jaunatre
