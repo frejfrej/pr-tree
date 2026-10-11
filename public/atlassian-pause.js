@@ -75,12 +75,17 @@ export function pausedStateText(project, until) {
     return `Atlassian requests are paused until ${formatPauseEnd(until)} after a rate limit (HTTP 429). ${project} will load then.`;
 }
 
+/** The main-pane message of a project load that failed for another reason during a pause: no check is sent before its end */
+export function failedDuringPauseText(project, until) {
+    return `Could not load ${project}. The next check is at ${formatPauseEnd(until)}, at the end of the Atlassian pause.`;
+}
+
 export function pauseIndicatorText(until) {
     return `Paused until ${formatPauseEnd(until)}`;
 }
 
 export function pauseIndicatorTitle(until) {
-    return `Atlassian rate limit reached (HTTP 429): requests are paused until ${formatPauseEnd(until)}. The page checks again then.`;
+    return `Atlassian rate limit reached (HTTP 429): requests are paused until ${formatPauseEnd(until)}, for every project. The project shown is checked again then.`;
 }
 
 /** Shows the banner indicator for a pause ending at until (epoch ms), or hides it with 0 */

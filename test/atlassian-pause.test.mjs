@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readProjectResponse, pauseEndAfter, parsePauseEnd, formatPauseEnd, pausedStateText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
+import { readProjectResponse, pauseEndAfter, parsePauseEnd, formatPauseEnd, pausedStateText, failedDuringPauseText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
 
 const response = (status, body) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 
@@ -63,6 +63,7 @@ test('the end of the pause is shown as HH:MM, rounded up to the minute', () => {
 test('the texts name the end of the pause', () => {
     const until = new Date(2026, 9, 11, 14, 32, 10).getTime();
     assert.equal(pausedStateText('SECOLLAB', until), 'Atlassian requests are paused until 14:33 after a rate limit (HTTP 429). SECOLLAB will load then.');
+    assert.equal(failedDuringPauseText('OSLC', until), 'Could not load OSLC. The next check is at 14:33, at the end of the Atlassian pause.');
     assert.equal(pauseIndicatorText(until), 'Paused until 14:33');
-    assert.equal(pauseIndicatorTitle(until), 'Atlassian rate limit reached (HTTP 429): requests are paused until 14:33. The page checks again then.');
+    assert.equal(pauseIndicatorTitle(until), 'Atlassian rate limit reached (HTTP 429): requests are paused until 14:33, for every project. The project shown is checked again then.');
 });

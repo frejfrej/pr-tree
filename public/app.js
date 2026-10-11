@@ -6,7 +6,7 @@ import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tre
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
-import { readProjectResponse, pauseEndAfter, pausedStateText, showPauseIndicator } from './atlassian-pause.js';
+import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
 
 // The projects the dropdown offers, from /api/projects
 let availableProjects = [];
@@ -224,14 +224,11 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     // Back and Forward make quick switches easy: a late response of a load replaced since is dropped
     if (generation !== loadGeneration) return;
     projectLoading = false;
-    setPause(pauseEndAfter(pausedUntil, result));
-    if (result.data) {
-        renderProjectLoad(result.data);
-    } else {
-        showNoDataState(result.pausedUntil);
-    }
-    // A hidden tab starts them when it becomes visible again
-    if (!document.hidden) startPeriodicChecking();
+    takeAnswer(result);
+    if (result.data) renderProjectLoad(result.data);
+    // A hidden tab starts them when it becomes visible again. A 503 whose
+    // pause ended while it was on its way: the check is sent at once.
+    if (!document.hidden) startPeriodicChecking(Boolean(result.pausedUntil) && !pausedUntil);
 }
 
 // The first render of a project: by its load, or by a later check when the
@@ -242,14 +239,18 @@ function renderProjectLoad(data) {
     updateUrlWithFilters({ replace: true });
 }
 
-// An answer without data, nothing rendered: the message follows that answer,
-// the pause it announced (until, epoch ms) or a failure. A failure during a
-// pause still says "Could not load": the indicator tells the pause.
-function showNoDataState(until) {
-    currentApiResult = null;
+// Takes the server's pause from an answer of a load or a check (see
+// pauseEndAfter) and, when the answer has no data and nothing is rendered,
+// paints its message: the pause while it is ahead, a failure otherwise. The
+// message follows the answer, the indicator the server: a failure during a
+// pause still says "Could not load", with the time of the next check.
+function takeAnswer(result) {
+    setPause(pauseEndAfter(pausedUntil, result));
+    if (result.data || currentApiResult) return;
     setToolbarVisible(false);
-    if (until) {
-        showPausedState(until);
+    // A 503 that arrived after the end of its pause is a failure: setPause dropped the end
+    if (result.pausedUntil && pausedUntil) {
+        showPausedState();
     } else {
         showErrorState();
     }
@@ -297,12 +298,14 @@ function showLoadingState() {
     showStateMessage('fas fa-spinner fa-spin', `Loading ${currentProject}…`);
 }
 
+// The checks are skipped during a pause: the next one is at its end
 function showErrorState() {
-    showStateMessage('fas fa-exclamation-triangle', `Could not load ${currentProject}. The next automatic check will retry.`, 'error');
+    const text = pausedUntil ? failedDuringPauseText(currentProject, pausedUntil) : `Could not load ${currentProject}. The next automatic check will retry.`;
+    showStateMessage('fas fa-exclamation-triangle', text, 'error');
 }
 
-function showPausedState(until) {
-    showStateMessage('fas fa-hourglass-half', pausedStateText(currentProject, until));
+function showPausedState() {
+    showStateMessage('fas fa-hourglass-half', pausedStateText(currentProject, pausedUntil));
 }
 
 // Copies the filter controls into the filters object and refreshes the
@@ -503,13 +506,10 @@ async function checkForUpdates() {
         const result = await fetchData(project);
         // A project switched to during the check has its own load: the late response is dropped
         if (generation !== loadGeneration) return;
-        setPause(pauseEndAfter(pausedUntil, result));
+        // The tree, if any, stays on an answer without data
+        takeAnswer(result);
         const newData = result.data;
-        if (!newData) {
-            // The tree, if any, stays; without one the message follows this answer, paused or failed
-            if (!currentApiResult) showNoDataState(result.pausedUntil);
-            return;
-        }
+        if (!newData) return;
 
         // Always update the refresh time
         const lastRefreshElement = document.getElementById('lastRefreshTime');

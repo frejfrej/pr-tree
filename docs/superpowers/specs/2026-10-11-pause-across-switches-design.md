@@ -42,11 +42,24 @@ pause went on.
    pause message would be a promise a failed load cannot keep. This keeps
    "the server is paused" (the indicator) apart from "this answer was
    paused" (the message), the mix the issue warned about.
-   `renderEverything` no longer takes `null`: `showNoDataState(until)` paints
-   the message.
+   `renderEverything` no longer takes `null`: `takeAnswer(result)`, shared
+   by the load and the check, updates the pause and paints the message.
 4. **The periodic checks still skip their fetch while the pause is ahead**,
    now also for a project switched to during the pause; its load itself is
    sent (the server answers its cache or a 503 at once, without Atlassian).
+   So a failure during a pause names the time of the next check: "Could not
+   load OSLC. The next check is at 14:33, at the end of the Atlassian
+   pause." instead of "The next automatic check will retry".
+5. **A 503 that arrives after the end of its pause** (sent a second before
+   it) is a failure: `setPause` drops the past end, so the pause message
+   would promise a load nothing sends. A load that gets one starts its
+   checks at once. A check that gets one is followed by the periodic one;
+   rescheduling at once would loop on an end the client's clock always sees
+   as past, which the shared clock of server and page rules out today but
+   should not turn into a request per second if it ever did not.
+6. **The indicator's tooltip** says the pause is for every project and that
+   "the project shown is checked again then" (it said "the page checks
+   again then", false without a project).
 
 ## 3. Turned down
 
@@ -55,6 +68,10 @@ pause went on.
 - **Asking the server for the pause (`/api/cache/stats` or a new
   endpoint) on a switch**: every answer already carries it; a failed load
   keeps the last known end, which the timer clears.
-- **Rewording the indicator's tooltip** ("The page checks again then") for
-  the case without a project: nothing is checked then, but nothing is shown
-  either, and a project picked before the end is loaded at once anyway.
+- **Comparing the server's end with a clock of its own** (review of #94):
+  the server and the page run on the same workstation, one clock.
+- **Repainting the pause message of a hidden tab at the end of the pause**
+  (review of #94): nobody sees it, and the tab checks at once when shown.
+- **Clearing a pause set by a SYNC answer on a switch** (review of #94): a
+  cached SYNC answer expires at the end of its pause, and a server restart
+  clears that cache with the pause, so its end is never stale.

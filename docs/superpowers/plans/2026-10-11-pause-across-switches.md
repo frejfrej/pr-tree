@@ -18,3 +18,8 @@ Spec: `docs/superpowers/specs/2026-10-11-pause-across-switches-design.md`.
 4. **Docs**: a 2.12.0 changelog line in README.md; the #77 spec's decision
    4 and 5 point to this spec.
 5. Commit, push, pull request against master closing #83.
+6. **After the /code-review**: `takeAnswer` shared by the load and the
+   check; a failure during a pause names the next check's time; a 503 whose
+   pause is already over is a failure and the load checks at once; the
+   tooltip no longer promises a check without a project. Turned down: clock
+   skew, the hidden tab's message, the SYNC pause (spec, section 3).
