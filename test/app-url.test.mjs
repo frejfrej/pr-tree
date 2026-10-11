@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { filterUrlParams, filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from '../public/app-url.js';
 
-const noFilters = { text: '', participants: [], work: 'all', sprints: [], fixVersions: [], epics: [], stories: [], sync: 'Show all' };
+const noFilters = { text: '', participants: [], work: 'all', hideDrafts: false, sprints: [], fixVersions: [], epics: [], stories: [], sync: 'Show all' };
 
 test('filtersFromUrl reads every filter, repeated parameters included', () => {
-    const filters = filtersFromUrl('?project=PROJ&q=banner&participant=John&participant=Jane&work=reviewers&sprint=1&sprint=2&fixVersion=10&epic=PROJ-1&story=PROJ-2&sync=requested');
+    const filters = filtersFromUrl('?project=PROJ&q=banner&participant=John&participant=Jane&work=reviewers&drafts=hide&sprint=1&sprint=2&fixVersion=10&epic=PROJ-1&story=PROJ-2&sync=requested');
     assert.deepEqual(filters, {
         text: 'banner',
         participants: ['John', 'Jane'],
         work: 'reviewers',
+        hideDrafts: true,
         sprints: ['1', '2'],
         fixVersions: ['10'],
         epics: ['PROJ-1'],
@@ -33,6 +34,15 @@ test('filtersFromUrl reads the work values it knows and defaults the others to a
     assert.equal(filtersFromUrl('?work=true').work, 'all');
     assert.equal(filtersFromUrl('?work=').work, 'all');
     assert.equal(filtersFromUrl('?work=assignees&work=reviewers').work, 'assignees'); // the first of repeated parameters, like project
+});
+
+test('filtersFromUrl hides the drafts for drafts=hide only, and urlWithFilters writes it only when they are hidden', () => {
+    assert.equal(filtersFromUrl('?drafts=hide').hideDrafts, true);
+    assert.equal(filtersFromUrl('?drafts=show').hideDrafts, false);
+    assert.equal(filtersFromUrl('?drafts=').hideDrafts, false);
+    const base = new URL('http://localhost:3000/?drafts=hide');
+    assert.equal(urlWithFilters(base, { project: 'P', filters: { ...noFilters, hideDrafts: true } }).search, '?project=P&drafts=hide');
+    assert.equal(urlWithFilters(base, { project: 'P', filters: noFilters }).search, '?project=P');
 });
 
 test('filtersFromUrl ignores the people parameters of links written before 2.8.0', () => {
@@ -96,19 +106,19 @@ test('urlWithFilters leaves the URL it is given untouched', () => {
 });
 
 test('the filters survive a round trip through the URL', () => {
-    const filters = { text: 'a b', participants: ['J', 'B'], work: 'assignees', sprints: ['1'], fixVersions: ['2'], epics: ['P-1'], stories: ['P-2'], sync: 'requested' };
+    const filters = { text: 'a b', participants: ['J', 'B'], work: 'assignees', hideDrafts: true, sprints: ['1'], fixVersions: ['2'], epics: ['P-1'], stories: ['P-2'], sync: 'requested' };
     const url = urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters });
     assert.deepEqual(filtersFromUrl(url.search), filters);
 });
 
 test('urlWithFilters writes the parameters in sidebar order, so a link of 2.10 reads the same', () => {
-    const filters = { text: 't', participants: ['a', 'b'], work: 'reviewers', sprints: ['1'], fixVersions: ['2'], epics: ['e'], stories: ['s'], sync: 'OK' };
+    const filters = { text: 't', participants: ['a', 'b'], work: 'reviewers', hideDrafts: true, sprints: ['1'], fixVersions: ['2'], epics: ['e'], stories: ['s'], sync: 'OK' };
     assert.equal(urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters }).search,
-        '?project=P&q=t&sprint=1&fixVersion=2&epic=e&story=s&participant=a&participant=b&work=reviewers&sync=OK');
+        '?project=P&q=t&sprint=1&fixVersion=2&epic=e&story=s&participant=a&participant=b&work=reviewers&drafts=hide&sync=OK');
 });
 
 test('filterUrlParams covers every parameter urlWithFilters writes, plus the former people parameters', () => {
-    const filters = { text: 't', participants: ['a'], work: 'reviewers', sprints: ['1'], fixVersions: ['2'], epics: ['e'], stories: ['s'], sync: 'OK' };
+    const filters = { text: 't', participants: ['a'], work: 'reviewers', hideDrafts: true, sprints: ['1'], fixVersions: ['2'], epics: ['e'], stories: ['s'], sync: 'OK' };
     const written = [...urlWithFilters(new URL('http://localhost:3000/'), { project: 'P', filters }).searchParams.keys()].filter(key => key !== 'project');
     assert.deepEqual(new Set([...written, 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready']), new Set(filterUrlParams));
 });

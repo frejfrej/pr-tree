@@ -17,7 +17,7 @@
 * Displays a link to related issues with the corresponding status
 * Displays the status of the pull requests alongside the status of related issues
 * Lists the Jira issues in review that no pull request links, in a section below the tree
-    * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC does not apply) and is hidden when nothing in it matches
+    * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC and Hide drafts do not apply) and is hidden when nothing in it matches
     * Each issue shows its priority, key (with the same popover as in the tree), summary, assignee and last update; an issue not updated for 14 days gets a warning
     * With participants selected, an issue assigned to one of them is highlighted like a pull request waiting for them and counted in the tab title; "All reviews" and "Ready for reviewers" hide the section
     * The section collapses like a repository ("Collapse all" and "Expand all" include it)
@@ -34,18 +34,20 @@
 * Provides a participants filter
     * Lists the assignees of the linked Jira issues and of the orphaned issues, and the reviewers of the pull requests
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
-    * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved, In Progress pull requests with a linked issue assigned to them
+    * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved (a draft waits for no reviewer), In Progress pull requests with a linked issue assigned to them
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
+* "Hide drafts" hides the draft pull requests
 * Provides a fix version filter
     * Filters pull requests based on the fixVersion field of associated Jira issues
     * Dynamically populates with all available fixVersions from the project's Jira issues
 * Hides the repositories and branches left without a matching pull request; when nothing matches, a message replaces the tree
 * Maintains filter selections in URL
-    * All filter selections (project, text, sprint, fixVersion, epic, story, participants, work) are saved in the URL
+    * All filter selections (project, text, sprint, fixVersion, epic, story, participants, work, hide drafts) are saved in the URL
     * Filters are automatically restored when sharing or reloading the page
     * Enables direct linking to specific filtered views
     * Back and Forward put the filters, and the project, back as the URL describes
 * Displays Ahead (green) and Behind (red) commit counts
+* Marks draft pull requests with a "Draft" badge next to the title, and shows the open tasks of a pull request in an amber badge
 * Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
     * Performed every 2 minutes
@@ -91,6 +93,7 @@
 
 ## Changelog:
 * Version 3.1.0
+    * A draft pull request shows a "Draft" badge next to its title, and a pull request with open tasks an amber badge with their number. A draft waits for no reviewer: it is no longer highlighted for a selected reviewer, counted in the tab title for them, or kept by "Ready for reviewers" (its assignee still sees it when its issue is in progress; "All reviews" keeps it), and no longer warned about for having no reviewer. A "Hide drafts" box in the sidebar hides the drafts (URL `drafts=hide`) (#119)
     * The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)
     * The server answers only requests addressed to one of its names (localhost, 127.0.0.1, [::1], plus the bound address and `PR_TREE_ALLOWED_HOSTS`): a web page whose domain is redirected to 127.0.0.1 (DNS rebinding) gets a 403 instead of the `/api` answers
     * An `/api` request that the browser marks as sent by another site gets a 403: a page open in another tab could start SYNC loads in a loop until Bitbucket's rate limit paused the dashboard for 10 minutes. The page itself, a link from another site, `curl` and scripts are unaffected

@@ -9,8 +9,8 @@ const rovoDev = { uuid: 'rovo-uuid', display_name: 'Rovo Dev' };
 
 // An index entry as buildFilterIndex makes it: the assignees of the linked
 // issues, the reviewers who have not approved, and the status band
-function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false } = {}) {
-    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview };
+function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false, draft = false } = {}) {
+    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview, draft };
 }
 
 const inReview = { statusInReview: true };
@@ -33,6 +33,13 @@ test('reviewer attention matches any of several selected participants', () => {
 
 test('reviewer attention only applies to PRs in review', () => {
     assert.equal(computeAttention(entry({ pendingReviewers: ['Jane'], ...inProgress }), ['Jane']).reviewer, false);
+});
+
+test('a draft waits for no reviewer, but still for its assignee (#119)', () => {
+    assert.deepEqual(computeAttention(entry({ pendingReviewers: ['Jane'], ...inReview, draft: true }), ['Jane']),
+        { assignee: false, reviewer: false, any: false });
+    assert.deepEqual(computeAttention(entry({ assignees: ['Jane'], ...inProgress, draft: true }), ['Jane']),
+        { assignee: true, reviewer: false, any: true });
 });
 
 test('assignee attention when a selected participant owns an issue of an in-progress PR', () => {
@@ -60,6 +67,7 @@ test('countActiveFilters counts filters, not selected values', () => {
     assert.equal(countActiveFilters({ ...defaults, participants: ['Jane'], work: 'assignees' }), 2);
     assert.equal(countActiveFilters({ ...defaults, work: 'reviewers' }), 0); // without a participant the work value is ignored, like in evaluatePullRequest
     assert.equal(countActiveFilters({ ...defaults, sync: 'requested' }), 1);
+    assert.equal(countActiveFilters({ ...defaults, hideDrafts: true }), 1);
     assert.equal(countActiveFilters({ ...defaults, sync: 'unchecked' }), 1);
     assert.equal(countActiveFilters({ participants: ['A'], work: 'reviewers', sprints: ['1'], fixVersions: ['2'], sync: 'OK' }), 5);
     assert.equal(countActiveFilters({ ...defaults, text: '   ' }), 0);
@@ -267,6 +275,22 @@ test('evaluatePullRequest Ready for reviewers keeps reviewer attention only, Rea
     assert.equal(evaluate('reviewers', progressing), false); // assignee attention does not satisfy Ready for reviewers
     assert.equal(evaluate('assignees', progressing), true);
     assert.equal(evaluate('assignees', reviewed), false); // in review: no assignee attention
+});
+
+test('a draft: indexed as one, out of Ready for reviewers but in All reviews, hidden by Hide drafts with or without participants (#119)', () => {
+    const draftResult = { ...sampleApiResult, pullRequests: sampleApiResult.pullRequests.map(pullRequest => ({ ...pullRequest, draft: true })) };
+    const draft = buildFilterIndex(draftResult).pullRequestsByKey.get('repo/10');
+    const ready = entryInStatus('In Review');
+    assert.equal(draft.draft, true);
+    assert.equal(ready.draft, false); // no draft field: not a draft
+    const evaluate = (filters, entry = draft) => evaluatePullRequest(entry, { ...noFilter, ...filters });
+    assert.deepEqual(evaluate({ participants: ['Jane'], work: 'reviewers' }), { visible: false, attention: { assignee: false, reviewer: false, any: false } });
+    assert.equal(evaluate({ participants: ['Jane'], work: 'ready' }).visible, false);
+    assert.equal(evaluate({ participants: ['Jane'], work: 'reviews' }).visible, true); // still one of her reviews
+    assert.equal(evaluate({ hideDrafts: true }).visible, false);
+    assert.equal(evaluate({ hideDrafts: true, participants: ['Jane'] }).visible, false);
+    assert.equal(evaluate({ hideDrafts: true }, ready).visible, true);
+    assert.equal(evaluate({}).visible, true);
 });
 
 test('evaluatePullRequest without a participant ignores the work value', () => {

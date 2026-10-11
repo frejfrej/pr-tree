@@ -208,6 +208,11 @@ test('every select and multi-select of the app has an accessible name (#62)', as
         assert.equal(attribute(search, 'aria-labelledby'), `${id}Label`, 'the search box is named by the label');
     }
 
+    // A checkbox is named by the label wrapping it, which has text of its own
+    const checkboxes = openingTags(html, 'input').filter(input => attribute(input, 'type') === 'checkbox');
+    assert.deepEqual(checkboxes.map(input => attribute(input, 'id')), ['hideDraftsCheckbox']);
+    assert.match(html, /<label\b[^>]*\sfor="hideDraftsCheckbox"[^>]*>\s*<input\b[^>]*>\s*Hide drafts\s*<\/label>/);
+
     // The SYNC load button says what it loads, its visible text first
     const [loadButton] = openingTags(html, 'button').filter(button => attribute(button, 'id') === 'loadSyncButton');
     assert.equal(attribute(loadButton, 'aria-label'), 'Load SYNC status');

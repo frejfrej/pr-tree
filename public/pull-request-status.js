@@ -3,7 +3,7 @@
  * the statuses of its linked issues and the state of its reviews. The render
  * (app-render.js) and the filter index (app-filter.js) both call it, so the
  * band painted and the band the attention rule reads are one computation;
- * the same goes for its reviewers and its SYNC key. Pure: no DOM.
+ * the same goes for its reviewers, its draft state and its SYNC key. Pure: no DOM.
  */
 
 // The Atlassian agent reviews pull requests too: never a reviewer to count,
@@ -15,6 +15,11 @@ export function otherReviewers(pullRequest) {
     return pullRequest.participants.filter(participant =>
         participant.user.uuid !== pullRequest.author.uuid &&
         participant.user.display_name !== atlassianAgent);
+}
+
+/** A draft: its author wants no review yet (the badge, the attention rule, Hide drafts) */
+export function isDraft(pullRequest) {
+    return pullRequest.draft === true;
 }
 
 /**

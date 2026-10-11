@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { otherReviewers, statusClass, syncKey } from '../public/pull-request-status.js';
+import { otherReviewers, statusClass, syncKey, isDraft } from '../public/pull-request-status.js';
 
 const author = { uuid: 'author-uuid', display_name: 'Author' };
 const jane = { uuid: 'jane-uuid', display_name: 'Jane' };
@@ -37,4 +37,9 @@ test('statusClass: no linked issue and no issue list are no band', () => {
     assert.equal(statusClass(pullRequest([jane]), []), '');
     assert.equal(statusClass(pullRequest([jane]), null), '');
     assert.equal(statusClass(pullRequest([jane]), undefined), '');
+});
+
+test('isDraft is true for draft: true only', () => {
+    assert.equal(isDraft({ draft: true }), true);
+    for (const draft of [false, undefined, null, 'true', 1]) assert.equal(isDraft({ draft }), false, String(draft));
 });
