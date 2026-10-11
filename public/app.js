@@ -510,6 +510,10 @@ async function checkForUpdates() {
             renderProjectLoad(newData);
         } else if (newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
+            // The URL is left alone: a value this data no longer offers is
+            // dropped from the sidebar but kept in the URL, so it comes back
+            // once a later refresh offers it again (a Jira failure gives a
+            // response without epics, stories or sprints; #61)
             renderEverything(newData);
         }
     } catch (error) {

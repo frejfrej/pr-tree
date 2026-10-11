@@ -213,6 +213,7 @@ The application integrates with a Jira workflow where:
 **Acceptance Criteria:**
 - Page automatically updates every 2 minutes when active
 - No visible UI update if data unchanged
+- A refresh never rewrites the URL: a filter value the refreshed data no longer offers leaves the sidebar but stays in the URL, and comes back when a later refresh offers it again
 - Refresh timestamp updates in real-time
 - Loading spinner appears during checks
 - No updates occur when tab in background
