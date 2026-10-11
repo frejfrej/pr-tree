@@ -134,18 +134,13 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
 
         const files = new Set(known);
         if (toCheck.length > 0) {
+            const stop = new AbortController();
             try {
                 // The base path and the path on each side: a renamed file is found under both
                 const filePaths = toCheck.map(basePath => [basePath, sourceFiles.get(basePath).sidePath, destFiles.get(basePath).sidePath]);
-                // The first side to fail stops the other: its result would be thrown away
-                const stop = new AbortController();
-                const stopOnFailure = error => {
-                    stop.abort(error);
-                    throw error;
-                };
                 const [sourcePatch, destPatch] = await Promise.all([
-                    fetchPatch(repoName, sourceCommit, destCommit, filePaths, stop.signal).catch(stopOnFailure),
-                    fetchPatch(repoName, destCommit, sourceCommit, filePaths, stop.signal).catch(stopOnFailure)
+                    fetchPatch(repoName, sourceCommit, destCommit, filePaths, stop.signal),
+                    fetchPatch(repoName, destCommit, sourceCommit, filePaths, stop.signal)
                 ]);
                 for (const basePath of toCheck) {
                     checkPatch(basePath, sourcePatch, sourceFiles);
@@ -153,6 +148,8 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
                 }
                 for (const file of conflictingFiles(sourcePatch, destPatch)) files.add(file);
             } catch (error) {
+                // The first side to fail stops the other: its result would be thrown away
+                stop.abort(error);
                 // Nothing known yet: the caller reports the pull request not checked
                 if (known.length === 0) throw error;
                 if (!(error instanceof RateLimitError)) {

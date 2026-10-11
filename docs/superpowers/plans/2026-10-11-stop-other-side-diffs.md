@@ -15,3 +15,10 @@ Spec: `docs/superpowers/specs/2026-10-11-stop-other-side-diffs-design.md`.
    never ends.
 4. **Docs**: a 2.12.0 changelog line in README.md.
 5. Commit, push, pull request against master closing #52.
+6. **After the /code-review**: the abort moves to the `catch` of
+   `computeConflicts` (no wrapper per side); the late answer of the test is
+   triggered by the abort and awaited through its body read instead of
+   timers (each half fails without its part of the fix); the spec says what
+   the stopped side rejects with and why the Node 20 leaks of
+   `AbortSignal.any` do not apply; the changelog line counts the requests
+   per side. The load-level signal is turned down in the spec.

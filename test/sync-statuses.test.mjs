@@ -274,7 +274,7 @@ test('a diff request that times out: not checked with the timeout as the reason'
     assert.equal(logs.error.length, 1);
 });
 
-test('a side whose diff request fails stops the requests of the other side', async () => {
+test('a side whose diff request fails stops the requests of the other side', { timeout: 5000 }, async () => {
     // Three diff requests per side
     const files = manyFiles(2 * filesPerPatchRequest + 1).map(file => modified(file));
     const diffOf = line => paths => paths.map(file => modify(file, line, 'X')).join('');
@@ -296,17 +296,24 @@ test('a side whose diff request fails stops the requests of the other side', asy
     assert.ok(destRequest.options.signal.aborted, 'the request in flight is aborted');
     assert.deepEqual(moreDest, [], 'the destination side sends no other request');
 
-    // The destination side fails at once, the source's first request answers later: no next request
+    // The destination side fails at once, the source's first response comes in just as the side is stopped: no next request
+    let bodyRead;
+    const bodyReadOnce = new Promise(resolve => { bodyRead = resolve; });
     const answersLate = setUp(fakeBitbucket({
         ...scenario,
-        intercept: async (count, url) => {
+        intercept: async (count, url, options) => {
             if (url.includes(`/diff/${dest}..`)) return new Response('', { status: 502 });
-            if (url.includes(`/diff/${source}..`)) await new Promise(resolve => setTimeout(resolve, 20));
+            if (url.includes(`/diff/${source}..`)) {
+                await new Promise(resolve => options.signal.addEventListener('abort', resolve));
+                const text = diffOf(1)(new URL(url).searchParams.getAll('path'));
+                return { ok: true, status: 200, text: async () => { bodyRead(); return text; } };
+            }
         }
     }));
     assert.deepEqual(await answersLate.computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { error: true, reason } });
-    // Promise.all settles at the failure: the source side is left to run into its abort check
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Once its body is read, the source side reaches its next request or its abort check within the same turn
+    await bodyReadOnce;
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(diffsOf(answersLate.requests, source).length, 1, 'the source side sends no other request');
 });
 
