@@ -7,7 +7,7 @@ What the code cannot tell: where things are, how to work on them, the convention
 **Bitbucket Pull-Requests Tree** is a localhost dashboard of the open Bitbucket pull requests of a project, as a tree of stacked pull requests per repository, with their Jira issues, sprints, fix versions, epics and stories, reviewers, commit counts and conflicts (SYNC), the Jira issues in review without a pull request, and filters over all of it. Single user, developer workstation, not meant for production.
 
 - **Backend**: Node.js 20.11 or later (22.5 for `npm run test:coverage`), ES modules (`.mjs`), Express 5, node-cache, the built-in `fetch`; `config.js` and `projects.js` are CommonJS
-- **Frontend**: vanilla ES modules in `public/`, no framework, no build step; Font Awesome 5.15.3 and Marked.js 18.0.14 (the help modal renders README.md) from CDNs, each at an exact version with its `integrity` hash (server.test.mjs checks it; recompute the hash on a version change: `curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`)
+- **Frontend**: vanilla ES modules in `public/`, no framework, no build step; Font Awesome and Marked.js (the help modal renders README.md) vendored in `public/vendor/`, so the page loads nothing from another origin (server.test.mjs checks it)
 - **Tests**: `node:test`, no test dependency, no DOM (fake elements where a DOM write is tested)
 - **APIs**: Bitbucket 2.0, Jira REST 3 (`/search/jql`), Jira Agile 1.0 (boards, sprints)
 
@@ -41,6 +41,7 @@ public/pull-request-status.js  Status band, reviewers and SYNC key of a pull req
 public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders
 public/multi-select.js Multi-select dropdown component (builds its own markup)
 public/counter-utils.js        filtered/total counter display
+public/vendor/         Font Awesome (CSS, woff2 fonts) and Marked (ES module, imported when the help opens), as published on npm, with their licenses
 test/                  One *.test.mjs per module; server.test.mjs runs the fixture server
 docs/superpowers/      Design record: one spec (specs/) and one plan (plans/) per change, dated
 README.md              User documentation and the changelog (served to the help modal)
@@ -80,6 +81,8 @@ Bump `version` and `releaseDate` in package.json (the UI shows them through `/ap
 **Add a Jira field**: the `fields` of the request in `fetchJiraIssuesDetails` (project-data.mjs, and `fetchInReviewIssuesWithoutPR` if orphaned issues need it), the fixture generator, the rendering in app-render.js through `escapeHtml`; it reaches the hash through `calculateHash` (project-assembly.mjs) since the details are hashed whole.
 
 **Add or change an endpoint**: route in index.mjs, cache in cache.mjs if it calls Atlassian, `try`/`catch` with `log(message, errorLogStream)` and a 500, a `performanceLogStream` line for anything slow, every Atlassian request through `atlassianFetch`; a test in server.test.mjs; PRD.md section 7.5.
+
+**Update a vendored library**: `npm pack <package>@<version>` (npm checks the tarball against the registry's hash), copy the same files over the ones in `public/vendor/` (the version is in each file's header; Font Awesome: `css/all.min.css` and the three `webfonts/*.woff2`, the only format a current browser fetches), check the help modal and the icons in the browser, then a changelog entry.
 
 **Debug performance**: performance.log, `/api/cache/stats`, the Network tab for repeated calls, whether `dataHash` stays stable (the page re-renders only when it changes; a pull request's commit counts are fetched again only when one of its commits moves).
 

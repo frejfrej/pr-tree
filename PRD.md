@@ -408,8 +408,8 @@ The application integrates with a Jira workflow where:
 
 #### Frontend
 - **Core:** HTML5, CSS3, Vanilla JavaScript (ES6)
-- **Icons:** Font Awesome 5.15.3 (CDN, with an integrity hash)
-- **Markdown:** Marked.js 18.0.14 (CDN, exact version, with an integrity hash)
+- **Icons:** Font Awesome Free (vendored in `public/vendor/`)
+- **Markdown:** Marked.js (vendored in `public/vendor/`, loaded when the help modal opens)
 
 #### External APIs
 - Bitbucket API v2.0 (REST)
@@ -660,9 +660,7 @@ YYYY-MM-DDTHH:mm:ss.sssZ - Message
 - Jira Cloud/Server instance (API v3)
 - Network connectivity to both services
 
-**Optional:**
-- Font Awesome CDN (can be vendored)
-- Marked.js CDN (can be vendored)
+No CDN: Font Awesome and Marked.js are vendored in `public/vendor/`.
 
 ### 11.2 Technical Constraints
 - **Single-User Application**: No multi-user authentication/authorization
