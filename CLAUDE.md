@@ -16,6 +16,7 @@ What the code cannot tell: where things are, how to work on them, the convention
 ```
 index.mjs              Express server: routes, logs, wiring of the modules below, fixture-mode guard
 request-guard.mjs      Which requests are answered: Host check (DNS rebinding), cross-site /api refused
+log-file.mjs           A log file: each line appended at once, rotated at 10 MB, never crashing the server
 atlassian-fetch.mjs    Wrapper of every Atlassian request: the 10-minute pause after a 429, failure messages
 project-data.mjs       Bitbucket and Jira fetchers, the /api/pull-requests/:project response
 project-assembly.mjs   Pure post-processing of a project's data, shared with the fixture generator

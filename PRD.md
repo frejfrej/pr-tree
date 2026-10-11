@@ -485,9 +485,11 @@ Every route answers 403 with `{ error }` to a `Host` that is not a name of the s
 ### 7.6 Logging Infrastructure
 
 **Log Files:**
-- `access.log`: Request logs (timestamp, method, path, IP)
-- `error.log`: Error messages (failed API calls, HTTP 429 received)
+- `access.log`: Request logs (timestamp, method, path, IP) of the API and the requests no file answers (the files of `public/` are not logged), startup and shutdown
+- `error.log`: Error messages (failed API calls, HTTP 429 received, refused requests)
 - `performance.log`: Operation duration metrics
+
+**Rotation and failures:** each line is appended to its file at once (nothing lost when the server stops); each file is rotated at 10 MB (`access.log.1` to `.3` kept, the oldest dropped); a file that cannot be written is reported on the console and tried again a minute later, it never stops the server
 
 **Log Format:**
 ```

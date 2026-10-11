@@ -18,6 +18,7 @@ import { createSyncStatuses } from './sync-statuses.mjs';
 import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 import { conflictRuleVersion } from './conflicts.mjs';
+import { createLogFile } from './log-file.mjs';
 import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost, loopbackHostnames } from './request-guard.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
@@ -72,10 +73,17 @@ app.get('/api/version', (req, res) => {
     res.json({ version, releaseDate, author, license });
 });
 
-// Create write streams for different log types
-const accessLogStream = fs.createWriteStream(path.join(__dirname, 'access.log'), { flags: 'a' });
-const errorLogStream = fs.createWriteStream(path.join(__dirname, 'error.log'), { flags: 'a' });
-const performanceLogStream = fs.createWriteStream(path.join(__dirname, 'performance.log'), { flags: 'a' });
+// The log files (log-file.mjs): written line by line, rotated at 10 MB, three old files kept
+// (access.log.1 to .3); a file that cannot be written is reported on the console instead of
+// crashing the server
+const openLogFile = name => createLogFile(path.join(__dirname, name), {
+    maxBytes: 10 * 1024 * 1024,
+    keep: 3,
+    onError: message => console.error(`${new Date().toISOString()} - ${message}`)
+});
+const accessLogStream = openLogFile('access.log');
+const errorLogStream = openLogFile('error.log');
+const performanceLogStream = openLogFile('performance.log');
 
 // Logging function
 function log(message, logStream) {
@@ -274,5 +282,7 @@ const server = app.listen(port, host, () => {
 });
 
 // A SIGTERM (how the server test stops the server) ends the process normally: a process killed
-// by the signal writes no coverage, and npm run test:coverage would list every module but this one
+// by the signal writes no coverage, and npm run test:coverage would list every module but this one.
+// Nothing else to do first: the log files are written line by line (log-file.mjs), and Ctrl+C keeps
+// its default, which stops the server even while its event loop is blocked
 process.on('SIGTERM', () => process.exit(0));
