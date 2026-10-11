@@ -81,19 +81,39 @@ test('every surface under --on-accent-text text is filled with a strong token or
     }
 });
 
-// A card's border has its surface inside and, for a top-level card, the page background outside
-test('every status border reaches 3:1 against the surface and the page background, in both themes', () => {
-    const bands = rules.flatMap(rule => rule.selectors.filter(selector => /^\.status-[\w-]+$/.test(selector))
-        .map(selector => ({ selector, border: rule.body.match(/border-color:\s*var\((--[\w-]+)\)/)?.[1] })));
+const bands = rules.flatMap(rule => rule.selectors.filter(selector => /\.status-[\w-]+/.test(selector))
+    .map(selector => ({ selector, border: rule.body.match(/border-color:\s*var\((--[\w-]+)\)/)?.[1] })));
+
+// Every card, stacked or not, sits on the surface of .repository-content: its border has the surface on both sides
+test('every status border reaches 3:1 against the surface, in both themes', () => {
     assert.ok(bands.length >= 4, `${bands.length} status bands found`);
     for (const { selector, border } of bands) {
         assert.ok(border, `${selector} sets its border-color from a token`);
         for (const [theme, tokens] of Object.entries(themes)) {
             const colour = resolve(tokens, border);
-            for (const against of ['--surface-color', '--background-color']) {
-                const ratio = contrast(colour, resolve(tokens, against));
-                assert.ok(ratio >= 3, `${theme}: ${selector} ${border} ${colour} against ${against} is ${ratio.toFixed(2)}:1`);
-            }
+            const ratio = contrast(colour, resolve(tokens, '--surface-color'));
+            assert.ok(ratio >= 3, `${theme}: ${selector} ${border} ${colour} against --surface-color is ${ratio.toFixed(2)}:1`);
+        }
+    }
+});
+
+// Amber and green look alike to a red-green colour-blind eye; lightness keeps the two bands apart (1.30:1 in dark)
+test('the in-progress and all-approved bands differ in lightness, in both themes', () => {
+    const border = selector => bands.find(band => band.selector === selector).border;
+    for (const [theme, tokens] of Object.entries(themes)) {
+        const ratio = contrast(resolve(tokens, border('.status-in-progress')), resolve(tokens, border('.status-in-review-all-approved')));
+        assert.ok(ratio >= 1.25, `${theme}: in progress against all approved is ${ratio.toFixed(2)}:1`);
+    }
+});
+
+test('the border of the warnings box reaches 3:1 against its fill and the surface, in both themes', () => {
+    const body = rules.find(rule => rule.selectors.includes('.warnings')).body;
+    const border = body.match(/border:[^;]*var\((--[\w-]+)\)/)[1];
+    const fill = body.match(/background-color:\s*var\((--[\w-]+)\)/)[1];
+    for (const [theme, tokens] of Object.entries(themes)) {
+        for (const against of [fill, '--surface-color']) {
+            const ratio = contrast(resolve(tokens, border), resolve(tokens, against));
+            assert.ok(ratio >= 3, `${theme}: ${border} against ${against} is ${ratio.toFixed(2)}:1`);
         }
     }
 });

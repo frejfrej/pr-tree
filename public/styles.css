@@ -32,10 +32,11 @@
     --warning-strong: #946F00;
     --neutral-strong: #626F86;
     --on-accent-text: #FFFFFF;
-    /* Status borders of the cards that the plain colours leave below 3:1
-       (WCAG 1.4.11) against --surface-color and --background-color */
+    /* Status borders of the cards, where the plain colours miss 3:1 against
+       --surface-color (WCAG 1.4.11); the green is the strong one so the
+       in-progress and all-approved bands also differ in lightness */
     --warning-border: #B38600;
-    --success-border: #22A06B;
+    --success-border: var(--success-strong);
     --shadow-color: rgba(9, 30, 66, 0.15);
     --focus-ring: rgba(0, 82, 204, 0.25);
     --backdrop-color: rgba(9, 30, 66, 0.45);
@@ -977,7 +978,7 @@ select:disabled {
 .warnings {
     margin-top: 10px;
     padding: 10px;
-    border: 1px solid var(--error-color);
+    border: 1px solid var(--error-strong);
     border-radius: 4px;
     background-color: var(--danger-bg);
 }

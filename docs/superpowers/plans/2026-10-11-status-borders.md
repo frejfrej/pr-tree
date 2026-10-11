@@ -17,5 +17,10 @@ Spec: `docs/superpowers/specs/2026-10-11-status-borders-design.md` (#81).
    (section 8.2) says the status borders reach 3:1.
 4. **Browser**: fixture server, SECOLLAB, both themes; read the computed
    `border-color` of an in-progress and an all-approved card.
-5. Commit `fix: status borders at 3:1 in the light theme (#81)`, push, pull
+5. **After the /code-review**: the green border is `var(--success-strong)`
+   (the amber and the 3:1 green had the same lightness), the check is
+   against the surface only (no card sits on the page background), compound
+   `.status-*` selectors are checked, the `.warnings` border takes
+   `--error-strong`, CLAUDE.md pitfall 15 names the border tokens.
+6. Commit `fix: status borders at 3:1 in the light theme (#81)`, push, pull
    request against master.
