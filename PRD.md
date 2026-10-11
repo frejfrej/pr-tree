@@ -348,6 +348,7 @@ The application integrates with a Jira workflow where:
 - **NFR-SEC4**: No sensitive data logged to access/error logs
 - **NFR-SEC5**: Only the `public/` directory and `README.md` are served over HTTP; no other file of the project directory (configuration, logs, sources) is reachable
 - **NFR-SEC6**: The server listens on the loopback addresses (127.0.0.1 and ::1) unless `PR_TREE_HOST` opens another one; it answers only requests whose `Host` is one of its own names (loopback names, the bound address, `PR_TREE_ALLOWED_HOSTS`), and refuses the `/api` requests a browser marks as sent by another site (`Sec-Fetch-Site`)
+- **NFR-SEC7**: Bitbucket and Jira texts are escaped wherever the page interpolates them; only README.md and Bitbucket's rendered pull-request title and description are shown as HTML; the page loads no script, stylesheet or font from another origin
 
 ### 6.6 Maintainability
 - **NFR-M1**: Code must follow consistent naming conventions (camelCase)
@@ -768,8 +769,8 @@ The following are explicitly **not** part of current requirements:
 - **Authentication**: Basic Auth over HTTPS required for production
 - **Authorization**: Inherits Bitbucket/Jira permissions of configured user
 - **Input Validation**: Minimal (assumes trusted configuration)
-- **XSS Protection**: Markdown rendering with sanitization
-- **CSRF**: Not applicable (no state-changing operations from client)
+- **XSS Protection**: Escaping, not sanitization. Every Bitbucket and Jira text the page interpolates goes through `escapeHtml` or `textContent` (anyone with Jira write access can put `<script>` in a summary). Two sources are shown as HTML, unsanitized, because they are trusted: README.md in the help modal (`marked.parse`, a file of this repository) and the pull-request popover's title and description (Bitbucket's rendering of its Markdown, which escapes raw HTML). The libraries are vendored in `public/vendor/`: the page loads nothing from another origin (NFR-SEC7)
+- **CSRF**: No request of the page changes state, but the SYNC load spends the Bitbucket quota; the `/api` requests a browser marks as sent by another site are refused (NFR-SEC6)
 
 ### 14.3 Licensing
 - **Copyright**: François-Régis Jaunatre
