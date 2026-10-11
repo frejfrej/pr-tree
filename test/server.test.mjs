@@ -153,6 +153,14 @@ test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoin
     assert.equal(body.stopped, null, 'a load that ran to its end says so');
 });
 
+test('each SYNC load computes again: the response is not cached outside a rate-limit pause (#49)', async () => {
+    const [project] = await (await fetch(`${baseUrl}/api/projects`)).json();
+    const load = async () => (await (await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`)).json()).lastRefreshTime;
+    const first = await load();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.notEqual(await load(), first);
+});
+
 test('the sync statuses of the fixtures have the documented shapes', async () => {
     const projectNames = await (await fetch(`${baseUrl}/api/projects`)).json();
     assert.ok(projectNames.length > 0);
@@ -212,7 +220,8 @@ test('the cache statistics answer the five counters of node-cache', async () => 
     const stats = await response.json();
     assert.deepEqual(Object.keys(stats).sort(), ['hits', 'keys', 'ksize', 'misses', 'vsize']);
     for (const value of Object.values(stats)) assert.equal(typeof value, 'number');
-    // The tests above filled the cache: the projects list, project data and sync statuses at least
-    assert.ok(stats.keys >= 3, `${stats.keys} keys`);
+    // The tests above filled the cache: the projects list and project data at least
+    // (sync statuses are kept during a rate-limit pause only, #49)
+    assert.ok(stats.keys >= 2, `${stats.keys} keys`);
     assert.ok(stats.hits > 0 && stats.misses > 0);
 });
