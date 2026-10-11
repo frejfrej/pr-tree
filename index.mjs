@@ -7,6 +7,7 @@ import {
     getCachedProjects,
     getCachedProjectData,
     getCachedSyncStatuses,
+    syncStatusesKeep,
     getCacheStats,
     raiseAllCacheTtls
 } from './cache.mjs';
@@ -202,14 +203,14 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     try {
         const syncStatuses = await getCachedSyncStatuses(projectName, async () => {
             if (fixtureSource) {
-                return { data: await fixtureSource.buildSyncStatuses(projectName), ttl: 300 };
+                return { data: await fixtureSource.buildSyncStatuses(projectName), ...syncStatusesKeep(atlassian.pause()) };
             }
             const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
             const { statuses, stopped } = await computeSyncStatuses(projectName, projectData.pullRequests);
 
-            // Responses built during a rate-limit window are kept until it closes,
-            // a load stopped after repeated Bitbucket failures not at all (the next
-            // click computes again), regular ones for 5 minutes
+            // Kept only until the end of a rate-limit pause (syncStatusesKeep, #49):
+            // sync-cache.json already spares the pull requests whose commits did
+            // not move, and the calls made during a computation share it
             const pause = atlassian.pause();
             const data = {
                 lastRefreshTime: new Date().toISOString(),
@@ -218,8 +219,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 stopped,
                 statuses: statuses
             };
-            if (pause.rateLimited) return { data, ttl: Math.max(1, Math.ceil(pause.remainingMs / 1000)) };
-            return stopped ? { data, keep: false } : { data, ttl: 300 };
+            return { data, ...syncStatusesKeep(pause) };
         });
 
         res.json(syncStatuses);

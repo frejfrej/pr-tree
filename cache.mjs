@@ -76,15 +76,26 @@ export async function getCachedProjectData(projectName, fetchProjectData) {
 
 /**
  * Get sync statuses (conflicts for every pull request of a project) from cache
- * or fetch from source. The fetch function decides the TTL so that responses
- * built during an Atlassian rate-limit window can be kept until it closes,
- * and a load stopped after repeated Bitbucket failures not kept at all.
+ * or fetch from source. The fetch function decides the TTL: the server keeps
+ * only the responses built during an Atlassian rate-limit window, until it
+ * closes; the calls made while a computation runs share it either way.
  * @param {string} projectName - Project identifier
  * @param {function} fetchSyncStatuses - Async function returning { data, ttl, keep } on cache miss (ttl in seconds, keep false to cache nothing)
  * @returns {Promise<Object>} Sync statuses data
  */
 export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
     return getOrBuild(CACHE_KEYS.SYNC_STATUSES(projectName), fetchSyncStatuses);
+}
+
+/**
+ * How long a SYNC response is kept (#49): until the end of the rate-limit pause
+ * it was built in, so the clicks meanwhile send nothing; outside a pause not at
+ * all, so each click on the load button computes again
+ * @param {{ rateLimited: boolean, remainingMs: number }} pause - the pause when the response was built (atlassian.pause())
+ * @returns {{ ttl: number } | { keep: false }} to spread into the build's answer to getCachedSyncStatuses
+ */
+export function syncStatusesKeep(pause) {
+    return pause.rateLimited ? { ttl: Math.max(1, Math.ceil(pause.remainingMs / 1000)) } : { keep: false };
 }
 
 /**

@@ -389,7 +389,7 @@ test('a result stored under another version of the conflict rule is not reused, 
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).entries), [fileKey]); // the older entry went with the save
 });
 
-test('a partial or failed result is not stored', async () => {
+test('a failed result, or one partial after a failure, is not stored', async () => {
     const file = tempFile();
     const cache = openSyncCache(file);
     const failDiffs = (count, url) => (url.includes('/diff/') ? new Response('', { status: 502 }) : undefined);
@@ -408,6 +408,31 @@ test('a partial or failed result is not stored', async () => {
     assert.equal(cache.get(key), null);
     assert.equal(cache.get(`${repo}/eeee..${source}`), null);
     assert.equal(openSyncCache(file).size, 0, 'nothing reached the disk');
+});
+
+test('an over-limit result is stored: the next load sends no request and logs nothing (#49)', async () => {
+    const file = tempFile();
+    const files = manyFiles(maxFilesToCheck + 1).map(name => modified(name));
+    const reason = `too many files to check (${maxFilesToCheck + 1})`;
+    const otherKey = `${repo}/eeee..${source}`;
+    const bitbucket = () => fakeBitbucket({
+        diffstats: {
+            [`${source}..${dest}`]: files,
+            [`${dest}..${source}`]: files,
+            // g.txt removed on the source side, modified on the destination: partly checked
+            [`${source}..eeee`]: [removed('g.txt'), ...files],
+            [`eeee..${source}`]: [modified('g.txt'), ...files]
+        }
+    });
+    const expected = { [key]: { error: true, reason }, [otherKey]: { conflicts: true, files: ['g.txt'], reason } };
+    const first = setUp(bitbucket(), { cache: openSyncCache(file) });
+    assert.deepEqual(await first.computeSyncStatuses('PROJ', [pullRequest(), pullRequest('eeee')]), expected);
+    assert.equal(first.requests.length, 4);
+
+    const next = setUp(bitbucket(), { cache: openSyncCache(file) });
+    assert.deepEqual(await next.computeSyncStatuses('PROJ', [pullRequest(), pullRequest('eeee')]), expected);
+    assert.deepEqual(next.requests, []);
+    assert.deepEqual(next.logs.error, []);
 });
 
 test('a pull request without commit hashes on a side gets no status', async () => {

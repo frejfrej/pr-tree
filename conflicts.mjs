@@ -34,8 +34,9 @@
  */
 
 // The version of the conflict rule, part of every key of sync-cache.json: bump
-// it whenever a change here, or in the server's computeConflicts, checkPatch or
-// diffstat mapping, can give another result for the same pair of commits
+// it whenever a change here, or in the server's computeConflicts, checkPatch,
+// diffstat mapping or maxFilesToCheck (its over-limit results are stored too),
+// can give another result for the same pair of commits
 // (conflict or not, or other files listed), so that results stored under an
 // older rule are not reused
 export const conflictRuleVersion = 2;
