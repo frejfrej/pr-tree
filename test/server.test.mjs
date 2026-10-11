@@ -17,18 +17,26 @@ import { contentSecurityPolicy } from '../security-headers.mjs';
  * serves: the app, the API, README.md for the help modal, and nothing else
  * from the project directory (config.js holds the credentials). The server
  * is started from another directory, which has a public/ folder of its own:
- * nothing it serves depends on the working directory (#107).
+ * nothing it serves depends on the working directory (#107). That directory
+ * also holds decoys of the project files that must not be served, so a static
+ * middleware mounted on the working directory is caught as well as one
+ * mounted on the project directory.
  */
 
 const root = path.resolve(import.meta.dirname, '..');
-const workingDirectory = mkdtempSync(path.join(tmpdir(), 'pr-tree-cwd-'));
-const decoyPage = '<!doctype html><title>Not the dashboard</title>';
+// The project files that must never be served (config.js holds the credentials)
+const privateFiles = ['config.js', 'config.js.default', 'index.mjs', 'cache.mjs', 'package.json',
+    'access.log', 'CLAUDE.md', 'fixtures/generate.mjs', 'sync-cache.json'];
+let workingDirectory;
 let server;
 let baseUrl;
 
 before(async () => {
-    mkdirSync(path.join(workingDirectory, 'public'));
-    writeFileSync(path.join(workingDirectory, 'public', 'index.html'), decoyPage);
+    workingDirectory = mkdtempSync(path.join(tmpdir(), 'pr-tree-cwd-'));
+    for (const file of ['public/index.html', ...privateFiles]) {
+        mkdirSync(path.join(workingDirectory, path.dirname(file)), { recursive: true });
+        writeFileSync(path.join(workingDirectory, file), 'a decoy in the working directory');
+    }
     server = spawn(process.execPath, [path.join(root, 'index.mjs'), '--fixtures'], {
         cwd: workingDirectory,
         // The default address and names: a PR_TREE_HOST of the environment would change them
@@ -51,13 +59,13 @@ before(async () => {
 
 after(async () => {
     // Wait for the exit: the server writes its coverage on the way out (npm run test:coverage)
-    if (!server || server.exitCode !== null || server.signalCode !== null) return;
-    const exited = once(server, 'exit');
-    server.kill();
-    await exited;
+    if (server && server.exitCode === null && server.signalCode === null) {
+        const exited = once(server, 'exit');
+        server.kill();
+        await exited;
+    }
+    if (workingDirectory) rmSync(workingDirectory, { recursive: true, force: true });
 });
-
-after(() => rmSync(workingDirectory, { recursive: true, force: true }));
 
 test('the page comes from the public/ folder of the dashboard, whatever the working directory', async () => {
     const response = await fetch(`${baseUrl}/`);
@@ -72,11 +80,9 @@ test('README.md is served for the help modal', async () => {
     assert.equal(await response.text(), readFileSync(path.join(root, 'README.md'), 'utf8'));
 });
 
-test('no other file of the project directory is served', async () => {
+test('no other file of the project directory, nor of the working directory, is served', async () => {
     // A literal `..` is normalised away by fetch itself, so only the encoded forms reach the server
-    const files = ['config.js', 'config.js.default', 'index.mjs', 'cache.mjs', 'package.json',
-        'access.log', 'CLAUDE.md', 'fixtures/generate.mjs', 'sync-cache.json',
-        '..%2fconfig.js', 'README.md%2f..%2fconfig.js'];
+    const files = [...privateFiles, '..%2fconfig.js', 'README.md%2f..%2fconfig.js'];
     for (const file of files) {
         const response = await fetch(`${baseUrl}/${file}`);
         assert.equal(response.status, 404, `${file} must not be served`);
