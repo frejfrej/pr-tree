@@ -213,6 +213,7 @@ The application integrates with a Jira workflow where:
 **Acceptance Criteria:**
 - Page automatically updates every 2 minutes when active
 - No visible UI update if data unchanged
+- A refresh that drops a selected filter value no longer offered (an ended sprint, a participant gone) updates the URL to the filters kept, without a history entry; a refresh with unchanged data leaves the URL alone
 - Refresh timestamp updates in real-time
 - Loading spinner appears during checks
 - No updates occur when tab in background

@@ -511,6 +511,9 @@ async function checkForUpdates() {
         } else if (newData.dataHash !== currentApiResult.dataHash) {
             console.log('Data has changed. Updating...');
             renderEverything(newData);
+            // A value the new options no longer offer was dropped by the render:
+            // the address bar follows, without a new entry (a refresh is no user action)
+            updateUrlWithFilters({ replace: true });
         }
     } catch (error) {
         console.error('Error checking for updates:', error);
