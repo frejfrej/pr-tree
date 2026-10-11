@@ -89,6 +89,9 @@ test('renderRepositories renders one block per repository with its root branches
     assert.ok(html.includes('<h2 class="repository-name">repo-one</h2>'));
     assert.ok(html.includes('<h2 class="repository-name">repo-two</h2>'));
     assert.equal(count(html, 'class="root-branch"'), 2);
+    // Keyed by repository and branch, so two repositories' branches of the same name keep their own collapse state (#103)
+    assert.ok(html.includes('<div class="root-branch" data-root-branch-key="repo-one:main">'));
+    assert.ok(html.includes('<div class="root-branch" data-root-branch-key="repo-two:develop">'));
     assert.ok(html.includes('href="https://bitbucket.org/ws/repo-one/branch/main"'));
     assert.ok(html.includes('href="https://bitbucket.org/ws/repo-two/branch/develop"'));
     // Root branch counters include the descendants: main has 1 + 1, develop 2
@@ -204,6 +207,9 @@ test('renderRepositories renders every pull request of the fixture projects once
         assert.equal(count(html, 'tree-no-match'), 1, name);
         // The row of each pull request is keyed "repository/id", the key of its filter-index entry and of
         // its issues: the fixtures share ids between repositories, as Bitbucket does (#99)
+        // One key per root branch, though repositories share branch names (#103)
+        const rootBranchKeys = [...html.matchAll(/data-root-branch-key="([^"]*)"/g)].map(([, key]) => key);
+        assert.equal(new Set(rootBranchKeys).size, count(html, 'class="root-branch"'), name);
         const rowKeys = [...html.matchAll(/class="pull-request [^"]*" data-id="([^"]*)"/g)].map(([, key]) => key);
         assert.equal(new Set(rowKeys).size, data.pullRequests.length, name);
         const { pullRequestsByKey } = buildFilterIndex(data);
@@ -362,4 +368,5 @@ test('renderRepositories gives every collapsible block a named toggle button tha
     // A hostile name stays inside the label
     const hostile = renderRepositories([pullRequest(8, { repo: 'r"><b>', source: 'x', destination: 'y"z' })], {}, [], 'site');
     assert.ok(hostile.includes('aria-label="Toggle r&quot;&gt;&lt;b&gt;"') && hostile.includes('aria-label="Toggle y&quot;z"'));
+    assert.ok(hostile.includes('data-root-branch-key="r&quot;&gt;&lt;b&gt;:y&quot;z"'));
 });

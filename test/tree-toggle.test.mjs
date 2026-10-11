@@ -100,22 +100,47 @@ test('handleTreeClick toggles the block the click lands on, and nothing inside a
     assert.ok(pullRequest.classList.contains('collapsed'));
 });
 
-test('the collapse of a pull request survives a re-render by repository and id: #45 of two repositories are two pull requests (#99)', t => {
-    // Two rows with children, one per repository, both pull request #45
-    const row = key => element({ classes: ['pull-request'], next: element({ classes: ['children'] }), dataset: { id: key } });
-    const tree = rows => ({ querySelectorAll: selector => (selector === '.pull-request' ? rows : []) });
+// A document answering the selectors of captureToggleStates and restoreToggleStates
+// over the given elements: `.kind` and `.kind.collapsed`
+const fakeTree = elements => ({
+    querySelectorAll: selector => {
+        const [kind, state] = selector.slice(1).split('.');
+        return elements.filter(element => element.classList.contains(kind) && (!state || element.classList.contains(state)));
+    }
+});
+
+function captureAndRestore(t, makeElements, collapse) {
     const previousDocument = globalThis.document;
     t.after(() => { globalThis.document = previousDocument; });
-
-    const before = [row('repo-a/45'), row('repo-b/45')];
-    setPullRequestCollapsed(before[1], true);
-    globalThis.document = tree(before);
+    const before = makeElements();
+    collapse(before);
+    globalThis.document = fakeTree(before);
     const states = captureToggleStates();
-    assert.deepEqual(states.pullRequests, [{ id: 'repo-a/45', collapsed: false }, { id: 'repo-b/45', collapsed: true }]);
-
-    // The re-rendered tree: only repo-b's #45 is collapsed again
-    const after = [row('repo-a/45'), row('repo-b/45')];
-    globalThis.document = tree(after);
+    const after = makeElements();
+    globalThis.document = fakeTree(after);
     restoreToggleStates(states);
+    return { states, after };
+}
+
+test('the collapse of a pull request survives a re-render by repository and id: #45 of two repositories are two pull requests (#99)', t => {
+    const row = key => element({ classes: ['pull-request'], next: element({ classes: ['children'] }), dataset: { id: key } });
+    const { states, after } = captureAndRestore(t, () => [row('repo-a/45'), row('repo-b/45')], ([, second]) => setPullRequestCollapsed(second, true));
+    assert.deepEqual(states.pullRequests, ['repo-b/45']);
     assert.deepEqual(after.map(pullRequest => pullRequest.classList.contains('collapsed')), [false, true]);
+});
+
+test('the collapse of a root branch survives a re-render by repository and branch: master of two repositories are two branches (#103)', t => {
+    // B's master collapsed, listed after A's: the name alone restored A's master and expanded B's again
+    const branch = key => element({ classes: ['root-branch'], dataset: { rootBranchKey: key } });
+    const { states, after } = captureAndRestore(t, () => [branch('repo-a:master'), branch('repo-b:master'), branch('repo-b:develop')], ([, second]) => setRootBranchCollapsed(second, true));
+    assert.deepEqual(states, { repositories: [], rootBranches: ['repo-b:master'], pullRequests: [] });
+    assert.deepEqual(after.map(rootBranch => rootBranch.classList.contains('collapsed')), [false, true, false]);
+});
+
+test('the collapse of a repository survives a re-render by its name, the orphaned-issues block included', t => {
+    const repository = name => element({ classes: ['repository'], children: { '.repository-name': { textContent: `  ${name}\n` } } });
+    const { states, after } = captureAndRestore(t, () => [repository('repo-a'), repository('repo-b'), repository('Jira issues in review without a pull request')],
+        ([, second, orphaned]) => { setRepositoryCollapsed(second, true); setRepositoryCollapsed(orphaned, true); });
+    assert.deepEqual(states.repositories, ['repo-b', 'Jira issues in review without a pull request']);
+    assert.deepEqual(after.map(element => element.classList.contains('collapsed')), [false, true, true]);
 });

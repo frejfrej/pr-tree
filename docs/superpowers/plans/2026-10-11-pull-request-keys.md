@@ -9,5 +9,5 @@ Spec: `docs/superpowers/specs/2026-10-11-pull-request-keys-design.md`.
 4. tree-toggle.js: restore through a map of the rows by `data-id`.
 5. Fixtures: two repositories per project share ids.
 6. Tests (section 3 of the spec); `npm test`.
-7. Manual check on fixture SECOLLAB; docs (README 3.1.1, PRD data model,
+7. Manual check on fixture SECOLLAB; docs (README 3.1.0, PRD data model,
    CLAUDE.md pitfall 11), version; pull request closing #99.

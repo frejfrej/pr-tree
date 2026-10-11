@@ -90,15 +90,15 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
-* Version 3.1.1
-    * Two repositories of a project with an open pull request of the same number (Bitbucket numbers them per repository) no longer mix up: each row shows its own Jira issues, the filters (text, sprint, fix version, epic, story, participants and work) read its own issues and reviewers, and collapsing one keeps the other expanded after a refresh. Before, one of the two showed the issues of the other, or none, and was filtered on them (#99)
-    * The response of `/api/pull-requests/:project` keys `jiraIssuesMap` by `repository/id` (the repository the pull request is opened into) instead of the bare id; reload a dashboard tab left open across the upgrade
-    * Fixture mode: two repositories of each project share pull-request numbers, as they can on Bitbucket
 * Version 3.1.0
     * The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)
     * The server answers only requests addressed to one of its names (localhost, 127.0.0.1, [::1], plus the bound address and `PR_TREE_ALLOWED_HOSTS`): a web page whose domain is redirected to 127.0.0.1 (DNS rebinding) gets a 403 instead of the `/api` answers
     * An `/api` request that the browser marks as sent by another site gets a 403: a page open in another tab could start SYNC loads in a loop until Bitbucket's rate limit paused the dashboard for 10 minutes. The page itself, a link from another site, `curl` and scripts are unaffected
     * Refused requests are logged in `error.log`, one line a minute at most for each of the two reasons
+    * Two repositories of a project with an open pull request of the same number (Bitbucket numbers them per repository) no longer mix up: each row shows its own Jira issues, the filters (text, sprint, fix version, epic, story, participants and work) read its own issues and reviewers, and collapsing one keeps the other expanded after a refresh. Before, one of the two showed the issues of the other, or none, and was filtered on them (#99)
+    * The response of `/api/pull-requests/:project` keys `jiraIssuesMap` by `repository/id` (the repository the pull request is opened into) instead of the bare id; reload a dashboard tab left open across the upgrade
+    * Fixture mode: two repositories of each project share pull-request numbers, as they can on Bitbucket
+    * A collapsed root branch stays collapsed in its own repository after a refresh: when two repositories of a project have a root branch of the same name (`develop`, `master`), the refresh collapsed the first repository's branch and expanded the one the user had collapsed (#103)
 * Version 3.0.1
     * The page loads nothing from a CDN any more: Font Awesome 5.15.3 (its stylesheet and fonts) and Marked are served by the dashboard itself, from `public/vendor/`, as published on npm. Marked came from an unversioned CDN address with no integrity check (it served 15.0.12 of 2025): a changed or compromised file would have run on the page that reads the `/api` answers. The dashboard also works offline or behind a proxy that blocks the CDNs, and a slow CDN no longer holds back its start
     * The help modal uses Marked 18.0.14, imported only when the help is first opened, so nothing waits for it at page load; the README renders the same. When the help content cannot be loaded, opening the help again retries, instead of showing the error until the page is reloaded

@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-11
 **Issue:** #99
-**Target version:** 3.1.1
+**Target version:** 3.1.0 (the user holds the version at 3.1.0: #98, #99 and #103 are one release)
 **Status:** Decided alone (the user asked for the fix without a brainstorm); decisions 1 and 2 were changed by the review round (section 4)
 
 ## 1. Goal
@@ -41,7 +41,7 @@ hid it: their id ranges never overlapped.
 6. **Fixtures**: `products.secollab.client` starts at 2400 like
    `products.secollab`, `products.web.common` at 610 like `products.web.oslc`;
    a fixture test checks each project has an id in two repositories.
-7. **3.1.1**: a fix; the response shape changes in a way only the page reads.
+7. **3.1.0**, with #98 and #103 (the user's choice): the response shape changes in a way only the page reads.
 
 ## 3. Verification
 

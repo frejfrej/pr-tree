@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pullRequestKey } from '../public/pull-request-key.mjs';
+import { pullRequestKey, rootBranchKey } from '../public/pull-request-key.mjs';
 import { createJiraIssuesMap } from '../project-assembly.mjs';
 
 const pullRequest = (id, source, destination, title = '') =>
@@ -21,4 +21,11 @@ test('pullRequestKey: a pull request from a fork is keyed by its destination, ev
 test('pullRequestKey: a pull request without a destination repository gets a key instead of failing the whole project', () => {
     assert.equal(pullRequestKey({ id: 7, source: { repository: null }, destination: {} }), 'undefined/7');
     assert.deepEqual([...createJiraIssuesMap([{ id: 7, title: 'PROJ-7', destination: {} }], /PROJ-\d+/g)], [['undefined/7', ['PROJ-7']]]);
+});
+
+test('rootBranchKey: repository:branch, unambiguous though branch names hold slashes (git forbids a colon in a branch name) (#103)', () => {
+    assert.equal(rootBranchKey('repo-a', 'release/3.1.x'), 'repo-a:release/3.1.x');
+    assert.notEqual(rootBranchKey('repo-a', 'master'), rootBranchKey('repo-b', 'master'));
+    // With a slash as separator, repository "a/b" with branch "c" and repository "a" with branch "b/c" were one key
+    assert.notEqual(rootBranchKey('a/b', 'c'), rootBranchKey('a', 'b/c'));
 });
