@@ -146,3 +146,21 @@ test('getCacheStats counts the keys, the hits and the misses', async () => {
     assert.equal(after.misses, before.misses + 1);
     assert.equal(after.hits, before.hits + 1);
 });
+
+test('keep: false caches nothing: the loads sharing the build get it, the next load computes again', async () => {
+    let computations = 0;
+    let finish;
+    const finished = new Promise(resolve => { finish = resolve; });
+    const stopped = { stopped: 'SYNC load stopped after 8 Bitbucket failures in a row', statuses: {} };
+    const build = async () => {
+        computations++;
+        await finished;
+        return { data: stopped, keep: false };
+    };
+    const shared = [getCachedSyncStatuses('STOPPED', build), getCachedSyncStatuses('STOPPED', build)];
+    finish();
+    assert.deepEqual(await Promise.all(shared), [stopped, stopped]);
+    assert.equal(computations, 1);
+    const data = { stopped: null, statuses: {} };
+    assert.equal(await getCachedSyncStatuses('STOPPED', async () => ({ data, ttl: 60 })), data);
+});

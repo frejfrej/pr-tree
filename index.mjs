@@ -205,19 +205,21 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 return { data: await fixtureSource.buildSyncStatuses(projectName), ttl: 300 };
             }
             const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
-            const statuses = await computeSyncStatuses(projectName, projectData.pullRequests);
+            const { statuses, stopped } = await computeSyncStatuses(projectName, projectData.pullRequests);
 
             // Responses built during a rate-limit window are kept until it closes,
-            // regular ones for 5 minutes
+            // a load stopped after repeated Bitbucket failures not at all (the next
+            // click computes again), regular ones for 5 minutes
             const pause = atlassian.pause();
             const data = {
                 lastRefreshTime: new Date().toISOString(),
                 rateLimited: pause.rateLimited,
                 rateLimitedUntil: pause.rateLimitedUntil,
+                stopped,
                 statuses: statuses
             };
-            const ttl = pause.rateLimited ? Math.max(1, Math.ceil(pause.remainingMs / 1000)) : 300;
-            return { data, ttl };
+            if (pause.rateLimited) return { data, ttl: Math.max(1, Math.ceil(pause.remainingMs / 1000)) };
+            return stopped ? { data, keep: false } : { data, ttl: 300 };
         });
 
         res.json(syncStatuses);
@@ -231,6 +233,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 lastRefreshTime: new Date().toISOString(),
                 rateLimited: true,
                 rateLimitedUntil: new Date(atlassian.rateLimitedUntil()).toISOString(),
+                stopped: null,
                 statuses: {}
             });
             return;

@@ -450,7 +450,7 @@ The application integrates with a Jira workflow where:
 - Project data: 120 seconds
 - Projects list: 300 seconds
 - Conflicts: kept on disk (`sync-cache.json`) across restarts; a result older than 90 days, or computed under another version of the conflict rule, is dropped the next time the file is written
-- SYNC statuses: 300 seconds for the response; each pull request's result is read from `sync-cache.json` first
+- SYNC statuses: 300 seconds for the response, not kept when the load was stopped after repeated Bitbucket failures; each pull request's result is read from `sync-cache.json` first
 - Everything else is in memory and lost on restart
 
 **Shared Builds:**
@@ -473,7 +473,7 @@ The application integrates with a Jira workflow where:
 | `/api/version` | GET | None | Application version metadata |
 | `/api/projects` | GET | 300s | List of configured projects |
 | `/api/pull-requests/:project` | GET | 120s (30s with `incomplete`) | Comprehensive project data; `incomplete` names the parts a tolerated Jira failure left out (`parents`, `sprints`) |
-| `/api/sync-statuses/:project` | GET | 300s | SYNC (conflict) status of every open pull request, loaded on demand |
+| `/api/sync-statuses/:project` | GET | 300s (none when `stopped`) | SYNC (conflict) status of every open pull request, loaded on demand; `stopped` is the reason the load was stopped after Bitbucket failed for 8 pull requests in a row (timeouts, network failures, unreadable answers, 5xx, 401, 403), `null` otherwise |
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
 During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.

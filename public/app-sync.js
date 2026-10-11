@@ -209,6 +209,9 @@ export function updateSyncControls() {
             const end = parsePauseEnd(currentSyncStatuses.rateLimitedUntil);
             const until = end ? formatPauseEnd(end) : '';
             warningText = `Atlassian rate limit reached - SYNC status may be incomplete${until ? `, requests are paused until ${until}` : ''}`;
+        } else if (!syncStatusLoading && currentSyncStatuses && currentSyncStatuses.stopped) {
+            // The server stopped the load after repeated Bitbucket failures; `stopped` is its reason
+            warningText = `${currentSyncStatuses.stopped} - use the load button to try again`;
         }
         syncWarning.hidden = !warningText;
         syncWarning.title = warningText;

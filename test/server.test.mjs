@@ -148,7 +148,9 @@ test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoin
     assert.ok(project, 'no project configured');
     const statuses = await fetch(`${baseUrl}/api/sync-statuses/${encodeURIComponent(project)}`);
     assert.equal(statuses.status, 200);
-    assert.equal(typeof (await statuses.json()).statuses, 'object');
+    const body = await statuses.json();
+    assert.equal(typeof body.statuses, 'object');
+    assert.equal(body.stopped, null, 'a load that ran to its end says so');
 });
 
 test('the sync statuses of the fixtures have the documented shapes', async () => {
