@@ -335,6 +335,7 @@ The application integrates with a Jira workflow where:
 - **NFR-U2**: Visual feedback required for all user actions within 100ms
 - **NFR-U3**: Color-coding must be consistent across all status indicators
 - **NFR-U4**: UI must remain responsive during background data fetching
+- **NFR-U5**: Everything works from the keyboard with a visible focus: every control keeps the 2px `:focus-visible` outline (3:1 or more against what surrounds it, in the banner too); the help is a modal dialog that takes the focus and gives it back; a multi-select opens with ArrowDown, walks its search box and checkboxes with the arrows, closes on Escape from any of its controls and when the focus leaves it; every button and link showing only an icon is named (`aria-label`), its icons hidden from screen readers
 
 ### 6.4 Scalability
 - **NFR-S1**: Support up to 50 repositories per project
@@ -552,8 +553,8 @@ YYYY-MM-DDTHH:mm:ss.sssZ - Message
 - The sidebar can be hidden (button or `F` key); the state is remembered per browser
 - Below 900px the sidebar becomes a drawer over the pane and the banner hides its text labels
 - Repository and branch headers stick to the top of the pane while scrolling
-- Modal overlay for help content
-- Light and dark themes, following the OS setting until the toggle is used
+- Modal dialog for help content (focus moved in and back, page behind inert, Escape closes)
+- Light and dark themes, following the OS setting until the toggle picks the other theme; picking the OS's theme again follows the OS again
 
 ### 8.4 Interactive Elements
 

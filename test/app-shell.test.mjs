@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildDocumentTitle, isFindShortcut, loadReadme, partialDataTitle, SIDEBAR_STORAGE_KEY, THEME_STORAGE_KEY, WIDE_LAYOUT_QUERY } from '../public/app-shell.js';
+import { buildDocumentTitle, isFindShortcut, loadReadme, partialDataTitle, themeToStore, SIDEBAR_STORAGE_KEY, THEME_STORAGE_KEY, WIDE_LAYOUT_QUERY } from '../public/app-shell.js';
 
 test('title without a project is the app name', () => {
     assert.equal(buildDocumentTitle({ project: null, attentionCount: 0 }), 'Bitbucket Pull-Requests Tree');
@@ -90,4 +90,11 @@ test('the theme bootstrap of the page head reads the storage keys and the breakp
     for (const value of [SIDEBAR_STORAGE_KEY, THEME_STORAGE_KEY, WIDE_LAYOUT_QUERY]) {
         assert.ok(bootstrap.includes(`'${value}'`), `theme-bootstrap.js uses ${value}`);
     }
+});
+
+test('a theme picked on the toggle is stored only when it differs from the system: otherwise the page follows the system again', () => {
+    assert.equal(themeToStore('dark', 'light'), 'dark');
+    assert.equal(themeToStore('light', 'dark'), 'light');
+    assert.equal(themeToStore('dark', 'dark'), null);
+    assert.equal(themeToStore('light', 'light'), null);
 });

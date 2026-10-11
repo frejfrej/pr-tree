@@ -133,3 +133,15 @@ test('the plain status colours colour no text or icon', () => {
         assert.equal(plain, null, `${rule.selectors.join(', ')} uses --${plain?.[2]}-color`);
     }
 });
+
+test('no control drops the focus outline, and the outline on the banner reaches 3:1 against it, in both themes (#109)', () => {
+    assert.doesNotMatch(css, /outline:\s*(?:none|0)\b/, 'the 2px :focus-visible outline stays on every control');
+    assert.ok(!('--focus-ring' in light), 'the faint focus ring is gone');
+    const banner = rules.find(rule => rule.selectors.includes('.app-header :focus-visible'));
+    assert.ok(banner, 'the banner, painted in the primary colour in the light theme, has an outline of its own');
+    assert.match(banner.body, /outline-color:\s*var\(--header-text\)/);
+    for (const [name, tokens] of Object.entries(themes)) {
+        const ratio = contrast(resolve(tokens, '--header-text'), resolve(tokens, '--header-bg'));
+        assert.ok(ratio >= 3, `${name}: ${ratio.toFixed(2)}`);
+    }
+});

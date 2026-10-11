@@ -12,8 +12,8 @@
 <body>
 <header class="app-header">
   <button type="button" id="sidebarToggle" class="icon-button" aria-expanded="true" aria-controls="sidebar"
-          title="Toggle filters (F)">
-    <i class="fas fa-bars"></i>
+          aria-label="Toggle filters" title="Toggle filters (F)">
+    <i class="fas fa-bars" aria-hidden="true"></i>
     <span id="activeFilterBadge" class="header-badge" hidden></span>
   </button>
   <h1 class="app-brand">
@@ -36,15 +36,15 @@
     </span>
     <span class="last-refresh" id="lastRefreshTime"></span>
   </div>
-  <button type="button" id="themeToggle" class="icon-button" title="Switch to dark theme">
-    <i class="fas fa-moon"></i>
+  <button type="button" id="themeToggle" class="icon-button" aria-label="Switch to dark theme" title="Switch to dark theme">
+    <i class="fas fa-moon" aria-hidden="true"></i>
   </button>
-  <button type="button" id="helpButton" class="icon-button" title="Help">
-    <i class="fas fa-question-circle"></i>
+  <button type="button" id="helpButton" class="icon-button" aria-label="Help" title="Help">
+    <i class="fas fa-question-circle" aria-hidden="true"></i>
   </button>
   <a href="https://github.com/frejfrej/pr-tree" target="_blank" rel="noopener" class="icon-button"
-     title="GitHub repository">
-    <i class="fab fa-github"></i>
+     aria-label="GitHub repository" title="GitHub repository">
+    <i class="fab fa-github" aria-hidden="true"></i>
   </a>
   <span id="versionNumber" class="version-number"></span>
 </header>
@@ -60,7 +60,7 @@
     <input type="search" id="textFilter" class="text-filter-input" placeholder="Title, branch or issue key"
            aria-label="Search pull requests" title="Search pull requests (/)" autocomplete="off" spellcheck="false">
     <button type="button" id="textFilterClear" class="text-filter-clear" aria-label="Clear search" hidden>
-      <i class="fas fa-times"></i>
+      <i class="fas fa-times" aria-hidden="true"></i>
     </button>
   </div>
 
@@ -139,24 +139,24 @@
 <main id="main" class="main-pane">
   <div id="treeToolbar" class="tree-toolbar" hidden>
     <button type="button" id="collapseAllButton" class="link-button">
-      <i class="fas fa-compress-alt"></i> Collapse all
+      <i class="fas fa-compress-alt" aria-hidden="true"></i> Collapse all
     </button>
     <button type="button" id="expandAllButton" class="link-button">
-      <i class="fas fa-expand-alt"></i> Expand all
+      <i class="fas fa-expand-alt" aria-hidden="true"></i> Expand all
     </button>
   </div>
   <div id="pull-requests" class="tree-pane"></div>
 </main>
 
-<div id="helpModal" class="modal" hidden>
-  <div class="modal-content" role="dialog" aria-modal="true" aria-label="Help">
+<dialog id="helpModal" class="modal" aria-label="Help">
+  <div class="modal-content">
     <button type="button" id="helpClose" class="icon-button modal-close" aria-label="Close help">
-      <i class="fas fa-times"></i>
+      <i class="fas fa-times" aria-hidden="true"></i>
     </button>
     <!-- The closing tag must absolutely remain immediately next to the open tag -->
     <div id="helpContent" class="help-content"></div>
   </div>
-</div>
+</dialog>
 
 <script type="module" src="app.js"></script>
 </body>

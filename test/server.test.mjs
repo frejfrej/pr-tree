@@ -198,6 +198,11 @@ test('every select and multi-select of the app has an accessible name (#62)', as
         assert.equal(attribute(trigger, 'role'), 'button');
         assert.equal(attribute(trigger, 'aria-expanded'), 'false');
         assert.equal(attribute(trigger, 'aria-labelledby'), `${id}Label ${id}Display`);
+        assert.equal(attribute(trigger, 'aria-controls'), `${id}Dropdown`, 'the trigger points at what it opens (#109)');
+        const [dropdown] = openingTags(markup, 'div').filter(div => attribute(div, 'class') === 'multi-select-dropdown');
+        assert.equal(attribute(dropdown, 'id'), `${id}Dropdown`);
+        assert.equal(attribute(dropdown, 'role'), 'group');
+        assert.equal(attribute(dropdown, 'aria-labelledby'), `${id}Label`, 'the dropdown is named by the label');
         assert.ok(hasTextById(markup, `${id}Display`), `the selection ${id}Display`);
         const [search] = openingTags(markup, 'input');
         assert.equal(attribute(search, 'aria-labelledby'), `${id}Label`, 'the search box is named by the label');
@@ -206,6 +211,33 @@ test('every select and multi-select of the app has an accessible name (#62)', as
     // The SYNC load button says what it loads, its visible text first
     const [loadButton] = openingTags(html, 'button').filter(button => attribute(button, 'id') === 'loadSyncButton');
     assert.equal(attribute(loadButton, 'aria-label'), 'Load SYNC status');
+});
+
+test('every button and link of the page has a name of its own, and the icons inside them are hidden (#109)', async () => {
+    const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
+    const elements = [...html.matchAll(new RegExp(`(<(button|a)\\b${tagAttributes}>)([\\s\\S]*?)</\\2>`, 'g'))];
+    assert.ok(elements.length >= 10, 'the banner, sidebar, toolbar and help buttons');
+    for (const [, tag, , content] of elements) {
+        // An icon is no name: the sidebar toggle's badge number was its whole name with filters active
+        const text = content.replace(/<i\b[^>]*><\/i>/g, '').replace(/<span\b[^>]*class="header-badge"[^>]*><\/span>/g, '')
+            .replace(/<[^>]+>/g, '').trim();
+        assert.ok(text || attribute(tag, 'aria-label')?.trim(), `${tag} has a name`);
+        for (const icon of openingTags(content, 'i')) assert.equal(attribute(icon, 'aria-hidden'), 'true', `${icon} in ${tag}`);
+    }
+    for (const id of ['sidebarToggle', 'themeToggle', 'helpButton']) {
+        const [button] = openingTags(html, 'button').filter(tag => attribute(tag, 'id') === id);
+        assert.ok(attribute(button, 'aria-label'), `${id} is named by its aria-label, not by its tooltip alone`);
+    }
+});
+
+test('the help is a dialog the browser makes modal: focus moved in, page behind inert, Escape (#109)', async () => {
+    const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
+    const [dialog] = openingTags(html, 'dialog');
+    assert.equal(attribute(dialog, 'id'), 'helpModal');
+    assert.ok(attribute(dialog, 'aria-label'));
+    assert.doesNotMatch(dialog, /\shidden\b/, 'a closed dialog is hidden by the browser');
+    const shell = readFileSync(path.join(root, 'public', 'app-shell.js'), 'utf8');
+    assert.match(shell, /\.showModal\(\)/);
 });
 
 test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoint stays', async () => {
