@@ -347,6 +347,7 @@ The application integrates with a Jira workflow where:
 - **NFR-SEC3**: Application must use HTTPS when deployed outside localhost
 - **NFR-SEC4**: No sensitive data logged to access/error logs
 - **NFR-SEC5**: Only the `public/` directory and `README.md` are served over HTTP; no other file of the project directory (configuration, logs, sources) is reachable
+- **NFR-SEC6**: The server listens on the loopback addresses (127.0.0.1 and ::1) unless `PR_TREE_HOST` opens another one; it answers only requests whose `Host` is one of its own names (loopback names, the bound address, `PR_TREE_ALLOWED_HOSTS`), and refuses the `/api` requests a browser marks as sent by another site (`Sec-Fetch-Site`)
 
 ### 6.6 Maintainability
 - **NFR-M1**: Code must follow consistent naming conventions (camelCase)
@@ -478,6 +479,8 @@ The application integrates with a Jira workflow where:
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
 During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 500 from the first and a 404 from the second.
+
+Every route answers 403 with `{ error }` to a `Host` that is not a name of the server, and every `/api` route to a request with `Sec-Fetch-Site: cross-site` or `same-site` (NFR-SEC6).
 
 ### 7.6 Logging Infrastructure
 
