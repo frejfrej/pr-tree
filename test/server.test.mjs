@@ -291,7 +291,7 @@ function rawGet(urlPath, headers) {
         const request_ = request({ host: '127.0.0.1', port: new URL(baseUrl).port, path: urlPath, headers }, response => {
             let body = '';
             response.on('data', chunk => { body += chunk; });
-            response.on('end', () => resolve({ status: response.statusCode, body }));
+            response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body }));
         });
         request_.on('error', reject);
         request_.end();
@@ -343,4 +343,43 @@ test('the IPv6 loopback answers too, on the same port: localhost may resolve to 
     }
     const response = await fetch(`http://[::1]:${new URL(baseUrl).port}/api/version`);
     assert.equal(response.status, 200);
+});
+
+test('every answer carries the Content-Security-Policy and the security headers, a refusal included; Express does not announce itself (#110)', async () => {
+    const port = new URL(baseUrl).port;
+    const answers = [
+        await fetch(`${baseUrl}/`), await fetch(`${baseUrl}/app.js`), await fetch(`${baseUrl}/README.md`),
+        await fetch(`${baseUrl}/api/version`), await fetch(`${baseUrl}/api/pull-requests/NO_SUCH_PROJECT`)
+    ].map(response => ({ status: response.status, get: name => response.headers.get(name) }));
+    const refused = await rawGet('/', { Host: `evil.example:${port}` });
+    assert.equal(refused.status, 403);
+    for (const { get } of answers) {
+        const policy = get('content-security-policy');
+        for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "font-src 'self'", "img-src 'self' https: data:",
+            "connect-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"]) {
+            assert.ok(policy.split('; ').includes(directive), `${directive} in ${policy}`);
+        }
+        assert.ok(!/unsafe-inline|unsafe-eval/.test(policy));
+        assert.equal(get('x-content-type-options'), 'nosniff');
+        assert.equal(get('referrer-policy'), 'no-referrer');
+        assert.equal(get('x-powered-by'), null);
+    }
+    assert.match(refused.headers['content-security-policy'], /frame-ancestors 'none'/);
+    assert.equal(refused.headers['x-powered-by'], undefined);
+});
+
+test('the page has nothing the policy would block: no inline script, no inline event handler, no style attribute (#110)', async () => {
+    const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
+    for (const [, attributes, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+        assert.match(attributes, /\bsrc=/, 'every script is a file');
+        assert.equal(body.trim(), '', 'no inline script');
+    }
+    // The page and the markup the scripts build: an on…= or style= attribute would be blocked
+    const publicDir = path.join(root, 'public');
+    const sources = { 'index.html': html, ...Object.fromEntries(readdirSync(publicDir).filter(name => /\.m?js$/.test(name))
+        .map(name => [name, readFileSync(path.join(publicDir, name), 'utf8')])) };
+    for (const [name, source] of Object.entries(sources)) {
+        assert.doesNotMatch(source, /\son[a-z]+\s*=\s*["'$]/i, `${name} has an inline event handler`);
+        assert.doesNotMatch(source, /\sstyle\s*=\s*["'$]/i, `${name} has a style attribute`);
+    }
 });

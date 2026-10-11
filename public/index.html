@@ -5,25 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bitbucket Pull-Requests Tree</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <script>
-    // Runs before the stylesheet so neither the theme nor a hidden sidebar flashes on load.
-    (function () {
-      var theme = null;
-      var sidebarHidden = null;
-      try {
-        theme = localStorage.getItem('prTree.theme');
-        sidebarHidden = localStorage.getItem('prTree.sidebarHidden');
-      } catch (error) { /* storage unavailable */ }
-      var root = document.documentElement;
-      if (theme !== 'light' && theme !== 'dark') {
-        theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      }
-      root.dataset.theme = theme;
-      if (sidebarHidden === 'true' || !window.matchMedia('(min-width: 900px)').matches) {
-        root.classList.add('sidebar-hidden');
-      }
-    })();
-  </script>
+  <script src="theme-bootstrap.js"></script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 </head>
