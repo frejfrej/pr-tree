@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readProjectResponse, parsePauseEnd, formatPauseEnd, pausedStateText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
+import { readProjectResponse, pauseEndAfter, parsePauseEnd, formatPauseEnd, pausedStateText, failedDuringPauseText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
 
 const response = (status, body) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 
@@ -32,6 +32,20 @@ test('any other failure gives neither data nor a pause', async () => {
     assert.deepEqual(await readProjectResponse(response(404, { error: 'Project not found', rateLimitedUntil: '2026-10-11T10:10:00.000Z' })), {});
 });
 
+test('the pause after an answer: its end, none after data without one, the same after a failure', () => {
+    const end = Date.parse('2026-10-11T10:10:00.000Z');
+    const later = Date.parse('2026-10-11T10:20:00.000Z');
+    // A 503, or cached data served during the pause, sets the end it carries
+    assert.equal(pauseEndAfter(0, { pausedUntil: end }), end);
+    assert.equal(pauseEndAfter(end, { pausedUntil: later }), later);
+    assert.equal(pauseEndAfter(end, { data: {}, pausedUntil: later }), later);
+    // Data without an end: the server is not paused
+    assert.equal(pauseEndAfter(end, { data: {} }), 0);
+    // An ordinary failure says nothing about the pause: the one known is kept
+    assert.equal(pauseEndAfter(end, {}), end);
+    assert.equal(pauseEndAfter(0, {}), 0);
+});
+
 test('the end of a pause is read as epoch ms, 0 when there is none', () => {
     assert.equal(parsePauseEnd('2026-10-11T10:10:00.000Z'), Date.parse('2026-10-11T10:10:00.000Z'));
     assert.equal(parsePauseEnd(null), 0);
@@ -49,6 +63,7 @@ test('the end of the pause is shown as HH:MM, rounded up to the minute', () => {
 test('the texts name the end of the pause', () => {
     const until = new Date(2026, 9, 11, 14, 32, 10).getTime();
     assert.equal(pausedStateText('SECOLLAB', until), 'Atlassian requests are paused until 14:33 after a rate limit (HTTP 429). SECOLLAB will load then.');
+    assert.equal(failedDuringPauseText('OSLC', until), 'Could not load OSLC. The next check is at 14:33, at the end of the Atlassian pause.');
     assert.equal(pauseIndicatorText(until), 'Paused until 14:33');
-    assert.equal(pauseIndicatorTitle(until), 'Atlassian rate limit reached (HTTP 429): requests are paused until 14:33. The page checks again then.');
+    assert.equal(pauseIndicatorTitle(until), 'Atlassian rate limit reached (HTTP 429): requests are paused until 14:33, for every project. The project shown is checked again then.');
 });

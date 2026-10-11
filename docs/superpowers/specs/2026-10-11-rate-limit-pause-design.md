@@ -103,4 +103,7 @@ answers 503 `{ error, rateLimitedUntil }` whenever it has to build the data
 - **Keeping the indicator across a project switch** (review of PR #82): the
   pause belongs to the server, not to a project, but the indicator follows
   the answers of the project shown, and a pause kept without a project has no
-  check to clear it at its end. Filed as #83.
+  check to clear it at its end. Filed as #83, done since: the pause is kept
+  across switches and the end timer is the indicator's own
+  (`2026-10-11-pause-across-switches-design.md`), which replaces the end of
+  decision 4 and the timer of decision 5.
