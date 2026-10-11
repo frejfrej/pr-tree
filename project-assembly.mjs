@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { pullRequestKey } from './public/pull-request-key.mjs';
 
 /**
  * The pure part of a project's data: what the server (project-data.mjs)
@@ -13,13 +14,14 @@ export function extractJiraIssues(title, jiraRegex) {
 }
 
 /**
- * The issue keys of every pull request, by pull request id.
- * @returns {Map<number, string[]>}
+ * The issue keys of every pull request, by pull request key, repository/id
+ * (pullRequestKey, shared with the page).
+ * @returns {Map<string, string[]>}
  */
 export function createJiraIssuesMap(pullRequests, jiraRegex) {
     const jiraIssuesMap = new Map();
     for (const pullRequest of pullRequests) {
-        jiraIssuesMap.set(pullRequest.id, extractJiraIssues(pullRequest.title, jiraRegex));
+        jiraIssuesMap.set(pullRequestKey(pullRequest), extractJiraIssues(pullRequest.title, jiraRegex));
     }
     return jiraIssuesMap;
 }
@@ -74,7 +76,7 @@ export function calculateHash(data) {
  * The parts are returned as given, not copied: the caller owns them.
  * @param {object} parts
  * @param {object[]} parts.pullRequests
- * @param {Map<number, string[]>} parts.jiraIssuesMap - by pull request id (createJiraIssuesMap)
+ * @param {Map<string, string[]>} parts.jiraIssuesMap - by pull request key (createJiraIssuesMap)
  * @param {object[]} parts.jiraIssuesDetails - the linked issues
  * @param {object[]} [parts.parents] - the parents fetched for them and for the orphaned issues
  * @param {object[]} [parts.orphanedIssues]

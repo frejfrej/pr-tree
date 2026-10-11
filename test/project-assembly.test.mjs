@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { pullRequestKey } from '../public/pull-request-key.mjs';
 import { extractJiraIssues, createJiraIssuesMap, missingParentKeys, inheritFixVersions, calculateHash, assembleProjectData } from '../project-assembly.mjs';
 
 const jiraRegex = /(PROJ-\d+|OTHER-\d+)/g;
-function pullRequest(id, title = `PROJ-${id} change ${id}`) {
-    return { id, title, source: { branch: { name: `feat-${id}` }, commit: { hash: `s${id}` }, repository: { name: 'repo-a' } }, destination: { branch: { name: 'master' }, commit: { hash: `d${id}` } } };
+function pullRequest(id, title = `PROJ-${id} change ${id}`, repository = 'repo-a') {
+    return { id, title, source: { branch: { name: `feat-${id}` }, commit: { hash: `s${id}` }, repository: { name: repository } }, destination: { branch: { name: 'master' }, commit: { hash: `d${id}` }, repository: { name: repository } } };
 }
 function issue(key, { parent = null, fixVersions = [] } = {}) {
     const fields = { summary: `Summary of ${key}`, fixVersions };
@@ -17,7 +18,13 @@ test('extractJiraIssues finds the keys of the project regex in a title, in order
     assert.deepEqual(extractJiraIssues('PROJ-12 and OTHER-3 but not FOO-4 or proj-5', jiraRegex), ['PROJ-12', 'OTHER-3']);
     assert.deepEqual(extractJiraIssues('no key', jiraRegex), []);
     const map = createJiraIssuesMap([pullRequest(1, 'PROJ-1 PROJ-1 twice'), pullRequest(2, 'nothing')], jiraRegex);
-    assert.deepEqual([...map], [[1, ['PROJ-1', 'PROJ-1']], [2, []]]);
+    assert.deepEqual([...map], [['repo-a/1', ['PROJ-1', 'PROJ-1']], ['repo-a/2', []]]);
+});
+
+test('createJiraIssuesMap keys the pull requests by repository and id: two repositories have a pull request #45 each (#99)', () => {
+    const pullRequests = [pullRequest(45, 'PROJ-1 in repo a'), pullRequest(45, 'PROJ-2 in repo b', 'repo-b')];
+    assert.deepEqual(pullRequests.map(pullRequestKey), ['repo-a/45', 'repo-b/45']);
+    assert.deepEqual([...createJiraIssuesMap(pullRequests, jiraRegex)], [['repo-a/45', ['PROJ-1']], ['repo-b/45', ['PROJ-2']]]);
 });
 
 test('missingParentKeys lists the parents named but absent, once each, in first-seen order', () => {
@@ -44,7 +51,7 @@ test('inheritFixVersions gives an issue without versions its parent\'s, in array
 
 test('calculateHash is stable for the same data and changes when a commit moves or an orphaned issue appears', () => {
     const data = () => ({
-        pullRequests: [pullRequest(1)], jiraIssuesMap: { 1: ['PROJ-1'] }, jiraIssuesDetails: [issue('PROJ-1')],
+        pullRequests: [pullRequest(1)], jiraIssuesMap: { 'repo-a/1': ['PROJ-1'] }, jiraIssuesDetails: [issue('PROJ-1')],
         sprints: [{ id: 1, name: 'S1' }], sprintIssues: { 1: ['PROJ-1'] }, orphanedIssues: []
     });
     const hash = calculateHash(data());
@@ -70,7 +77,7 @@ test('assembleProjectData inherits the versions over the details, the orphaned i
     const data = assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails: [linked], parents: [parent], orphanedIssues: [orphaned], sprints, sprintIssues, jiraSiteName: 'site' });
     assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'incomplete', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.equal(data.pullRequests, pullRequests);
-    assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['PROJ-2'] }); // a plain object
+    assert.deepEqual(data.jiraIssuesMap, { 'repo-a/1': ['PROJ-1'], 'repo-a/2': ['PROJ-2'] }); // a plain object
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'PROJ-100']);
     assert.deepEqual(data.jiraIssuesDetails[0].fields.fixVersions.map(v => v.name), ['2.0']);
     assert.deepEqual(data.orphanedIssues[0].fields.fixVersions.map(v => v.name), ['2.0']); // in place

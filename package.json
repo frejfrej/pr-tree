@@ -1,6 +1,6 @@
 {
   "name": "version",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "releaseDate": "2026-10-11",
   "description": "Made with love, and with help from various AI systems (mostly Claude.ai though)",
   "main": "index.mjs",
@@ -8,7 +8,7 @@
     "start": "node index.mjs",
     "start:fixtures": "node index.mjs --fixtures",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test",
-    "test:coverage": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage --test-coverage-include=\"*.mjs\" --test-coverage-include=projects.js --test-coverage-include=\"public/*.js\" --test-coverage-include=\"fixtures/*.mjs\""
+    "test:coverage": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage --test-coverage-include=\"*.mjs\" --test-coverage-include=projects.js --test-coverage-include=\"public/*.js\" --test-coverage-include=\"public/*.mjs\" --test-coverage-include=\"fixtures/*.mjs\""
   },
   "keywords": [],
   "author": "François-Régis Jaunatre",

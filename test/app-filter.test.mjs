@@ -77,15 +77,15 @@ import { multiSelectFilters } from '../public/filter-registry.js';
 const sampleApiResult = {
     pullRequests: [
         {
-            id: 10, title: 'fix(PROJ-1): restore the banner', source: { branch: { name: 'JD_260901_PROJ-1_Banner' } },
+            id: 10, title: 'fix(PROJ-1): restore the banner', source: { branch: { name: 'JD_260901_PROJ-1_Banner' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } },
             author, participants: [{ user: author, approved: false }, { user: jane, approved: false }, { user: bob, approved: true }]
         },
         {
-            id: 11, title: 'chore: bump dependencies', source: { branch: { name: 'chore/bump-deps' } },
+            id: 11, title: 'chore: bump dependencies', source: { branch: { name: 'chore/bump-deps' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } },
             author, participants: [{ user: author, approved: false }, { user: rovoDev, approved: false }]
         }
     ],
-    jiraIssuesMap: { 10: ['PROJ-1', 'PROJ-2', 'PROJ-404'], 11: [] },
+    jiraIssuesMap: { 'repo/10': ['PROJ-1', 'PROJ-2', 'PROJ-404'], 'repo/11': [] },
     jiraIssuesDetails: [
         { key: 'PROJ-1', fields: { assignee: { displayName: 'Jane' }, status: { name: 'In Review' }, fixVersions: [{ id: 100, name: '1.0' }] } },
         { key: 'PROJ-2', fields: { assignee: null, status: { name: 'In Review' }, fixVersions: [] } }
@@ -98,12 +98,12 @@ const noFilter = { participants: [], work: 'all', sprints: [], fixVersions: [], 
 // The entry of pull request 10 with its linked issues in the given status (its reviewers: Jane pending, Bob approved)
 function entryInStatus(status) {
     const details = sampleApiResult.jiraIssuesDetails.map(issue => ({ ...issue, fields: { ...issue.fields, status: { name: status } } }));
-    return buildFilterIndex({ ...sampleApiResult, jiraIssuesDetails: details }).pullRequestsById.get(10);
+    return buildFilterIndex({ ...sampleApiResult, jiraIssuesDetails: details }).pullRequestsByKey.get('repo/10');
 }
 
 test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versions per pull request', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    const entry = pullRequestsById.get(10);
+    const { pullRequestsByKey } = buildFilterIndex(sampleApiResult);
+    const entry = pullRequestsByKey.get('repo/10');
     assert.deepEqual(entry.linkedIssues.map(issue => issue.key), ['PROJ-1', 'PROJ-2']); // PROJ-404 is unknown
     assert.deepEqual([...entry.assignees], ['Jane']);
     assert.deepEqual([...entry.reviewers], ['Jane', 'Bob']); // the author is not a reviewer
@@ -112,8 +112,8 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
     assert.deepEqual([...entry.fixVersions], ['100']);
     assert.equal(entry.statusInReview, true); // PROJ-1 and PROJ-2 are in review, Jane has not approved
     assert.equal(entry.statusInProgress, false);
-    assert.equal(entry.syncKey, 'undefined/undefined..undefined'); // no repository nor commits in the sample: never a status
-    const bare = pullRequestsById.get(11);
+    assert.equal(entry.syncKey, 'repo/undefined..undefined'); // no commits in the sample: never a status
+    const bare = pullRequestsByKey.get('repo/11');
     assert.equal(bare.linkedIssues.length, 0);
     assert.equal(bare.assignees.size, 0);
     assert.deepEqual([...bare.reviewers], []); // Rovo Dev is never a reviewer (otherReviewers)
@@ -122,27 +122,27 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
 
 test('buildFilterIndex: a pull request in review approved by every reviewer is not in review for the attention rule, as its band says', () => {
     const allApproved = { ...sampleApiResult, pullRequests: [{ ...sampleApiResult.pullRequests[0], participants: [{ user: author, approved: false }, { user: jane, approved: true }, { user: bob, approved: true }] }] };
-    const entry = buildFilterIndex(allApproved).pullRequestsById.get(10);
+    const entry = buildFilterIndex(allApproved).pullRequestsByKey.get('repo/10');
     assert.equal(entry.statusInReview, false); // the band is status-in-review-all-approved: nobody waits
     assert.equal(computeAttention(entry, ['Jane']).reviewer, false);
 });
 
 test('buildFilterIndex keys each pull request like the SYNC statuses response: repo/destHash..sourceHash', () => {
-    const { pullRequestsById } = buildFilterIndex({
-        pullRequests: [{ id: 13, title: 'x', author, participants: [], source: { branch: { name: 'f' }, commit: { hash: 'abc' }, repository: { name: 'repo-one' } }, destination: { branch: { name: 'main' }, commit: { hash: 'def' } } }],
+    const { pullRequestsByKey } = buildFilterIndex({
+        pullRequests: [{ id: 13, title: 'x', author, participants: [], source: { branch: { name: 'f' }, commit: { hash: 'abc' }, repository: { name: 'repo-one' } }, destination: { branch: { name: 'main' }, commit: { hash: 'def' }, repository: { name: 'repo-one' } } }],
         jiraIssuesMap: {}, jiraIssuesDetails: [], sprintIssues: {}
     });
-    assert.equal(pullRequestsById.get(13).syncKey, 'repo-one/def..abc');
+    assert.equal(pullRequestsByKey.get('repo-one/13').syncKey, 'repo-one/def..abc');
 });
 
 test('buildFilterIndex lists the participants: assignees and reviewers, sorted, without Rovo Dev', () => {
     assert.deepEqual(buildFilterIndex(sampleApiResult).participants.map(option => option.value), ['Bob', 'Jane']);
     const index = buildFilterIndex({
         pullRequests: [{
-            id: 12, title: 'PROJ-3 search', source: { branch: { name: 'feature/PROJ-3' } },
+            id: 12, title: 'PROJ-3 search', source: { branch: { name: 'feature/PROJ-3' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } },
             author, participants: [{ user: author, approved: false }, { user: { uuid: 'zoe-uuid', display_name: 'Zoé' }, approved: true }, { user: { uuid: 'ghost-uuid', display_name: null }, approved: false }]
         }],
-        jiraIssuesMap: { 12: ['PROJ-3'] },
+        jiraIssuesMap: { 'repo/12': ['PROJ-3'] },
         jiraIssuesDetails: [{ key: 'PROJ-3', fields: { assignee: { displayName: 'Émile' }, fixVersions: [] } }],
         sprintIssues: {}
     });
@@ -153,7 +153,7 @@ test('buildFilterIndex lists the participants: assignees and reviewers, sorted, 
 
 test('buildFilterIndex tolerates an empty result', () => {
     const index = buildFilterIndex({});
-    assert.equal(index.pullRequestsById.size, 0);
+    assert.equal(index.pullRequestsByKey.size, 0);
     assert.deepEqual(index.participants, []);
     assert.equal(index.orphanedIssuesByKey.size, 0);
 });
@@ -184,7 +184,7 @@ test('buildFilterIndex returns the option lists of the multi-selects under the r
 
 test('evaluatePullRequest shows everything without filters', () => {
     assert.equal(evaluatePullRequest(entryInStatus('In Review'), noFilter).visible, true);
-    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsById.get(11), noFilter).visible, true);
+    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsByKey.get('repo/11'), noFilter).visible, true);
 });
 
 test('evaluatePullRequest matches any selected value of each filter, and every filter must match', () => {
@@ -226,7 +226,7 @@ test('evaluatePullRequest All work keeps every pull request of the participants,
     assert.equal(evaluate({ participants: ['Bob'] }, progressing).visible, true);
     assert.equal(evaluate({ participants: ['Zoé'] }).visible, false); // neither a reviewer nor an assignee
     assert.equal(evaluate({ participants: ['Zoé', 'Bob'] }).visible, true); // any selected participant
-    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsById.get(11), { ...noFilter, participants: ['Jane'] }).visible, false); // only Rovo Dev reviews it
+    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsByKey.get('repo/11'), { ...noFilter, participants: ['Jane'] }).visible, false); // only Rovo Dev reviews it
 });
 
 test('evaluatePullRequest All reviews keeps the pull requests the participants review, All issues those with a linked issue assigned to them', () => {
@@ -242,7 +242,7 @@ test('evaluatePullRequest All reviews keeps the pull requests the participants r
     assert.equal(evaluate('issues', ['Jane'], neither), true); // whatever the status
     assert.equal(evaluate('issues', ['Bob']), false); // no linked issue assigned to Bob
     assert.equal(evaluate('issues', ['Zoé', 'Jane']), true); // any selected participant
-    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsById.get(11), { ...noFilter, work: 'reviews', participants: ['Jane'] }).visible, false); // only Rovo Dev reviews it
+    assert.equal(evaluatePullRequest(buildFilterIndex(sampleApiResult).pullRequestsByKey.get('repo/11'), { ...noFilter, work: 'reviews', participants: ['Jane'] }).visible, false); // only Rovo Dev reviews it
 });
 
 test('evaluatePullRequest Ready for participants keeps the pull requests waiting for them, as reviewers or as assignees', () => {
@@ -270,10 +270,10 @@ test('evaluatePullRequest Ready for reviewers keeps reviewer attention only, Rea
 });
 
 test('evaluatePullRequest without a participant ignores the work value', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
+    const { pullRequestsByKey } = buildFilterIndex(sampleApiResult);
     for (const work of ['all', 'reviews', 'issues', 'ready', 'reviewers', 'assignees']) {
         assert.equal(evaluatePullRequest(entryInStatus('In Review'), { ...noFilter, work }).visible, true);
-        assert.equal(evaluatePullRequest(pullRequestsById.get(11), { ...noFilter, work }).visible, true);
+        assert.equal(evaluatePullRequest(pullRequestsByKey.get('repo/11'), { ...noFilter, work }).visible, true);
     }
 });
 
@@ -319,14 +319,14 @@ test('buildFilterIndex indexes the orphaned issues: text, assignee, sprints, fix
     assert.deepEqual(index.epics.map(option => option.value), ['PROJ-500', 'PROJ-24']);
     assert.deepEqual(index.stories.map(option => option.value).sort(), ['PROJ-1', 'PROJ-2', 'PROJ-20', 'PROJ-22', 'PROJ-23', 'PROJ-25']);
     assert.deepEqual(index.participants.map(option => option.value), ['Bob', 'Jane']); // Bob reviews a pull request already; Rovo Dev stays excluded
-    assert.equal(index.pullRequestsById.size, 2); // the pull requests are indexed as before
+    assert.equal(index.pullRequestsByKey.size, 2); // the pull requests are indexed as before
 });
 
 test('buildFilterIndex resolves a parent that is itself an orphaned issue (the server does not duplicate it into the details)', () => {
     // The story PROJ-30 is in review with no pull request while its sub-task PROJ-31 is linked by pull request 12
     const index = buildFilterIndex({
-        pullRequests: [{ id: 12, title: 'PROJ-31 login', source: { branch: { name: 'feature/PROJ-31' } }, author, participants: [{ user: author, approved: false }] }],
-        jiraIssuesMap: { 12: ['PROJ-31'] },
+        pullRequests: [{ id: 12, title: 'PROJ-31 login', source: { branch: { name: 'feature/PROJ-31' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [{ user: author, approved: false }] }],
+        jiraIssuesMap: { 'repo/12': ['PROJ-31'] },
         jiraIssuesDetails: [
             { key: 'PROJ-31', fields: { summary: 'Login sub-task', issuetype: { name: 'Sub-task', subtask: true }, parent: { key: 'PROJ-30', fields: { summary: 'Login story', issuetype: { name: 'Story' } } }, assignee: null, fixVersions: [] } }
         ],
@@ -335,7 +335,7 @@ test('buildFilterIndex resolves a parent that is itself an orphaned issue (the s
             { key: 'PROJ-30', fields: { summary: 'Login story', issuetype: { name: 'Story' }, parent: { key: 'PROJ-600', fields: { summary: 'Login epic', issuetype: { name: 'Epic', hierarchyLevel: 1 } } }, assignee: null, fixVersions: [] } }
         ]
     });
-    assert.deepEqual([...index.pullRequestsById.get(12).epics], ['PROJ-600']); // the epic of the sub-task, through the orphaned story
+    assert.deepEqual([...index.pullRequestsByKey.get('repo/12').epics], ['PROJ-600']); // the epic of the sub-task, through the orphaned story
     assert.deepEqual([...index.orphanedIssuesByKey.get('PROJ-30').epics], ['PROJ-600']);
     assert.deepEqual(index.epics.map(option => option.value), ['PROJ-600']);
 });
@@ -343,7 +343,7 @@ test('buildFilterIndex resolves a parent that is itself an orphaned issue (the s
 test('every multi-select but the participants is matched against a set of its own name on the entries of both kinds', () => {
     // What matchesIssueFilters relies on: a registry key is a Set on a pull request entry and on an orphaned issue entry
     const index = buildFilterIndex(orphanedApiResult);
-    const pullRequest = index.pullRequestsById.get(10);
+    const pullRequest = index.pullRequestsByKey.get('repo/10');
     const orphaned = index.orphanedIssuesByKey.get('PROJ-21');
     for (const { key } of multiSelectFilters.filter(filter => filter.key !== 'participants')) {
         assert.ok(pullRequest[key] instanceof Set, `${key} of a pull request`);
@@ -413,14 +413,14 @@ test('matchesText requires every term as a substring', () => {
 });
 
 test('buildFilterIndex searches the title, the source branch and the issue keys only', () => {
-    const { pullRequestsById } = buildFilterIndex(sampleApiResult);
-    assert.equal(pullRequestsById.get(10).searchText, 'fix(proj-1): restore the banner jd_260901_proj-1_banner proj-1 proj-2 proj-404');
-    assert.equal(pullRequestsById.get(11).searchText, 'chore: bump dependencies chore/bump-deps');
+    const { pullRequestsByKey } = buildFilterIndex(sampleApiResult);
+    assert.equal(pullRequestsByKey.get('repo/10').searchText, 'fix(proj-1): restore the banner jd_260901_proj-1_banner proj-1 proj-2 proj-404');
+    assert.equal(pullRequestsByKey.get('repo/11').searchText, 'chore: bump dependencies chore/bump-deps');
     const bare = buildFilterIndex({
-        pullRequests: [{ id: 12, title: 'Hotfix', author, participants: [] }],
+        pullRequests: [{ id: 12, title: 'Hotfix', source: { repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] }],
         jiraIssuesMap: {}, jiraIssuesDetails: [], sprintIssues: {}
     });
-    assert.equal(bare.pullRequestsById.get(12).searchText, 'hotfix'); // no source branch
+    assert.equal(bare.pullRequestsByKey.get('repo/12').searchText, 'hotfix'); // no source branch
 });
 
 test('evaluatePullRequest text filter is case-insensitive and needs every word', () => {
@@ -488,31 +488,31 @@ test('epicOf needs the parent of the parent story, which the server now fetches 
 
 const hierarchyApiResult = {
     pullRequests: [
-        { id: 20, title: 'PROJ-200 chat panel', source: { branch: { name: 'feature/PROJ-200' } }, author, participants: [] },
-        { id: 21, title: 'PROJ-300 chat panel api', source: { branch: { name: 'feature/PROJ-300' } }, author, participants: [] },
-        { id: 22, title: 'PROJ-201 crash on save', source: { branch: { name: 'bugfix/PROJ-201' } }, author, participants: [] },
-        { id: 23, title: 'PROJ-100 epic branch', source: { branch: { name: 'feature/PROJ-100' } }, author, participants: [] },
-        { id: 24, title: 'PROJ-200 PROJ-203 both', source: { branch: { name: 'feature/both' } }, author, participants: [] }
+        { id: 20, title: 'PROJ-200 chat panel', source: { branch: { name: 'feature/PROJ-200' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] },
+        { id: 21, title: 'PROJ-300 chat panel api', source: { branch: { name: 'feature/PROJ-300' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] },
+        { id: 22, title: 'PROJ-201 crash on save', source: { branch: { name: 'bugfix/PROJ-201' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] },
+        { id: 23, title: 'PROJ-100 epic branch', source: { branch: { name: 'feature/PROJ-100' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] },
+        { id: 24, title: 'PROJ-200 PROJ-203 both', source: { branch: { name: 'feature/both' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] }
     ],
-    jiraIssuesMap: { 20: ['PROJ-200'], 21: ['PROJ-300'], 22: ['PROJ-201'], 23: ['PROJ-100'], 24: ['PROJ-200', 'PROJ-203'] },
+    jiraIssuesMap: { 'repo/20': ['PROJ-200'], 'repo/21': ['PROJ-300'], 'repo/22': ['PROJ-201'], 'repo/23': ['PROJ-100'], 'repo/24': ['PROJ-200', 'PROJ-203'] },
     jiraIssuesDetails: [epicAi, epicUx, storyInEpic, storyInUx, bugWithoutEpic, subtaskOfStory],
     sprintIssues: {}
 };
 
 test('buildFilterIndex collects the epics of every pull request and the list of epics', () => {
-    const { pullRequestsById, epics } = buildFilterIndex(hierarchyApiResult);
-    assert.deepEqual([...pullRequestsById.get(20).epics], ['PROJ-100']);
-    assert.deepEqual([...pullRequestsById.get(21).epics], ['PROJ-100']); // through the parent story
-    assert.deepEqual([...pullRequestsById.get(22).epics], []);
-    assert.deepEqual([...pullRequestsById.get(23).epics], ['PROJ-100']); // linked to the epic itself
-    assert.deepEqual([...pullRequestsById.get(24).epics], ['PROJ-100', 'PROJ-101']); // two issues under two epics
+    const { pullRequestsByKey, epics } = buildFilterIndex(hierarchyApiResult);
+    assert.deepEqual([...pullRequestsByKey.get('repo/20').epics], ['PROJ-100']);
+    assert.deepEqual([...pullRequestsByKey.get('repo/21').epics], ['PROJ-100']); // through the parent story
+    assert.deepEqual([...pullRequestsByKey.get('repo/22').epics], []);
+    assert.deepEqual([...pullRequestsByKey.get('repo/23').epics], ['PROJ-100']); // linked to the epic itself
+    assert.deepEqual([...pullRequestsByKey.get('repo/24').epics], ['PROJ-100', 'PROJ-101']); // two issues under two epics
     assert.deepEqual(epics, [{ value: 'PROJ-101', label: 'PROJ-101 UX' }, { value: 'PROJ-100', label: 'PROJ-100 Assistive AI' }]); // newest first
     assert.equal(buildFilterIndex({}).epics.length, 0);
 });
 
 test('evaluatePullRequest epic filter matches any selected epic', () => {
-    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
-    const evaluate = (id, epics) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, epics }).visible;
+    const { pullRequestsByKey } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, epics) => evaluatePullRequest(pullRequestsByKey.get(`repo/${id}`), { ...noFilter, epics }).visible;
     assert.equal(evaluate(20, ['PROJ-100']), true);
     assert.equal(evaluate(21, ['PROJ-100']), true);
     assert.equal(evaluate(22, ['PROJ-100']), false);
@@ -548,19 +548,19 @@ test('storyOf is the issue itself, the parent of a sub-task, and nothing for an 
 });
 
 test('buildFilterIndex collects the stories of every pull request and the list of stories', () => {
-    const { pullRequestsById, stories } = buildFilterIndex(hierarchyApiResult);
-    assert.deepEqual([...pullRequestsById.get(20).stories], ['PROJ-200']);
-    assert.deepEqual([...pullRequestsById.get(21).stories], ['PROJ-200']); // the parent of the sub-task
-    assert.deepEqual([...pullRequestsById.get(22).stories], ['PROJ-201']);
-    assert.deepEqual([...pullRequestsById.get(23).stories], []); // an epic is not a story
-    assert.deepEqual([...pullRequestsById.get(24).stories], ['PROJ-200', 'PROJ-203']); // two issues, two stories
+    const { pullRequestsByKey, stories } = buildFilterIndex(hierarchyApiResult);
+    assert.deepEqual([...pullRequestsByKey.get('repo/20').stories], ['PROJ-200']);
+    assert.deepEqual([...pullRequestsByKey.get('repo/21').stories], ['PROJ-200']); // the parent of the sub-task
+    assert.deepEqual([...pullRequestsByKey.get('repo/22').stories], ['PROJ-201']);
+    assert.deepEqual([...pullRequestsByKey.get('repo/23').stories], []); // an epic is not a story
+    assert.deepEqual([...pullRequestsByKey.get('repo/24').stories], ['PROJ-200', 'PROJ-203']); // two issues, two stories
     assert.deepEqual(stories.map(option => option.value), ['PROJ-203', 'PROJ-201', 'PROJ-200']); // newest first
     assert.equal(buildFilterIndex({}).stories.length, 0);
 });
 
 test('evaluatePullRequest story filter matches any selected story', () => {
-    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
-    const evaluate = (id, stories) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, stories }).visible;
+    const { pullRequestsByKey } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, stories) => evaluatePullRequest(pullRequestsByKey.get(`repo/${id}`), { ...noFilter, stories }).visible;
     assert.equal(evaluate(20, ['PROJ-200']), true);
     assert.equal(evaluate(21, ['PROJ-200']), true);
     assert.equal(evaluate(22, ['PROJ-200']), false);
@@ -570,22 +570,22 @@ test('evaluatePullRequest story filter matches any selected story', () => {
 });
 
 test('epic and story filters combine as AND, and a story linked together with its own sub-task counts once', () => {
-    const { pullRequestsById } = buildFilterIndex(hierarchyApiResult);
-    const evaluate = (id, filters) => evaluatePullRequest(pullRequestsById.get(id), { ...noFilter, ...filters }).visible;
+    const { pullRequestsByKey } = buildFilterIndex(hierarchyApiResult);
+    const evaluate = (id, filters) => evaluatePullRequest(pullRequestsByKey.get(`repo/${id}`), { ...noFilter, ...filters }).visible;
     assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-200'] }), true);
     assert.equal(evaluate(21, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false);
     assert.equal(evaluate(22, { epics: ['PROJ-100'], stories: ['PROJ-201'] }), false); // the story matches, the epic does not
     const both = buildFilterIndex({
         ...hierarchyApiResult,
-        pullRequests: [{ id: 30, title: 'PROJ-200 PROJ-300 both', source: { branch: { name: 'feature/both' } }, author, participants: [] }],
-        jiraIssuesMap: { 30: ['PROJ-200', 'PROJ-300'] }
+        pullRequests: [{ id: 30, title: 'PROJ-200 PROJ-300 both', source: { branch: { name: 'feature/both' }, repository: { name: 'repo' } }, destination: { repository: { name: 'repo' } }, author, participants: [] }],
+        jiraIssuesMap: { 'repo/30': ['PROJ-200', 'PROJ-300'] }
     });
-    assert.deepEqual([...both.pullRequestsById.get(30).stories], ['PROJ-200']);
+    assert.deepEqual([...both.pullRequestsByKey.get('repo/30').stories], ['PROJ-200']);
     assert.equal(countActiveFilters({ participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all', epics: ['PROJ-100'], stories: ['PROJ-200'] }), 2);
 });
 
 test('initializeFilter builds the index of a data load and returns it', () => {
     const index = initializeFilter(sampleApiResult);
     assert.deepEqual(index, buildFilterIndex(sampleApiResult));
-    assert.ok(index.pullRequestsById.size > 0);
+    assert.ok(index.pullRequestsByKey.size > 0);
 });

@@ -135,7 +135,7 @@ test('the pull requests of each repository are fetched 50 per page, following ne
     assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'incomplete', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.deepEqual(data.incomplete, []); // nothing failed
     assert.deepEqual(data.pullRequests.map(pr => [pr.id, pr.commitsAhead, pr.commitsBehind]), [[1, 3, 1], [2, 3, 1], [3, 3, 1]]);
-    assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['OTHER-7'], 3: ['PROJ-3'] });
+    assert.deepEqual(data.jiraIssuesMap, { 'repo-a/1': ['PROJ-1'], 'repo-a/2': ['OTHER-7'], 'repo-b/3': ['PROJ-3'] });
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'OTHER-7']); // PROJ-3 is not in Jira
     assert.equal(data.jiraSiteName, jiraSiteName);
     assert.deepEqual([data.sprints, data.sprintIssues, data.orphanedIssues], [[], {}, []]);

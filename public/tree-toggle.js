@@ -105,7 +105,8 @@ export function expandAll() {
 
 /**
  * Snapshot of what is collapsed, keyed by repository name, root branch name
- * and pull request id, so a re-render can put the tree back as the user left it.
+ * and pull request key (repository/id, #99), so a re-render can put the tree
+ * back as the user left it.
  */
 export function captureToggleStates() {
     const states = { repositories: [], rootBranches: [], pullRequests: [] };
@@ -163,8 +164,11 @@ export function restoreToggleStates(states) {
         if (rootBranch) setRootBranchCollapsed(rootBranch, true);
     });
 
+    // By key, "repository/id" (#99): one lookup instead of a selector per pull request
+    if (!states.pullRequests.some(state => state.collapsed)) return;
+    const pullRequestsByKey = new Map([...document.querySelectorAll('.pull-request')].map(pullRequest => [pullRequest.dataset.id, pullRequest]));
     states.pullRequests.filter(state => state.collapsed).forEach(state => {
-        const pullRequest = document.querySelector(`.pull-request[data-id="${state.id}"]`);
+        const pullRequest = pullRequestsByKey.get(state.id);
         if (pullRequest) setPullRequestCollapsed(pullRequest, true);
     });
 }

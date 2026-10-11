@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setRepositoryCollapsed, setRootBranchCollapsed, setPullRequestCollapsed, handleTreeClick } from '../public/tree-toggle.js';
+import { setRepositoryCollapsed, setRootBranchCollapsed, setPullRequestCollapsed, handleTreeClick, captureToggleStates, restoreToggleStates } from '../public/tree-toggle.js';
 
 // The surface of an element the helpers touch: classList, the attributes, one
 // querySelector and one closest answering the selectors of the module, hidden,
-// nextElementSibling
-function element({ classes = [], children = {}, next = null, closest = {} } = {}) {
+// nextElementSibling, dataset
+function element({ classes = [], children = {}, next = null, closest = {}, dataset = {} } = {}) {
     const classSet = new Set(classes);
     const attributes = {};
     return {
@@ -18,7 +18,8 @@ function element({ classes = [], children = {}, next = null, closest = {} } = {}
         querySelector: selector => children[selector] ?? null,
         closest: selector => closest[selector] ?? null,
         hidden: false,
-        nextElementSibling: next
+        nextElementSibling: next,
+        dataset
     };
 }
 
@@ -97,4 +98,24 @@ test('handleTreeClick toggles the block the click lands on, and nothing inside a
     // A click on the content of a pull request toggles nothing
     handleTreeClick({ target: element() });
     assert.ok(pullRequest.classList.contains('collapsed'));
+});
+
+test('the collapse of a pull request survives a re-render by repository and id: #45 of two repositories are two pull requests (#99)', t => {
+    // Two rows with children, one per repository, both pull request #45
+    const row = key => element({ classes: ['pull-request'], next: element({ classes: ['children'] }), dataset: { id: key } });
+    const tree = rows => ({ querySelectorAll: selector => (selector === '.pull-request' ? rows : []) });
+    const previousDocument = globalThis.document;
+    t.after(() => { globalThis.document = previousDocument; });
+
+    const before = [row('repo-a/45'), row('repo-b/45')];
+    setPullRequestCollapsed(before[1], true);
+    globalThis.document = tree(before);
+    const states = captureToggleStates();
+    assert.deepEqual(states.pullRequests, [{ id: 'repo-a/45', collapsed: false }, { id: 'repo-b/45', collapsed: true }]);
+
+    // The re-rendered tree: only repo-b's #45 is collapsed again
+    const after = [row('repo-a/45'), row('repo-b/45')];
+    globalThis.document = tree(after);
+    restoreToggleStates(states);
+    assert.deepEqual(after.map(pullRequest => pullRequest.classList.contains('collapsed')), [false, true]);
 });
