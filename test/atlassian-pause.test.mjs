@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readProjectResponse, parsePauseEnd, formatPauseEnd, pausedStateText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
+import { readProjectResponse, pauseEndAfter, parsePauseEnd, formatPauseEnd, pausedStateText, pauseIndicatorText, pauseIndicatorTitle } from '../public/atlassian-pause.js';
 
 const response = (status, body) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 
@@ -30,6 +30,20 @@ test('a 503 without a readable end, or that is not JSON, is an ordinary failure'
 test('any other failure gives neither data nor a pause', async () => {
     assert.deepEqual(await readProjectResponse(response(500, 'Internal Server Error')), {});
     assert.deepEqual(await readProjectResponse(response(404, { error: 'Project not found', rateLimitedUntil: '2026-10-11T10:10:00.000Z' })), {});
+});
+
+test('the pause after an answer: its end, none after data without one, the same after a failure', () => {
+    const end = Date.parse('2026-10-11T10:10:00.000Z');
+    const later = Date.parse('2026-10-11T10:20:00.000Z');
+    // A 503, or cached data served during the pause, sets the end it carries
+    assert.equal(pauseEndAfter(0, { pausedUntil: end }), end);
+    assert.equal(pauseEndAfter(end, { pausedUntil: later }), later);
+    assert.equal(pauseEndAfter(end, { data: {}, pausedUntil: later }), later);
+    // Data without an end: the server is not paused
+    assert.equal(pauseEndAfter(end, { data: {} }), 0);
+    // An ordinary failure says nothing about the pause: the one known is kept
+    assert.equal(pauseEndAfter(end, {}), end);
+    assert.equal(pauseEndAfter(0, {}), 0);
 });
 
 test('the end of a pause is read as epoch ms, 0 when there is none', () => {

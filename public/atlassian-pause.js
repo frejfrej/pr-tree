@@ -4,7 +4,8 @@
  * 503 { error, rateLimitedUntil } when it has to build the data meanwhile, and
  * its cached data with rateLimitedUntil otherwise.
  * This module reads that answer, formats the end of the pause and paints the
- * banner indicator. When to fetch, and what the main pane shows, belong to
+ * banner indicator, which follows the server's pause across project switches
+ * (pauseEndAfter). When to fetch, and what the main pane shows, belong to
  * app.js; the SYNC warning (app-sync.js) only borrows parsePauseEnd and
  * formatPauseEnd.
  *
@@ -34,6 +35,21 @@ export async function readProjectResponse(response) {
         }
     }
     return {};
+}
+
+/**
+ * The end of the server's pause after an answer read by readProjectResponse.
+ * The pause belongs to the server, not to a project: an answer with an end
+ * sets it, data without one says the server is not paused (every 200 answer
+ * carries the live rateLimitedUntil), and an ordinary failure says nothing
+ * about it, so the end known before is kept.
+ * @param {number} current - the end known before the answer (epoch ms, 0 when none)
+ * @param {{ data?: object, pausedUntil?: number }} result
+ * @returns {number} epoch ms, 0 when none
+ */
+export function pauseEndAfter(current, { data, pausedUntil }) {
+    if (pausedUntil) return pausedUntil;
+    return data ? 0 : current;
 }
 
 /** The rateLimitedUntil of a server answer (an ISO date, or null) as epoch ms, 0 when it names no end */
