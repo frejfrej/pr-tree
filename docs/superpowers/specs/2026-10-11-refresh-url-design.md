@@ -17,31 +17,49 @@ after that re-render, as a project load and Back/Forward do.
 
 ## 2. Decision: the URL is not replaced after a refresh
 
-1. **The URL is the user's intent; the sidebar is what the data allows.**
-   The render restores from the URL every time, so a value kept in the URL
-   comes back as soon as a refresh offers it again.
+1. **A refresh is not a user action, so it does not write the URL.** The
+   render restores from the URL every time, so a value kept there comes back
+   when a later refresh offers it again, provided no user action rewrote the
+   URL meanwhile (see 3).
 2. **Transient gaps happen.** `fetchParentIssues` and `fetchJiraSprints`
    (project-data.mjs) log a non-429 failure and build on: one Jira 5xx gives
    a response without epics and stories, or without a board's sprints, and a
-   new `dataHash`. A pull request declined then reopened takes its
-   participants away for a refresh. With the URL replaced (PR #89), each of
-   these erased the selection for good, and `work` along with the last
+   new `dataHash`, cached for the 2 minutes of the project TTL. A pull request
+   declined then reopened takes its participants away for a refresh. With the
+   URL replaced after every refresh (PR #89), each of these erased the
+   selection even when the user did nothing, and `work` along with the last
    participant (`urlWithFilters` writes `work` only with a participant).
-3. **The cost**, accepted: until the next user action, the URL can name a
-   value the sidebar does not show, and a link copied meanwhile carries it.
-   The page opening that link applies the value if its data offers it,
-   drops it otherwise; it never shows a wrong tree.
-4. **The other paths still replace the URL**: a project load
-   (`renderProjectLoad`) and Back/Forward (`handlePopState`) are the user's
-   actions or follow one, and replace the URL with the filters kept; a filter
-   change pushes what the sidebar shows.
+3. **Only a refresh keeps the value.** Every other path writes the URL from
+   the filters the sidebar shows, so a value hidden at that moment leaves the
+   URL: a filter change (push), a keystroke in the search box (replace), a
+   project load or a page reload over a partial response, and Back/Forward
+   (`renderProjectLoad` and `handlePopState` replace the URL with the filters
+   kept). These are user actions on the page the user sees, and a load must
+   clean a shared link naming values that are gone for good. The partial
+   response itself is the root cause; it is a server matter (#91).
 
-## 3. Turned down
+## 3. Costs, accepted
 
-- **Replace the URL after every changed-data refresh** (PR #89): the loss
-  above. The /code-review of #89 found it.
+- **A hidden value returns without notice.** A refresh hides a sprint, the
+  sidebar shows no sprint selected; a later refresh offers it again and the
+  tree narrows back to it without a click. It is the user's own selection
+  coming back, and the sidebar shows it again.
+- **The URL can name a value the sidebar does not show** until the next user
+  action, and the active-filter count does not include it. A link copied
+  meanwhile carries it: the page opening the link applies it if its data
+  offers the value, so the recipient can get a tree narrower than the one
+  the sharer saw.
+- **Nothing tests it**: `public/app.js` is loaded by no test. The comment in
+  `checkForUpdates()` and the PRD F5 criterion carry the decision; pulling a
+  one-line non-action into a tested helper was not worth it.
+
+## 4. Turned down
+
+- **Replace the URL after every changed-data refresh** (PR #89): the loss in
+  2.2. The /code-review of #89 found it.
 - **Replace it only on complete data**: the server would mark a response
   built after a tolerated failure, and the refresh would replace the URL only
   on an unmarked one. A server flag, fixtures and tests for a cosmetic gap; a
   real but temporary change (the reopened pull request) would still erase
-  the selection.
+  the selection. A server-side treatment of partial responses (#91) covers
+  the loads as well.
