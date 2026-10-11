@@ -6,8 +6,9 @@ import { createLimiter } from './limiter.mjs';
  * The data of a project as /api/pull-requests/:project answers it: the open
  * pull requests of its repositories (Bitbucket), the Jira issues they link
  * with the parents those issues need, the active sprints and their issues,
- * the issues in review without a pull request, and the hash the frontend
- * compares to know whether anything changed. Every pull request is sent once,
+ * the issues in review without a pull request, the parts a tolerated Jira
+ * failure left out (`incomplete`), and the hash the frontend compares to
+ * know whether anything changed. Every pull request is sent once,
  * in one list: the tree groups them per repository and by destination branch
  * itself (app-render.js). Nothing here reads config.js or talks to Atlassian
  * by itself: fetch (the server passes atlassianFetch), the workspace, the site
@@ -24,6 +25,11 @@ import { createLimiter } from './limiter.mjs';
 function rethrowRateLimit(error) {
     if (error instanceof RateLimitError) throw error;
 }
+
+// The parts of the response a tolerated failure can leave out, in the order
+// of `incomplete`: the parents (epics, stories and the fix versions they pass
+// on), and the sprints (a project's boards, a board's sprints, a sprint's issues)
+const gapParts = ['parents', 'sprints'];
 
 /**
  * @param {object} options
@@ -165,7 +171,8 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // and parent: what the epic and story filters and the inheritance need), in
     // one search, every page of it (a single request stopped at Jira's default
     // page of 50); a failure is logged and gives no parents, the build goes on
-    async function fetchParentIssues(keys) {
+    // with the gap recorded in `gaps`
+    async function fetchParentIssues(keys, gaps = new Set()) {
         if (keys.length === 0) return [];
         try {
             const startTime = Date.now();
@@ -178,6 +185,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         } catch (error) {
             rethrowRateLimit(error);
             log.error(`Error fetching parent issues: ${error.message}`);
+            gaps.add('parents');
             return [];
         }
     }
@@ -185,7 +193,8 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // The active sprints of every scrum board of each Jira project, { id, name },
     // a sprint shared by two boards once. A failed boards request skips the
     // project's sprints, a failed sprints request skips that board; both logged
-    async function fetchJiraSprints(jiraProjects) {
+    // and recorded in `gaps`
+    async function fetchJiraSprints(jiraProjects, gaps = new Set()) {
         const sprints = new Set();
 
         for (const project of jiraProjects) {
@@ -197,6 +206,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             } catch (error) {
                 rethrowRateLimit(error);
                 log.error(`Error fetching sprints for project ${project}: ${error.message}`);
+                gaps.add('sprints');
                 continue;
             }
 
@@ -210,6 +220,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                 } catch (error) {
                     rethrowRateLimit(error);
                     log.error(`Error fetching the sprints of board ${board.name} (project ${project}): ${error.message}`);
+                    gaps.add('sprints');
                 }
             }
         }
@@ -217,7 +228,8 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         return Array.from(sprints).map(JSON.parse);
     }
 
-    async function fetchSprintIssues(sprints, jiraProjects) {
+    // The issue keys of each sprint; a failed page ends that sprint (logged, recorded in `gaps`)
+    async function fetchSprintIssues(sprints, jiraProjects, gaps = new Set()) {
         const sprintIssues = {};
 
         for (const sprint of sprints) {
@@ -235,6 +247,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
                 rethrowRateLimit(error);
                 // The pages read so far are kept; the other sprints are still fetched
                 log.error(`Error fetching issues for sprint ${sprint.id}: ${error.message}`);
+                gaps.add('sprints');
             }
 
             log.access(`Retrieved a total of ${keys.length} issues for sprint ${sprint.id}`);
@@ -279,7 +292,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // The open pull requests of the repositories with their commit counts, the
     // Jira issues they link, the issues in review no pull request links and the
     // parents of both; the counts are fetched alongside the Jira issues
-    async function fetchPullRequestsWithIssues(projectName, projectConfig) {
+    async function fetchPullRequestsWithIssues(projectName, projectConfig, gaps) {
         const allPullRequests = [];
         for (const repoName of projectConfig.repositories) {
             const baseUrl = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
@@ -295,25 +308,25 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
 
         const [pullRequests, issues] = await Promise.all([
             addCommitCounts(projectName, allPullRequests),
-            fetchIssues(projectConfig.jiraProjects, allJiraIssues)
+            fetchIssues(projectConfig.jiraProjects, allJiraIssues, gaps)
         ]);
         return { pullRequests, jiraIssuesMap, ...issues };
     }
 
     // The issues in review no pull request links, before the details so that one
     // request fetches their parents with the parents of the linked issues
-    async function fetchIssues(jiraProjects, allJiraIssues) {
+    async function fetchIssues(jiraProjects, allJiraIssues, gaps) {
         const orphanedIssues = await fetchInReviewIssuesWithoutPR(jiraProjects, allJiraIssues);
         const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, jiraProjects);
-        const parents = await fetchParentIssues(missingParentKeys([...jiraIssuesDetails, ...orphanedIssues]));
+        const parents = await fetchParentIssues(missingParentKeys([...jiraIssuesDetails, ...orphanedIssues]), gaps);
         return { orphanedIssues, jiraIssuesDetails, parents };
     }
 
     // The active sprints of the Jira projects and their issues
-    async function fetchSprintsWithIssues(projectName, jiraProjects) {
-        const sprints = await fetchJiraSprints(jiraProjects);
+    async function fetchSprintsWithIssues(projectName, jiraProjects, gaps) {
+        const sprints = await fetchJiraSprints(jiraProjects, gaps);
         log.access(`Retrieved ${sprints.length} sprints for project: ${projectName}`);
-        const sprintIssues = await fetchSprintIssues(sprints, jiraProjects);
+        const sprintIssues = await fetchSprintIssues(sprints, jiraProjects, gaps);
         log.access(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`);
         return { sprints, sprintIssues };
     }
@@ -323,19 +336,24 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
      * The sprints, which depend on nothing else, are fetched alongside the rest;
      * the commit counts of a pull request are fetched only when one of its
      * commits moved since the last build of the project. The hash covers the
-     * counts, so a count that changes (a failed one fetched again) is rendered
+     * counts, so a count that changes (a failed one fetched again) is rendered.
+     * The parts left out by a tolerated Jira failure are named in `incomplete`
+     * (cache.mjs keeps such a response for a short time only); the hash covers
+     * them, so the page follows a change of completeness alone
      * @param {string} projectName
      * @param {{ repositories: string[], jiraProjects: string[], jiraRegex: RegExp }} projectConfig
      */
     async function buildProjectData(projectName, projectConfig) {
         log.access(`Processing pull requests for project: ${projectName}`);
 
+        const gaps = new Set();
         const [{ pullRequests, jiraIssuesMap, orphanedIssues, jiraIssuesDetails, parents }, { sprints, sprintIssues }] = await Promise.all([
-            fetchPullRequestsWithIssues(projectName, projectConfig),
-            fetchSprintsWithIssues(projectName, projectConfig.jiraProjects)
+            fetchPullRequestsWithIssues(projectName, projectConfig, gaps),
+            fetchSprintsWithIssues(projectName, projectConfig.jiraProjects, gaps)
         ]);
 
-        const assembled = assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, jiraSiteName });
+        const incomplete = gapParts.filter(part => gaps.has(part));
+        const assembled = assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, incomplete, jiraSiteName });
         return { lastRefreshTime: new Date().toISOString(), ...assembled };
     }
 

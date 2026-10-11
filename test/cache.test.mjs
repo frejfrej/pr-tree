@@ -100,6 +100,21 @@ test('the project data is kept 120 seconds, the projects list 300', async () => 
     }
 });
 
+test('project data with gaps is kept 30 seconds, so the next request after that retries the failed part', async () => {
+    mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    try {
+        await getCachedProjectData('PARTIAL', async () => ({ incomplete: ['parents'] }));
+        await getCachedProjectData('COMPLETE', async () => ({ incomplete: [] }));
+        mock.timers.tick(20 * 1000);
+        assert.deepEqual(await getCachedProjectData('PARTIAL', async () => ({ incomplete: [] })), { incomplete: ['parents'] });
+        mock.timers.tick(20 * 1000);
+        assert.deepEqual(await getCachedProjectData('PARTIAL', async () => ({ incomplete: [] })), { incomplete: [] }); // built again at 40 s
+        assert.deepEqual(await getCachedProjectData('COMPLETE', async () => ({ incomplete: ['sprints'] })), { incomplete: [] });
+    } finally {
+        mock.timers.reset();
+    }
+});
+
 test('raiseAllCacheTtls keeps the entries expiring before the delay, and leaves the later and the never-expiring ones as they are', async () => {
     // node-cache reads Date.now() for its expiries: the clock is moved instead of waited for
     mock.timers.enable({ apis: ['Date'], now: Date.now() });

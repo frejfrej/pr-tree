@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterUrlParams, filtersFromUrl, projectFromUrl, urlWithFilters } from '../public/app-url.js';
+import { filterUrlParams, filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from '../public/app-url.js';
 
 const noFilters = { text: '', participants: [], work: 'all', sprints: [], fixVersions: [], epics: [], stories: [], sync: 'Show all' };
 
@@ -119,4 +119,16 @@ test('values with spaces and special characters survive the round trip', () => {
     assert.deepEqual(filtersFromUrl(url.search), filters);
     assert.equal(projectFromUrl(url.search, ['A & B']), 'A & B');
     assert.equal(urlWithFilters(url, { project: '', filters: noFilters }).search, '');
+});
+
+test('filtersKeptOverGaps: the filters a gap feeds keep the values of the URL, the others are the state', () => {
+    const fromUrl = filtersFromUrl('?sprint=5240&sprint=7&epic=OLD-1&story=S-1&fixVersion=2.0&participant=Ann&work=ready&q=text');
+    const state = { ...fromUrl, sprints: ['7'], epics: [], stories: [], fixVersions: [], participants: [], work: 'all' };
+    assert.deepEqual(filtersKeptOverGaps(state, fromUrl, ['sprints']), { ...state, sprints: ['5240', '7'] });
+    assert.deepEqual(filtersKeptOverGaps(state, fromUrl, ['parents']), { ...state, epics: ['OLD-1'], stories: ['S-1'], fixVersions: ['2.0'] });
+    assert.deepEqual(filtersKeptOverGaps(state, fromUrl, ['parents', 'sprints']), { ...state, sprints: ['5240', '7'], epics: ['OLD-1'], stories: ['S-1'], fixVersions: ['2.0'] });
+    // Complete data, or a part it does not know: the state alone
+    assert.deepEqual(filtersKeptOverGaps(state, fromUrl, []), state);
+    assert.deepEqual(filtersKeptOverGaps(state, fromUrl, ['orphaned']), state);
+    assert.deepEqual(filtersKeptOverGaps(state, fromUrl, undefined), state);
 });

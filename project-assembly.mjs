@@ -61,7 +61,8 @@ export function calculateHash(data) {
         jiraIssuesDetails: data.jiraIssuesDetails,
         sprints: data.sprints,
         sprintIssues: data.sprintIssues,
-        orphanedIssues: data.orphanedIssues
+        orphanedIssues: data.orphanedIssues,
+        incomplete: data.incomplete
     }));
     return hash.digest('hex');
 }
@@ -79,9 +80,10 @@ export function calculateHash(data) {
  * @param {object[]} [parts.orphanedIssues]
  * @param {{ id: number, name: string }[]} [parts.sprints]
  * @param {Record<string, string[]>} [parts.sprintIssues]
+ * @param {('parents' | 'sprints')[]} [parts.incomplete] - the parts a tolerated Jira failure left out, in this order (project-data.mjs)
  * @param {string} parts.jiraSiteName
  */
-export function assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents = [], orphanedIssues = [], sprints = [], sprintIssues = {}, jiraSiteName }) {
+export function assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents = [], orphanedIssues = [], sprints = [], sprintIssues = {}, incomplete = [], jiraSiteName }) {
     inheritFixVersions([...jiraIssuesDetails, ...orphanedIssues, ...parents]);
     const data = {
         pullRequests,
@@ -90,7 +92,8 @@ export function assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDet
         jiraSiteName,
         sprints,
         sprintIssues,
-        orphanedIssues
+        orphanedIssues,
+        incomplete
     };
     return { ...data, dataHash: calculateHash(data) };
 }

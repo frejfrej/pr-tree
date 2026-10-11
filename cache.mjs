@@ -55,14 +55,23 @@ export async function getCachedProjects(fetchProjects) {
     return getOrBuild(CACHE_KEYS.PROJECTS_LIST, async () => ({ data: await fetchProjects(), ttl: 300 })); // 5 minutes TTL
 }
 
+// The TTL of project data a tolerated Jira failure left with gaps (its
+// `incomplete`, project-data.mjs): short, so the next request after it retries
+// the failed part, but long enough for the SYNC load started after a page load
+const partialProjectDataTtl = 30;
+
 /**
- * Get project data from cache or fetch from source
+ * Get project data from cache or fetch from source: kept for the default TTL,
+ * or for 30 seconds when it names gaps in `incomplete`
  * @param {string} projectName - Project identifier
  * @param {function} fetchProjectData - Function to fetch project data if cache miss
  * @returns {Promise<Object>} Project data
  */
 export async function getCachedProjectData(projectName, fetchProjectData) {
-    return getOrBuild(CACHE_KEYS.PROJECT_DATA(projectName), async () => ({ data: await fetchProjectData() }));
+    return getOrBuild(CACHE_KEYS.PROJECT_DATA(projectName), async () => {
+        const data = await fetchProjectData();
+        return { data, ttl: data?.incomplete?.length ? partialProjectDataTtl : undefined };
+    });
 }
 
 /**

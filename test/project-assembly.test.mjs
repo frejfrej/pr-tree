@@ -68,7 +68,7 @@ test('assembleProjectData inherits the versions over the details, the orphaned i
     const sprints = [{ id: 5, name: 'S5' }];
     const sprintIssues = { 5: ['PROJ-1'] };
     const data = assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails: [linked], parents: [parent], orphanedIssues: [orphaned], sprints, sprintIssues, jiraSiteName: 'site' });
-    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
+    assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'incomplete', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.equal(data.pullRequests, pullRequests);
     assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['PROJ-2'] }); // a plain object
     assert.deepEqual(data.jiraIssuesDetails.map(i => i.key), ['PROJ-1', 'PROJ-100']);
@@ -78,5 +78,9 @@ test('assembleProjectData inherits the versions over the details, the orphaned i
     assert.equal(data.dataHash, calculateHash(data));
     // Without parents, orphaned issues, sprints
     const bare = assembleProjectData({ pullRequests: [], jiraIssuesMap: new Map(), jiraIssuesDetails: [], jiraSiteName: 'site' });
-    assert.deepEqual([bare.jiraIssuesDetails, bare.orphanedIssues, bare.sprints, bare.sprintIssues], [[], [], [], {}]);
+    assert.deepEqual([bare.jiraIssuesDetails, bare.orphanedIssues, bare.sprints, bare.sprintIssues, bare.incomplete], [[], [], [], {}, []]);
+    // The gaps are part of the data and of its hash
+    const partial = assembleProjectData({ pullRequests: [], jiraIssuesMap: new Map(), jiraIssuesDetails: [], incomplete: ['parents'], jiraSiteName: 'site' });
+    assert.deepEqual(partial.incomplete, ['parents']);
+    assert.notEqual(partial.dataHash, bare.dataHash);
 });

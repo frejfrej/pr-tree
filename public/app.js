@@ -3,8 +3,8 @@ import { renderRepositories, renderOrphanedIssues, initializePopovers } from './
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
-import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible } from './app-shell.js';
-import { filtersFromUrl, projectFromUrl, urlWithFilters } from './app-url.js';
+import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
+import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
 
@@ -77,11 +77,11 @@ function clearAllFilters() {
     handleFilterChange();
 }
 
-// Writes the project and the filters to the URL. `replace` swaps the current
-// history entry instead of pushing one: while typing in the search box, and
-// when the address bar catches up after a load.
-function updateUrlWithFilters({ replace = false } = {}) {
-    const url = urlWithFilters(new URL(window.location), { project: currentProject, filters });
+// Writes the project and the filters (the state unless others are given) to
+// the URL. `replace` swaps the current history entry instead of pushing one:
+// while typing in the search box, and when the address bar catches up after a load.
+function updateUrlWithFilters({ replace = false, filters: written = filters } = {}) {
+    const url = urlWithFilters(new URL(window.location), { project: currentProject, filters: written });
 
     // Update URL without reloading the page. Safari throws past 100 updates
     // per 30 seconds: the URL then catches up on the next change
@@ -198,9 +198,10 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     updateSyncControls();
     updateDocumentTitle({ project: currentProject, attentionCount: 0 });
     closeSidebarDrawer();
-    // The refresh time belongs to the data being left
+    // The refresh time and the gaps belong to the data being left
     const lastRefreshElement = document.getElementById('lastRefreshTime');
     if (lastRefreshElement) lastRefreshElement.textContent = '';
+    showPartialDataIndicator();
 
     if (!currentProject) {
         clearFilterOptions();
@@ -231,12 +232,20 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     if (!document.hidden) startPeriodicChecking(Boolean(result.pausedUntil) && !pausedUntil);
 }
 
+// The address bar catches up with the filters the render validated, without
+// a new entry. Over partial data the filters a gap feeds keep the values of
+// the URL: the epic, story or sprint the data lacks stays there, and the next
+// complete render restores it (#91)
+function catchUpUrl() {
+    const written = filtersKeptOverGaps(filters, filtersFromUrl(window.location.search), currentApiResult.incomplete);
+    updateUrlWithFilters({ replace: true, filters: written });
+}
+
 // The first render of a project: by its load, or by a later check when the
 // load got no data (a failure, or the Atlassian pause)
 function renderProjectLoad(data) {
     renderEverything(data, { preferTypedText: loadPrefersTypedText });
-    // The address bar catches up with the filters the render validated, without a new entry
-    updateUrlWithFilters({ replace: true });
+    catchUpUrl();
 }
 
 // Takes the server's pause from an answer of a load or a check (see
@@ -261,8 +270,9 @@ function takeAnswer(result) {
 // of that URL. Same project: the filters are restored from the URL and
 // applied, then the URL is replaced with what was kept, as a project load
 // does after its render (a value the options no longer offer since a refresh
-// is dropped from the entry). Nothing here pushes a history entry. Browsers
-// no longer fire popstate on page load.
+// is dropped from the entry, except in a filter a gap of the data feeds).
+// Nothing here pushes a history entry. Browsers no longer fire popstate on
+// page load.
 function handlePopState() {
     const projectName = projectFromUrl(window.location.search, availableProjects);
     if (projectName !== currentProject) {
@@ -274,7 +284,7 @@ function handlePopState() {
     if (!currentApiResult) return;
     restoreFiltersFromUrl({ preferTypedText: false });
     applyFilters();
-    updateUrlWithFilters({ replace: true });
+    catchUpUrl();
 }
 
 // Messages shown in the main pane instead of the tree. Built with DOM nodes so
@@ -448,6 +458,8 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     if (lastRefreshElement && currentApiResult.lastRefreshTime) {
         lastRefreshElement.textContent = formatRefreshTime(currentApiResult.lastRefreshTime);
     }
+    // The hash covers the gaps: a change of completeness alone renders here too
+    showPartialDataIndicator(currentApiResult.incomplete);
 }
 
 // The answer of /api/pull-requests/:project: { data }, { pausedUntil } during
@@ -526,7 +538,7 @@ async function checkForUpdates() {
             // dropped from the sidebar but kept in the URL, so it comes back
             // when a later refresh offers it again, unless a user action
             // rewrote the URL meanwhile (a Jira failure gives a response
-            // without epics, stories or sprints; #61)
+            // without epics, stories or sprints, marked incomplete; #61, #91)
             renderEverything(newData);
         }
     } catch (error) {
