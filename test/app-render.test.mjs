@@ -2,6 +2,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
+import { buildFilterIndex } from '../public/app-filter.js';
 import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
@@ -43,7 +44,7 @@ const approved = pullRequest(3, { repo: 'repo-two', source: 'feat-c1', destinati
 const recent = pullRequest(4, { repo: 'repo-two', source: 'feat-c2', destination: 'develop', updated: '2026-09-03T10:00:00.000Z' });
 const pullRequests = [stacked, child, approved, recent];
 const byDestination = new Map([['main', [stacked]], ['feat-a', [child]], ['develop', [approved, recent]]]);
-const jiraIssuesMap = { '1': ['PROJ-1'], '3': ['PROJ-2'] };
+const jiraIssuesMap = { 'repo-one/1': ['PROJ-1'], 'repo-two/3': ['PROJ-2'] }; // by pull request key, repository/id (#99)
 const jiraIssuesDetails = [
     { key: 'PROJ-1', fields: { summary: 'First', status: { name: 'In Progress' }, priority: { name: 'High', iconUrl: 'https://jira/high.svg' } } },
     { key: 'PROJ-2', fields: { summary: 'Second', status: { name: 'In Review' }, priority: null } }
@@ -53,9 +54,9 @@ function renderSample() {
     return renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, 'site');
 }
 
-// The classes of every pull request element, by id: { '1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
+// The classes of every pull request element, by id (its data-id is repository/id): { '1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
 function pullRequestClasses(html) {
-    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="(\d+)">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
+    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="[^"/]*\/(\d+)">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
 }
 
 test('findRootBranches keeps the destination branches that are no pull request source', () => {
@@ -104,10 +105,10 @@ test('renderRepositories renders nothing, not even the no-match message, without
 test('renderRepositories nests a stacked pull request under its parent, most recent siblings first', () => {
     const html = renderSample();
     assert.equal(count(html, '<div class="children">'), 1);
-    assert.ok(html.indexOf('<div class="children">') < html.indexOf('data-id="2"'));
-    assert.ok(html.indexOf('data-id="1"') < html.indexOf('<div class="children">'));
+    assert.ok(html.indexOf('<div class="children">') < html.indexOf('data-id="repo-one/2"'));
+    assert.ok(html.indexOf('data-id="repo-one/1"') < html.indexOf('<div class="children">'));
     // Under develop, PR 4 (updated later) comes before PR 3
-    assert.ok(html.indexOf('data-id="4"') < html.indexOf('data-id="3"'));
+    assert.ok(html.indexOf('data-id="repo-two/4"') < html.indexOf('data-id="repo-two/3"'));
     // The parent gets a toggle button and a visible child counter; the child, neither
     assert.ok(html.includes('title="1 descendant pull request"'));
     assert.equal(count(html, 'onclick='), 0);
@@ -139,7 +140,7 @@ test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion
     // PR 6: issues Resolved and Closed, Rovo Dev is its only other participant, no destination commit
     const resolved = pullRequest(6, { source: 'feat/f', destination: 'release/2026.09', participants: [{ user: rovoDev, approved: true, state: 'approved' }] });
     resolved.destination.commit = undefined;
-    const issuesMap = { '5': ['PROJ-5', 'PROJ-6'], '6': ['PROJ-7', 'PROJ-8'] };
+    const issuesMap = { 'repo-one/5': ['PROJ-5', 'PROJ-6'], 'repo-one/6': ['PROJ-7', 'PROJ-8'] };
     const details = [
         { key: 'PROJ-5', fields: { summary: 'Five', status: { name: 'In Review' }, priority: null } },
         { key: 'PROJ-6', fields: { summary: 'Six', status: { name: 'Resolved' }, priority: null } },
@@ -166,7 +167,7 @@ test('renderRepositories renders a linked issue that is a parent-only entry, wit
     // linked issue: the details hold it without a status (before, the render threw on status.name)
     const linked = pullRequest(9, { source: 'feat/p', destination: 'main' });
     const details = [{ key: 'WEB-1', fields: { summary: 'Cross-project epic', issuetype: { name: 'Epic' } } }];
-    const html = renderRepositories([linked], { '9': ['WEB-1'] }, details, 'site');
+    const html = renderRepositories([linked], { 'repo-one/9': ['WEB-1'] }, details, 'site');
     assert.ok(html.includes('WEB-1 (no status)'));
     assert.equal(count(html, 'title="JIRA issues have different statuses"'), 0);
 });
@@ -201,6 +202,15 @@ test('renderRepositories renders every pull request of the fixture projects once
         // A children container per pull request stacked upon, within its own repository
         assert.equal(count(html, '<div class="children">'), data.pullRequests.filter(pr => data.pullRequests.some(other => other.source.repository.name === pr.source.repository.name && other.destination.branch.name === pr.source.branch.name)).length, name);
         assert.equal(count(html, 'tree-no-match'), 1, name);
+        // The row of each pull request is keyed "repository/id", the key of its filter-index entry and of
+        // its issues: the fixtures share ids between repositories, as Bitbucket does (#99)
+        const rowKeys = [...html.matchAll(/class="pull-request [^"]*" data-id="([^"]*)"/g)].map(([, key]) => key);
+        assert.equal(new Set(rowKeys).size, data.pullRequests.length, name);
+        const { pullRequestsByKey } = buildFilterIndex(data);
+        for (const key of rowKeys) {
+            assert.equal(pullRequestsByKey.get(key).pullRequest, data.pullRequests.find(pr => `${pr.source.repository.name}/${pr.id}` === key), key);
+            assert.ok(Array.isArray(data.jiraIssuesMap[key]), key);
+        }
     }
 });
 
@@ -299,11 +309,12 @@ test('renderRepositories escapes every Bitbucket and Jira text it interpolates',
     const details = [
         { key: 'PROJ-7', fields: { summary: 'Summary "><b>bold</b> & more', status: { name: 'In <Review>' }, priority: { name: 'High "priority"', iconUrl: 'https://jira/high.svg?a="b"' } } }
     ];
-    const html = renderRepositories([pr], { '7': ['PROJ-7'] }, details, 'site');
+    const html = renderRepositories([pr], { 'repo<"&>/7': ['PROJ-7'] }, details, 'site');
     for (const raw of ['<script>', '<img src=x', '<b>bold</b>', '<i>', 'repo<"&>']) {
         assert.ok(!html.includes(raw), `raw ${raw} found in the rendered tree`);
     }
     assert.ok(html.includes('<h2 class="repository-name">repo&lt;&quot;&amp;&gt;</h2>'));
+    assert.ok(html.includes('data-id="repo&lt;&quot;&amp;&gt;/7"')); // the key of the row, repository/id (#99)
     assert.ok(html.includes('main&quot;&gt;&lt;i&gt;'));
     assert.ok(html.includes('Title &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; co'));
     assert.ok(html.includes('href="https://bitbucket.org/ws/repo/pull-requests/7?x=&quot;y&quot;"'));

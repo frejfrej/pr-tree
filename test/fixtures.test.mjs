@@ -47,6 +47,19 @@ test('a repository shared by two projects yields the same pull requests in both'
     assert.deepEqual(ids(secollab), ids(oslc));
 });
 
+test('two repositories of each project have pull requests with the same id, as on Bitbucket, which numbers them per repository (#99)', () => {
+    for (const [name, config] of Object.entries(projects)) {
+        const data = generateProjectData(name, config);
+        const repositoriesById = new Map();
+        for (const pr of data.pullRequests) {
+            if (!repositoriesById.has(pr.id)) repositoriesById.set(pr.id, new Set());
+            repositoriesById.get(pr.id).add(pr.source.repository.name);
+        }
+        assert.ok([...repositoriesById.values()].some(repositories => repositories.size > 1), `${name}: an id shared by two repositories`);
+        assert.equal(Object.keys(data.jiraIssuesMap).length, data.pullRequests.length, `${name}: one jiraIssuesMap entry per pull request`);
+    }
+});
+
 test('every pull request is in the response shape the frontend reads', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     for (const pr of data.pullRequests) {
@@ -58,7 +71,7 @@ test('every pull request is in the response shape the frontend reads', () => {
         assert.ok(pr.participants.length >= 1);
         assert.equal(typeof pr.rendered.title.html, 'string');
         assert.equal(typeof pr.rendered.description.html, 'string');
-        assert.ok(Array.isArray(data.jiraIssuesMap[pr.id]));
+        assert.ok(Array.isArray(data.jiraIssuesMap[`${pr.source.repository.name}/${pr.id}`]));
     }
     for (const issue of data.jiraIssuesDetails) {
         assert.match(issue.key, /^(SECOLLAB|PRDOSLC|WEBCMN)-\d+$/);
@@ -172,25 +185,25 @@ import { buildFilterIndex, evaluatePullRequest } from '../public/app-filter.js';
 
 test('the filter index built on the SECOLLAB fixture links every pull request', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
-    const { pullRequestsById } = buildFilterIndex(data);
-    assert.equal(pullRequestsById.size, data.pullRequests.length);
-    const withIssues = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.length > 0);
+    const { pullRequestsByKey } = buildFilterIndex(data);
+    assert.equal(pullRequestsByKey.size, data.pullRequests.length);
+    const withIssues = [...pullRequestsByKey.values()].filter(entry => entry.linkedIssues.length > 0);
     assert.ok(withIssues.length > data.pullRequests.length * 0.8);
-    const inSprint = [...pullRequestsById.values()].filter(entry => entry.sprints.size > 0);
+    const inSprint = [...pullRequestsByKey.values()].filter(entry => entry.sprints.size > 0);
     assert.ok(inSprint.length > 10, `${inSprint.length} pull requests in a sprint`);
     const noFilter = { participants: [], work: 'all', sprints: [], fixVersions: [], sync: 'Show all' };
-    for (const entry of pullRequestsById.values()) {
+    for (const entry of pullRequestsByKey.values()) {
         assert.equal(evaluatePullRequest(entry, noFilter).visible, true);
     }
 });
 
 test('the filter index of the SECOLLAB fixture lists the fictional team as participants', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
-    const { pullRequestsById, participants } = buildFilterIndex(data);
+    const { pullRequestsByKey, participants } = buildFilterIndex(data);
     const names = participants.map(option => option.value);
     assert.ok(names.length >= 5, `${names.length} participants`);
     assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
-    const entries = [...pullRequestsById.values()];
+    const entries = [...pullRequestsByKey.values()];
     assert.ok(entries.some(entry => entry.pullRequest.participants.some(participant => participant.user.display_name === 'Rovo Dev')), 'the fixture has Rovo Dev reviewing');
     assert.ok(!entries.some(entry => entry.reviewers.has('Rovo Dev')), 'Rovo Dev is never a reviewer (otherReviewers)');
     assert.ok(!names.includes('Rovo Dev'), 'Rovo Dev is not a person to filter on');
@@ -216,17 +229,17 @@ test('the SECOLLAB fixture carries epics and parent-only issues with their hiera
     }
     assert.ok(parentOnly.some(issue => issue.fields.issuetype.name === 'Epic'), 'epics are fetched as parents');
     assert.ok(parentOnly.some(issue => issue.fields.parent), 'a parent-only story carries its epic');
-    const { pullRequestsById, epics } = buildFilterIndex(data);
+    const { pullRequestsByKey, epics } = buildFilterIndex(data);
     assert.ok(epics.length >= 3, `${epics.length} epics`);
-    const linkedToSubtask = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
+    const linkedToSubtask = [...pullRequestsByKey.values()].filter(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));
     assert.ok(linkedToSubtask.length > 0);
     assert.ok(linkedToSubtask.some(entry => entry.epics.size > 0), 'a pull request linked to a sub-task reaches its epic');
 });
 
 test('the filter index resolves a story for every pull request linked to an issue', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
-    const { pullRequestsById, stories } = buildFilterIndex(data);
-    const linked = [...pullRequestsById.values()].filter(entry => entry.linkedIssues.length > 0);
+    const { pullRequestsByKey, stories } = buildFilterIndex(data);
+    const linked = [...pullRequestsByKey.values()].filter(entry => entry.linkedIssues.length > 0);
     assert.ok(linked.every(entry => entry.stories.size > 0));
     assert.ok(stories.length > 50, `${stories.length} stories`);
     const withSubtask = linked.find(entry => entry.linkedIssues.some(issue => issue.fields.issuetype.subtask));

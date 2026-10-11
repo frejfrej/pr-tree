@@ -60,14 +60,15 @@ export const deepChain = {
     sideBranches: 2
 };
 
-// Bitbucket pull-request ids are sequential per repository; the ranges are
-// disjoint here so a pull request is unambiguous in the fixtures
+// Bitbucket pull-request ids are sequential per repository: two repositories
+// of each project share ids on purpose, so fixture mode shows that a pull
+// request is known by its repository and id, never by its id alone (#99)
 const repositoryFirstId = {
     'products.secollab': 2400,
-    'products.secollab.client': 180,
+    'products.secollab.client': 2400,
     'products.secollab.packaging': 40,
     'products.web.oslc': 610,
-    'products.web.common': 320,
+    'products.web.common': 610,
     'products.oslc': 1150
 };
 

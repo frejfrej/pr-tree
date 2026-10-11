@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { multiSelectMarkup } from '../public/multi-select.js';
 import { multiSelectFilters } from '../public/filter-registry.js';
+import { pullRequestKey } from '../public/pull-request-status.js';
 
 /**
  * Runs the server in fixture mode on an ephemeral port and checks what it
@@ -240,9 +241,10 @@ test('the pull requests of a project have the documented shape, and the same dat
     assert.ok(Array.isArray(data.pullRequests) && data.pullRequests.length > 0);
     assert.ok(Array.isArray(data.jiraIssuesDetails) && Array.isArray(data.sprints) && Array.isArray(data.orphanedIssues));
     for (const pullRequest of data.pullRequests) {
-        // The commit counts come with the data; the issue keys of every pull request are in the map
+        // The commit counts come with the data; the issue keys of every pull request are in the map,
+        // under the key the page computes, repository/id (#99)
         assert.ok('commitsAhead' in pullRequest && 'commitsBehind' in pullRequest, `pull request ${pullRequest.id}`);
-        assert.ok(Array.isArray(data.jiraIssuesMap[pullRequest.id]), `pull request ${pullRequest.id} in jiraIssuesMap`);
+        assert.ok(Array.isArray(data.jiraIssuesMap[pullRequestKey(pullRequest)]), `pull request ${pullRequestKey(pullRequest)} in jiraIssuesMap`);
     }
     for (const sprint of data.sprints) assert.ok(Array.isArray(data.sprintIssues[sprint.id]), `issues of sprint ${sprint.id}`);
     assert.match(data.dataHash, /^[0-9a-f]{32}$/);

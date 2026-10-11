@@ -13,13 +13,22 @@ export function extractJiraIssues(title, jiraRegex) {
 }
 
 /**
- * The issue keys of every pull request, by pull request id.
- * @returns {Map<number, string[]>}
+ * The key of a pull request in a project, "repository/id": Bitbucket numbers
+ * the pull requests of each repository from 1, so two repositories of a
+ * project have pull requests with the same id (#99). The repository is the
+ * one the tree groups the pull request under; the page computes the same key
+ * (pull-request-status.js).
+ */
+export const pullRequestKey = pullRequest => `${pullRequest.source.repository.name}/${pullRequest.id}`;
+
+/**
+ * The issue keys of every pull request, by pull request key (pullRequestKey).
+ * @returns {Map<string, string[]>}
  */
 export function createJiraIssuesMap(pullRequests, jiraRegex) {
     const jiraIssuesMap = new Map();
     for (const pullRequest of pullRequests) {
-        jiraIssuesMap.set(pullRequest.id, extractJiraIssues(pullRequest.title, jiraRegex));
+        jiraIssuesMap.set(pullRequestKey(pullRequest), extractJiraIssues(pullRequest.title, jiraRegex));
     }
     return jiraIssuesMap;
 }
@@ -74,7 +83,7 @@ export function calculateHash(data) {
  * The parts are returned as given, not copied: the caller owns them.
  * @param {object} parts
  * @param {object[]} parts.pullRequests
- * @param {Map<number, string[]>} parts.jiraIssuesMap - by pull request id (createJiraIssuesMap)
+ * @param {Map<string, string[]>} parts.jiraIssuesMap - by pull request key (createJiraIssuesMap)
  * @param {object[]} parts.jiraIssuesDetails - the linked issues
  * @param {object[]} [parts.parents] - the parents fetched for them and for the orphaned issues
  * @param {object[]} [parts.orphanedIssues]

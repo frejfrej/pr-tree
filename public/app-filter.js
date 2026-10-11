@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
-import { statusClass, otherReviewers, syncKey, atlassianAgent } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, pullRequestKey, atlassianAgent } from './pull-request-status.js';
 
 // The multi-selects compared with the set of the index entry named like the
 // filter; the participants have the Work select and their own rule
@@ -158,7 +158,7 @@ function splitIssueKey(key) {
  * reviewers"), assignee attention ("Ready for assignees") or either ("Ready for
  * participants"); "All work", "All reviews" and "All issues" keep every PR of
  * the participants, whether it waits for them or not.
- * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean }} entry - an entry of buildFilterIndex().pullRequestsById
+ * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean }} entry - an entry of buildFilterIndex().pullRequestsByKey
  * @param {string[]} participants - the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
@@ -199,7 +199,7 @@ function fixVersionOptions(issues) {
  * request) with the same sets; and, under the keys of the filter registry, the
  * option list of each multi-select in display order, the orphaned issues
  * included. Pure.
- * @returns {{ pullRequestsById: Map<number, object>, orphanedIssuesByKey: Map<string, object>, sprints: { value, label }[], fixVersions: { value, label }[], epics: { value, label }[], stories: { value, label }[], participants: { value, label }[] }}
+ * @returns {{ pullRequestsByKey: Map<string, object>, orphanedIssuesByKey: Map<string, object>, sprints: { value, label }[], fixVersions: { value, label }[], epics: { value, label }[], stories: { value, label }[], participants: { value, label }[] }}
  */
 export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIssuesDetails = [], sprints = [], sprintIssues = {}, orphanedIssues = [] }) {
     // The parents are looked up among the details (where the server puts the
@@ -218,12 +218,14 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         }
     }
 
-    const pullRequestsById = new Map();
+    const pullRequestsByKey = new Map();
     const epics = new Map();
     const stories = new Map();
     const participants = new Set();
     for (const pullRequest of pullRequests) {
-        const issueKeys = jiraIssuesMap[pullRequest.id] || [];
+        // "repository/id": ids are numbered per repository (#99), the render writes the key as the data-id
+        const indexKey = pullRequestKey(pullRequest);
+        const issueKeys = jiraIssuesMap[indexKey] || [];
         const linkedIssues = issueKeys.map(key => issuesByKey.get(key)).filter(issue => issue);
         const pullRequestEpics = linkedIssues.map(issue => epicOf(issue, issuesByKey)).filter(epic => epic);
         for (const epic of pullRequestEpics) {
@@ -270,7 +272,7 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         };
         for (const name of entry.assignees) participants.add(name);
         for (const name of entry.reviewers) participants.add(name);
-        pullRequestsById.set(pullRequest.id, entry);
+        pullRequestsByKey.set(indexKey, entry);
     }
 
     // The orphaned issues: the issue itself is what the text filter searches
@@ -296,7 +298,7 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     participants.delete(atlassianAgent);
 
     return {
-        pullRequestsById,
+        pullRequestsByKey,
         orphanedIssuesByKey,
         // The option lists of the multi-selects, under the registry keys, in display order
         sprints: sprintOptions(sprints),
@@ -322,7 +324,7 @@ function matchesIssueFilters(entry, filters) {
 
 /**
  * Applies the filters to one indexed pull request. Pure.
- * @param {object} entry - an entry of buildFilterIndex().pullRequestsById
+ * @param {object} entry - an entry of buildFilterIndex().pullRequestsByKey
  * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync };
  *   work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees' and only matters with participants selected
  * @param {object} [syncStatus] - the SYNC status of the pull request from the last load
@@ -467,7 +469,7 @@ function filterPullRequest(pullRequestElement, pass) {
     const hasChildren = childrenContainer && childrenContainer.classList.contains('children');
     const children = hasChildren ? filterChildren(childrenContainer, pass) : { total: 0, visible: 0 };
 
-    const entry = pass.index.pullRequestsById.get(Number(pullRequestElement.dataset.id));
+    const entry = pass.index.pullRequestsByKey.get(pullRequestElement.dataset.id);
     let isVisible = false;
     if (entry) {
         // Attention and the SYNC match come from the index and the loaded statuses,

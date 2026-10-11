@@ -29,7 +29,7 @@
  * unit-tested with node:test.
  */
 
-import { otherReviewers, statusClass, syncKey } from './pull-request-status.js';
+import { otherReviewers, statusClass, syncKey, pullRequestKey } from './pull-request-status.js';
 
 /**
  * The text as HTML: the five characters that can end an attribute or start a
@@ -231,7 +231,8 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
         `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
 
     // The linked issues, in the order of the map; null for a pull request the map does not know
-    const jiraIssues = jiraIssuesMap["" + pullRequest.id];
+    const key = pullRequestKey(pullRequest);
+    const jiraIssues = jiraIssuesMap[key];
     const linkedIssues = jiraIssues
         ? jiraIssues.map(issue => jiraIssuesDetails.find(details => details.key === issue)).filter(issueDetails => issueDetails)
         : null;
@@ -283,7 +284,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                 </div>
             ` : ''}
             <div class="conflicts-counter"
-                 data-id="conflicts_${pullRequest.id}"
+                 data-id="conflicts_${escapeHtml(key)}"
                  data-sync-key="${escapeHtml(syncKey(pullRequest))}">
             </div>
         </div>
@@ -293,7 +294,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     const renderedDescription = pullRequest.rendered.description.html || 'No description provided.';
 
     let html = `
-        <div class="pull-request ${bandClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${pullRequest.id}">
+        <div class="pull-request ${bandClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${escapeHtml(key)}">
             ${countersHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">

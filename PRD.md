@@ -435,7 +435,7 @@ The application integrates with a Jira workflow where:
 {
   lastRefreshTime: "ISO-8601 timestamp",
   pullRequests: [/* PR objects */],
-  jiraIssuesMap: {/* PR ID -> Issue Keys */},
+  jiraIssuesMap: {/* "repository/PR ID" -> Issue Keys (ids are numbered per repository) */},
   jiraIssuesDetails: [/* Full issue objects, the parents fetched appended */],
   jiraSiteName: "string",
   sprints: [/* Active sprint objects */],
