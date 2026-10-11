@@ -1,5 +1,6 @@
 import { createJiraIssuesMap, missingParentKeys, assembleProjectData } from './project-assembly.mjs';
 import { RateLimitError } from './atlassian-fetch.mjs';
+import { createLimiter } from './limiter.mjs';
 
 /**
  * The data of a project as /api/pull-requests/:project answers it: the open
@@ -32,10 +33,15 @@ function rethrowRateLimit(error) {
  * @param {string} options.jiraSiteName - the subdomain of atlassian.net
  * @param {string} options.jiraAuth - the Base64 credentials of the Jira Authorization header
  * @param {{ access: (message: string) => void, error: (message: string) => void, performance: (message: string) => void }} options.log - the logs
+ * @param {number} [options.maxConcurrentCommitRequests=10] - commit-count requests at once
+ * @param {number} [options.timeoutMs=30000] - the timeout of one request: concurrent requests for a project share its build (cache.mjs), so a request that hangs would hold them all
  */
-export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jiraAuth, log }) {
-    // last sent reponse is cached for performance
-    let lastResponse = null;
+export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jiraAuth, log, maxConcurrentCommitRequests = 10, timeoutMs = 30000 }) {
+    // The commit counts of the last build of each project, by project name then
+    // by "repo/destHash..sourceHash": a count is fetched again only when a commit
+    // of its pull request moved, whatever else changed in Bitbucket or Jira
+    const commitCountsByProject = new Map();
+    const commitsLimiter = createLimiter(maxConcurrentCommitRequests);
 
     // One GET per API, with its credentials: the parsed body of an ok response,
     // otherwise an error with the status, the body drained first so the socket
@@ -44,6 +50,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     async function getJson(url, auth, keepBody) {
         const response = await fetch(url, {
             method: 'GET',
+            signal: AbortSignal.timeout(timeoutMs),
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Accept': 'application/json'
@@ -93,7 +100,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // The number of commits of `sourceBranch` that `destinationBranch` does not have
     // (up to 100); null when the request fails, which is logged
     async function fetchCommitsDiff(repoName, sourceBranch, destinationBranch) {
-        const url = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/commits?include=${sourceBranch}&exclude=${destinationBranch}&pagelen=100`;
+        const url = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/commits?include=${encodeURIComponent(sourceBranch)}&exclude=${encodeURIComponent(destinationBranch)}&pagelen=100`;
         try {
             const data = await bitbucketJson(url);
             return data.values.length;
@@ -236,16 +243,43 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         return sprintIssues;
     }
 
-    /**
-     * The response of /api/pull-requests/:project for a project of projects.js;
-     * the commit counts of the pull requests are fetched only when the hash of
-     * the rest changed since the last response built
-     * @param {string} projectName
-     * @param {{ repositories: string[], jiraProjects: string[], jiraRegex: RegExp }} projectConfig
-     */
-    async function buildProjectData(projectName, projectConfig) {
-        log.access(`Processing pull requests for project: ${projectName}`);
+    // The commit counts of every pull request, two requests each: the ones of the
+    // last build of the project when its commits have not moved; the counts of
+    // this build replace them, a failed count (null) left out so it is retried.
+    // A count fetched is also added to the counts known at once, so a build that
+    // fails midway (a rate-limit pause) keeps the counts it got for the next one.
+    async function addCommitCounts(projectName, pullRequests) {
+        let known = commitCountsByProject.get(projectName);
+        if (!known) {
+            known = new Map();
+            commitCountsByProject.set(projectName, known);
+        }
+        const kept = new Map();
+        const countCommits = (repoName, include, exclude) => commitsLimiter(() => fetchCommitsDiff(repoName, include, exclude));
+        const withCounts = await Promise.all(pullRequests.map(async (pr) => {
+            const repoName = pr.source.repository.name;
+            const destinationHash = pr.destination.commit?.hash, sourceHash = pr.source.commit?.hash;
+            const key = destinationHash && sourceHash ? `${repoName}/${destinationHash}..${sourceHash}` : null;
+            let counts = key && known.get(key);
+            if (!counts) {
+                const [commitsAhead, commitsBehind] = await Promise.all([
+                    countCommits(repoName, pr.source.branch.name, pr.destination.branch.name),
+                    countCommits(repoName, pr.destination.branch.name, pr.source.branch.name)
+                ]);
+                counts = { commitsAhead, commitsBehind };
+                if (key && commitsAhead !== null && commitsBehind !== null) known.set(key, counts);
+            }
+            if (key && counts.commitsAhead !== null && counts.commitsBehind !== null) kept.set(key, counts);
+            return { ...pr, ...counts };
+        }));
+        commitCountsByProject.set(projectName, kept);
+        return withCounts;
+    }
 
+    // The open pull requests of the repositories with their commit counts, the
+    // Jira issues they link, the issues in review no pull request links and the
+    // parents of both; the counts are fetched alongside the Jira issues
+    async function fetchPullRequestsWithIssues(projectName, projectConfig) {
         const allPullRequests = [];
         for (const repoName of projectConfig.repositories) {
             const baseUrl = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/pullrequests?fields=%2Bvalues.*,%2Bvalues.properties*,%2Bvalues.rendered.*,-values.description,-values.summary&pagelen=50`;
@@ -259,32 +293,50 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         const allJiraIssues = Array.from(jiraIssuesMap.values()).flat();
         log.access(`Total JIRA issues found: ${allJiraIssues.length}`);
 
-        // The issues in review no pull request links, before the details so that
-        // one request fetches their parents with the parents of the linked issues
-        const orphanedIssues = await fetchInReviewIssuesWithoutPR(projectConfig.jiraProjects, allJiraIssues);
-        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, projectConfig.jiraProjects);
+        const [pullRequests, issues] = await Promise.all([
+            addCommitCounts(projectName, allPullRequests),
+            fetchIssues(projectConfig.jiraProjects, allJiraIssues)
+        ]);
+        return { pullRequests, jiraIssuesMap, ...issues };
+    }
+
+    // The issues in review no pull request links, before the details so that one
+    // request fetches their parents with the parents of the linked issues
+    async function fetchIssues(jiraProjects, allJiraIssues) {
+        const orphanedIssues = await fetchInReviewIssuesWithoutPR(jiraProjects, allJiraIssues);
+        const jiraIssuesDetails = await fetchJiraIssuesDetails(allJiraIssues, jiraProjects);
         const parents = await fetchParentIssues(missingParentKeys([...jiraIssuesDetails, ...orphanedIssues]));
+        return { orphanedIssues, jiraIssuesDetails, parents };
+    }
 
-        const sprints = await fetchJiraSprints(projectConfig.jiraProjects);
+    // The active sprints of the Jira projects and their issues
+    async function fetchSprintsWithIssues(projectName, jiraProjects) {
+        const sprints = await fetchJiraSprints(jiraProjects);
         log.access(`Retrieved ${sprints.length} sprints for project: ${projectName}`);
-        const sprintIssues = await fetchSprintIssues(sprints, projectConfig.jiraProjects);
+        const sprintIssues = await fetchSprintIssues(sprints, jiraProjects);
         log.access(`Retrieved issues for ${Object.keys(sprintIssues).length} sprints`);
+        return { sprints, sprintIssues };
+    }
 
-        const assembled = assembleProjectData({ pullRequests: allPullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, jiraSiteName });
+    /**
+     * The response of /api/pull-requests/:project for a project of projects.js.
+     * The sprints, which depend on nothing else, are fetched alongside the rest;
+     * the commit counts of a pull request are fetched only when one of its
+     * commits moved since the last build of the project. The hash covers the
+     * counts, so a count that changes (a failed one fetched again) is rendered
+     * @param {string} projectName
+     * @param {{ repositories: string[], jiraProjects: string[], jiraRegex: RegExp }} projectConfig
+     */
+    async function buildProjectData(projectName, projectConfig) {
+        log.access(`Processing pull requests for project: ${projectName}`);
 
-        // Nothing changed since the last response built: serve it again with a new time,
-        // without the two commit requests per pull request
-        if (lastResponse?.dataHash === assembled.dataHash) {
-            lastResponse.lastRefreshTime = new Date().toISOString();
-            return lastResponse;
-        }
-        const pullRequestsWithCommits = await Promise.all(allPullRequests.map(async (pr) => {
-            const commitsAhead = await fetchCommitsDiff(pr.source.repository.name, pr.source.branch.name, pr.destination.branch.name);
-            const commitsBehind = await fetchCommitsDiff(pr.source.repository.name, pr.destination.branch.name, pr.source.branch.name);
-            return { ...pr, commitsAhead, commitsBehind };
-        }));
-        lastResponse = { lastRefreshTime: new Date().toISOString(), ...assembled, pullRequests: pullRequestsWithCommits };
-        return lastResponse;
+        const [{ pullRequests, jiraIssuesMap, orphanedIssues, jiraIssuesDetails, parents }, { sprints, sprintIssues }] = await Promise.all([
+            fetchPullRequestsWithIssues(projectName, projectConfig),
+            fetchSprintsWithIssues(projectName, projectConfig.jiraProjects)
+        ]);
+
+        const assembled = assembleProjectData({ pullRequests, jiraIssuesMap, jiraIssuesDetails, parents, orphanedIssues, sprints, sprintIssues, jiraSiteName });
+        return { lastRefreshTime: new Date().toISOString(), ...assembled };
     }
 
     return {

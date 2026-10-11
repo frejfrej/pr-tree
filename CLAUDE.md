@@ -21,7 +21,8 @@ project-assembly.mjs   Pure post-processing of a project's data, shared with the
 sync-statuses.mjs      SYNC computation of a project (diffstats, patches, limiter, sync-cache.json)
 conflicts.mjs          Pure conflict rule from the patches of both sides; conflictRuleVersion
 sync-cache.mjs         Conflict results on disk (sync-cache.json), keyed by rule version
-cache.mjs              node-cache wrapper: TTLs, shared SYNC computations, TTLs raised during a pause
+cache.mjs              node-cache wrapper: TTLs, builds in flight shared per key, TTLs raised during a pause
+limiter.mjs            Concurrency limit of the Bitbucket request bursts (SYNC computations, commit counts)
 config.js.default      Template of config.js (git-ignored, credentials); its comments say which token goes where
 projects.js            Projects: repositories, Jira projects, regex of the issue keys in pull-request titles
 fixtures/generate.mjs  Deterministic data modelled on the real projects (volumes, the 24-deep SECOLLAB stack)
@@ -80,7 +81,7 @@ Bump `version` and `releaseDate` in package.json (the UI shows them through `/ap
 
 **Add or change an endpoint**: route in index.mjs, cache in cache.mjs if it calls Atlassian, `try`/`catch` with `log(message, errorLogStream)` and a 500, a `performanceLogStream` line for anything slow, every Atlassian request through `atlassianFetch`; a test in server.test.mjs; PRD.md section 7.5.
 
-**Debug performance**: performance.log, `/api/cache/stats`, the Network tab for repeated calls, whether `dataHash` stays stable (commit counts are fetched only when it changes).
+**Debug performance**: performance.log, `/api/cache/stats`, the Network tab for repeated calls, whether `dataHash` stays stable (the page re-renders only when it changes; a pull request's commit counts are fetched again only when one of its commits moves).
 
 ## Conventions
 
@@ -110,5 +111,4 @@ Bump `version` and `releaseDate` in package.json (the UI shows them through `/ap
 14. **Module boundaries**: app-render.js knows no filter state; app-sync.js never imports app.js (it gets accessors), so there is no circular import; nothing is put on `window`, the tree has no inline handler (one listener on the pane, `handleTreeClick`).
 15. **Colours**: never hard-code a colour in styles.css; add a token to both the `:root` and `:root[data-theme="dark"]` blocks. Text in `--on-accent-text` needs 4.5:1 with its fill in both themes, and status text or a status icon needs 4.5:1 with the surface: use the strong tokens (`--success-strong`, `--error-strong`, `--attention-strong`, `--warning-strong`, `--neutral-strong`) for both, the plain status colours only for borders. test/styles.test.mjs checks the token ratios against the white surface, the `background-color` of the rules whose `color` is `--on-accent-text`, and the `color` declarations; a strong token on another background, a `background` shorthand or an inherited text colour is for the review to check. The focus ring is the primary colour: a surface painted in it overrides `outline-color`.
 16. **Accessibility**: every filter control is named by its visible label (`<label for>`, or `aria-labelledby` the `<id>Label` element for a multi-select); server.test.mjs checks it.
-17. **Known server limitation**: `lastResponse` in project-data.mjs is one slot for all projects, so with two projects open the commit counts are fetched again on every build (issue #78).
-18. **Line endings**: `.gitignore`, `cache.mjs`, `index.mjs`, `package-lock.json` and `public/multi-select.js` are CRLF; edit them with tools that keep the line endings, and restore CRLF after npm rewrites the lock file.
+17. **Line endings**: `.gitignore`, `cache.mjs`, `index.mjs`, `package-lock.json` and `public/multi-select.js` are CRLF; edit them with tools that keep the line endings, and restore CRLF after npm rewrites the lock file.

@@ -1,5 +1,6 @@
 import { decideFromDiffstat, parseUnifiedDiff, conflictingFiles } from './conflicts.mjs';
 import { RateLimitError, failureReason } from './atlassian-fetch.mjs';
+import { createLimiter } from './limiter.mjs';
 
 /**
  * The SYNC (conflicts) status of the pull requests of a project, computed
@@ -16,23 +17,6 @@ export const filesPerPatchRequest = 20;
 // More files to check than this skips the patches: the pull request is not
 // checked, or only partly when the diffstats already proved a conflict
 export const maxFilesToCheck = 100;
-
-// Serializes conflict computations: one SYNC load asks for every pull request of
-// a project at once, and each computation makes many Bitbucket calls of its own.
-function createLimiter(maxConcurrent) {
-    let active = 0;
-    const queue = [];
-    const next = () => {
-        if (active >= maxConcurrent || queue.length === 0) return;
-        active++;
-        const { task, resolve, reject } = queue.shift();
-        task().then(resolve, reject).finally(() => { active--; next(); });
-    };
-    return task => new Promise((resolve, reject) => {
-        queue.push({ task, resolve, reject });
-        next();
-    });
-}
 
 // A checked file must be in the patch of each side, with the diffstat's line
 // counts: a missing file, a patch cut between two hunks or a path the parser
@@ -60,6 +44,8 @@ function checkPatch(basePath, patch, diffstat) {
  * @param {() => number} [options.now] - clock, for the durations logged
  */
 export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, timeoutMs = 30000, maxConcurrent = 4, now = () => Date.now() }) {
+    // One SYNC load asks for every pull request of a project at once, and each
+    // computation makes many Bitbucket calls of its own
     const conflictsLimiter = createLimiter(maxConcurrent);
 
     async function fetchBitbucketJson(url) {

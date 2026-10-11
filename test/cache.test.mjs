@@ -1,6 +1,7 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { getCachedSyncStatuses, raiseAllCacheTtls, getCacheStats } from '../cache.mjs';
+import { getCachedProjects, getCachedProjectData, getCachedSyncStatuses, raiseAllCacheTtls, getCacheStats } from '../cache.mjs';
+import { RateLimitError } from '../atlassian-fetch.mjs';
 
 // The cache belongs to the module: every test uses project names of its own
 
@@ -49,6 +50,54 @@ test('a failed computation is not cached: the loads sharing it fail, the next lo
     assert.equal(results[0].reason.message, 'Bitbucket unreachable');
     const data = { statuses: {} };
     assert.equal(await getCachedSyncStatuses('FAILING', async () => ({ data, ttl: 60 })), data);
+});
+
+test('two concurrent project-data requests share one build: a second tab or the SYNC load during a page load', async () => {
+    let builds = 0;
+    let finish;
+    const finished = new Promise(resolve => { finish = resolve; });
+    const build = async () => {
+        builds++;
+        await finished;
+        return { pullRequests: [] };
+    };
+    const first = getCachedProjectData('SHARED', build);
+    const second = getCachedProjectData('SHARED', build);
+    finish();
+    const [firstData, secondData] = await Promise.all([first, second]);
+    assert.equal(builds, 1);
+    assert.equal(secondData, firstData);
+    assert.equal(await getCachedProjectData('SHARED', build), firstData); // then cached
+    assert.equal(builds, 1);
+});
+
+test('a rate-limit pause in a shared project build reaches every request sharing it and is not cached', async () => {
+    let builds = 0;
+    const paused = async () => {
+        builds++;
+        throw new RateLimitError();
+    };
+    const results = await Promise.allSettled([getCachedProjectData('PAUSED', paused), getCachedProjectData('PAUSED', paused)]);
+    assert.equal(builds, 1);
+    assert.ok(results.every(result => result.status === 'rejected' && result.reason instanceof RateLimitError));
+    const data = { pullRequests: [] };
+    assert.equal(await getCachedProjectData('PAUSED', async () => data), data);
+});
+
+test('the project data is kept 120 seconds, the projects list 300', async () => {
+    mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    try {
+        // The projects list has one key for the module: this is the only test that sets it
+        await getCachedProjects(async () => ['first']);
+        await getCachedProjectData('TTL', async () => 'first');
+        mock.timers.tick(150 * 1000);
+        assert.deepEqual(await getCachedProjects(async () => ['again']), ['first']);
+        assert.equal(await getCachedProjectData('TTL', async () => 'again'), 'again');
+        mock.timers.tick(200 * 1000);
+        assert.deepEqual(await getCachedProjects(async () => ['again']), ['again']);
+    } finally {
+        mock.timers.reset();
+    }
 });
 
 test('raiseAllCacheTtls keeps the entries expiring before the delay, and leaves the later and the never-expiring ones as they are', async () => {

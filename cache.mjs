@@ -15,22 +15,35 @@ const CACHE_KEYS = {
     PROJECTS_LIST: 'projects_list'
 };
 
+// The builds in flight, by cache key
+const pendingBuilds = new Map();
+
 /**
- * Generic function to get or set cache with async data fetching
+ * The cached value of a key, or the value built on a miss. Concurrent calls
+ * for one key share one build: a second browser tab, or the SYNC load during
+ * a page load, would otherwise send every Atlassian request of the build again.
+ * A failure (a RateLimitError included) reaches every call sharing the build
+ * and is not cached: the next call builds again.
  * @param {string} key - Cache key
- * @param {function} fetchData - Async function to fetch data if cache miss
- * @param {number} [ttl] - Optional TTL in seconds
- * @returns {Promise<any>} Cached or freshly fetched data
+ * @param {() => Promise<{ data: any, ttl?: number }>} build - the value and its TTL in seconds (the default TTL when undefined)
+ * @returns {Promise<any>} Cached or freshly built data
  */
-async function getOrSetCache(key, fetchData, ttl = undefined) {
+async function getOrBuild(key, build) {
     const cachedData = cache.get(key);
     if (cachedData !== undefined) {
         return cachedData;
     }
 
-    const freshData = await fetchData();
-    cache.set(key, freshData, ttl);
-    return freshData;
+    let pending = pendingBuilds.get(key);
+    if (!pending) {
+        pending = (async () => {
+            const { data, ttl } = await build();
+            cache.set(key, data, ttl);
+            return data;
+        })().finally(() => pendingBuilds.delete(key));
+        pendingBuilds.set(key, pending);
+    }
+    return pending;
 }
 
 /**
@@ -39,7 +52,7 @@ async function getOrSetCache(key, fetchData, ttl = undefined) {
  * @returns {Promise<Array>} List of projects
  */
 export async function getCachedProjects(fetchProjects) {
-    return getOrSetCache(CACHE_KEYS.PROJECTS_LIST, fetchProjects, 300); // 5 minutes TTL
+    return getOrBuild(CACHE_KEYS.PROJECTS_LIST, async () => ({ data: await fetchProjects(), ttl: 300 })); // 5 minutes TTL
 }
 
 /**
@@ -49,39 +62,19 @@ export async function getCachedProjects(fetchProjects) {
  * @returns {Promise<Object>} Project data
  */
 export async function getCachedProjectData(projectName, fetchProjectData) {
-    return getOrSetCache(CACHE_KEYS.PROJECT_DATA(projectName), fetchProjectData);
+    return getOrBuild(CACHE_KEYS.PROJECT_DATA(projectName), async () => ({ data: await fetchProjectData() }));
 }
-
-// The sync-statuses computations in flight, by cache key
-const pendingSyncStatuses = new Map();
 
 /**
  * Get sync statuses (conflicts for every pull request of a project) from cache
  * or fetch from source. The fetch function decides the TTL so that responses
  * built during an Atlassian rate-limit window can be kept until it closes.
- * Concurrent calls for one project share one computation: a second browser tab
- * would otherwise send every Bitbucket request again. A failure is not cached.
  * @param {string} projectName - Project identifier
  * @param {function} fetchSyncStatuses - Async function returning { data, ttl } on cache miss (ttl in seconds)
  * @returns {Promise<Object>} Sync statuses data
  */
 export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
-    const key = CACHE_KEYS.SYNC_STATUSES(projectName);
-    const cachedData = cache.get(key);
-    if (cachedData !== undefined) {
-        return cachedData;
-    }
-
-    let pending = pendingSyncStatuses.get(key);
-    if (!pending) {
-        pending = (async () => {
-            const { data, ttl } = await fetchSyncStatuses();
-            cache.set(key, data, ttl);
-            return data;
-        })().finally(() => pendingSyncStatuses.delete(key));
-        pendingSyncStatuses.set(key, pending);
-    }
-    return pending;
+    return getOrBuild(CACHE_KEYS.SYNC_STATUSES(projectName), fetchSyncStatuses);
 }
 
 /**

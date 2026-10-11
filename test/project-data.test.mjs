@@ -6,8 +6,8 @@ import { RateLimitError } from '../atlassian-fetch.mjs';
 /**
  * The project data against a fake Atlassian: the documented rules of
  * /api/pull-requests/:project (pagination, the Jira batches and parents,
- * the fix versions inherited, the orphaned issues, the hash and the commit
- * counts it saves). The fake answers Bitbucket and Jira by URL with real
+ * the fix versions inherited, the orphaned issues, the hash, the commit
+ * counts remembered per pull request). The fake answers Bitbucket and Jira by URL with real
  * Response objects and records every request.
  */
 
@@ -104,9 +104,10 @@ function fakeAtlassian({ pullRequests = {}, commits = () => 0, issues = [], pare
     return { fetch, requests };
 }
 
-function setUp(atlassian) {
+function setUp(atlassian, options = {}) {
     const logs = { access: [], error: [], performance: [] };
     const data = createProjectData({
+        ...options,
         fetch: atlassian.fetch,
         workspace,
         bbAuth,
@@ -128,7 +129,9 @@ test('the pull requests of each repository are fetched 50 per page, following ne
     }));
     const data = await buildProjectData('P', project);
     assert.deepEqual(urlsMatching(requests, /pullrequests/), [pullRequestsUrl('repo-a'), `${pullRequestsUrl('repo-a')}&page=2`, pullRequestsUrl('repo-b')]);
-    assert.deepEqual(requests[0].options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
+    const { signal, ...options } = requests[0].options;
+    assert.deepEqual(options, { method: 'GET', headers: { 'Authorization': `Basic ${bbAuth}`, 'Accept': 'application/json' } });
+    assert.ok(signal instanceof AbortSignal);
     assert.deepEqual(Object.keys(data).sort(), ['dataHash', 'jiraIssuesDetails', 'jiraIssuesMap', 'jiraSiteName', 'lastRefreshTime', 'orphanedIssues', 'pullRequests', 'sprintIssues', 'sprints']);
     assert.deepEqual(data.pullRequests.map(pr => [pr.id, pr.commitsAhead, pr.commitsBehind]), [[1, 3, 1], [2, 3, 1], [3, 3, 1]]);
     assert.deepEqual(data.jiraIssuesMap, { 1: ['PROJ-1'], 2: ['OTHER-7'], 3: ['PROJ-3'] });
@@ -316,39 +319,154 @@ test('the active sprints of every scrum board of each Jira project, once each, a
     assert.ok(logs.access.includes('Retrieved a total of 150 issues for sprint 7'));
 });
 
-test('the commit counts are fetched only when the hash changed; otherwise the last response is served with a new time', async () => {
-    let hash = 's1';
+const commitsUrls = requests => urlsMatching(requests, /\/commits\?/);
+
+test('the commit counts are remembered per project: building A, B, then A again sends no commits request the third time', async () => {
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1, { repo: 'repo-a' })]], 'repo-b': [[pullRequest(2, { repo: 'repo-b' })]] },
+        commits: (repo, include) => (include.startsWith('feat') ? 4 : 1)
+    }));
+    const projectA = { ...project, repositories: ['repo-a'] }, projectB = { ...project, repositories: ['repo-b'] };
+    const first = await buildProjectData('A', projectA);
+    await buildProjectData('B', projectB);
+    assert.equal(commitsUrls(requests).length, 4);
+    await new Promise(resolve => setTimeout(resolve, 2));
+    const third = await buildProjectData('A', projectA);
+    assert.equal(commitsUrls(requests).length, 4);
+    assert.notEqual(third, first); // a new response each build, with a new time
+    assert.ok(Date.parse(third.lastRefreshTime) > Date.parse(first.lastRefreshTime));
+    assert.deepEqual([third.pullRequests[0].commitsAhead, third.pullRequests[0].commitsBehind], [4, 1]);
+    assert.equal(third.dataHash, first.dataHash);
+});
+
+test('a Jira change alone fetches no commit count; a moved commit fetches the counts of its pull request only', async () => {
     let count = 2;
-    const atlassian = fakeAtlassian({ commits: () => count });
-    // The fake, with a pull-request page that follows the current hash
-    const data = setUp({
-        fetch: (url, options) => (url.includes('/pullrequests') ? new Response(JSON.stringify({ values: [pullRequest(1, { hash })] }), { status: 200 }) : atlassian.fetch(url, options)),
-        requests: atlassian.requests
-    });
+    const pullRequests = { 'repo-a': [[pullRequest(1), pullRequest(2)]] };
+    const issues = [issue('PROJ-1'), issue('PROJ-2')];
+    const { buildProjectData, requests } = setUp(fakeAtlassian({ pullRequests, issues, commits: () => count }));
     const oneRepository = { ...project, repositories: ['repo-a'] };
-    const first = await data.buildProjectData('P', oneRepository);
-    assert.deepEqual(urlsMatching(atlassian.requests, /commits/), [
+    const first = await buildProjectData('P', oneRepository);
+    assert.deepEqual(commitsUrls(requests).sort(), [
+        `${bitbucket('repo-a')}/commits?include=feat-1&exclude=master&pagelen=100`,
+        `${bitbucket('repo-a')}/commits?include=feat-2&exclude=master&pagelen=100`,
+        `${bitbucket('repo-a')}/commits?include=master&exclude=feat-1&pagelen=100`,
+        `${bitbucket('repo-a')}/commits?include=master&exclude=feat-2&pagelen=100`
+    ]);
+
+    // An issue moved: the hash changes, the counts stay
+    count = 5;
+    issues[0] = issue('PROJ-1', { summary: 'Moved to review' });
+    const second = await buildProjectData('P', oneRepository);
+    assert.notEqual(second.dataHash, first.dataHash);
+    assert.equal(commitsUrls(requests).length, 4);
+    assert.deepEqual(second.pullRequests.map(pr => [pr.commitsAhead, pr.commitsBehind]), [[2, 2], [2, 2]]);
+
+    // A push to the source branch of the first pull request: its two counts only
+    pullRequests['repo-a'][0][0] = pullRequest(1, { hash: 's1-moved' });
+    const third = await buildProjectData('P', oneRepository);
+    assert.deepEqual(commitsUrls(requests).slice(4), [
         `${bitbucket('repo-a')}/commits?include=feat-1&exclude=master&pagelen=100`,
         `${bitbucket('repo-a')}/commits?include=master&exclude=feat-1&pagelen=100`
     ]);
-    assert.deepEqual([first.pullRequests[0].commitsAhead, first.pullRequests[0].commitsBehind], [2, 2]);
+    assert.deepEqual(third.pullRequests.map(pr => [pr.commitsAhead, pr.commitsBehind]), [[5, 5], [2, 2]]);
+});
 
-    // Nothing changed: no commits request, the same response with a fresh lastRefreshTime
-    count = 5;
-    await new Promise(resolve => setTimeout(resolve, 2));
-    const second = await data.buildProjectData('P', oneRepository);
-    assert.equal(urlsMatching(atlassian.requests, /commits/).length, 2);
-    assert.equal(second, first);
-    assert.equal(second.pullRequests[0].commitsAhead, 2);
-    assert.ok(Date.parse(second.lastRefreshTime) >= Date.parse(first.lastRefreshTime));
-    assert.equal(second.dataHash, first.dataHash);
+test('a failed count is fetched again at the next build, and so is a pull request without its commit hashes', async () => {
+    let failures = 1;
+    const withoutHashes = pullRequest(2);
+    delete withoutHashes.destination.commit;
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1), withoutHashes]] },
+        commits: () => 3,
+        intercept: url => (url.includes('include=feat-1') && failures-- > 0 ? new Response('', { status: 500 }) : undefined)
+    }));
+    const oneRepository = { ...project, repositories: ['repo-a'] };
+    const first = await buildProjectData('P', oneRepository);
+    assert.deepEqual(first.pullRequests.map(pr => [pr.commitsAhead, pr.commitsBehind]), [[null, 3], [3, 3]]);
+    const second = await buildProjectData('P', oneRepository);
+    assert.deepEqual(second.pullRequests.map(pr => [pr.commitsAhead, pr.commitsBehind]), [[3, 3], [3, 3]]);
+    assert.notEqual(second.dataHash, first.dataHash); // the hash covers the counts: the page renders the count fetched again
+    assert.equal(commitsUrls(requests).length, 8); // both pull requests twice
+    await buildProjectData('P', oneRepository);
+    assert.equal(commitsUrls(requests).filter(url => url.includes('feat-1')).length, 4); // the first one is now remembered
+    assert.equal(commitsUrls(requests).filter(url => url.includes('feat-2')).length, 6); // not the one without hashes
+});
 
-    // A commit moved: the counts are fetched again
-    hash = 's1-moved';
-    const third = await data.buildProjectData('P', oneRepository);
-    assert.equal(urlsMatching(atlassian.requests, /commits/).length, 4);
-    assert.notEqual(third.dataHash, first.dataHash);
-    assert.equal(third.pullRequests[0].commitsAhead, 5);
+test('a build ended by a rate-limit pause keeps the counts it fetched for the next build', async () => {
+    let paused = true;
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1), pullRequest(2), pullRequest(3)]] },
+        commits: () => 1,
+        intercept: url => {
+            if (paused && url.includes('feat-3')) throw new RateLimitError();
+            return undefined;
+        }
+    }), { maxConcurrentCommitRequests: 1 });
+    const oneRepository = { ...project, repositories: ['repo-a'] };
+    await assert.rejects(buildProjectData('P', oneRepository), RateLimitError);
+    paused = false;
+    const before = commitsUrls(requests).length;
+    const data = await buildProjectData('P', oneRepository);
+    assert.deepEqual(commitsUrls(requests).slice(before).map(url => new URL(url).searchParams.get('include')), ['feat-3', 'master']);
+    assert.deepEqual(data.pullRequests.map(pr => pr.commitsAhead), [1, 1, 1]);
+});
+
+test('the branch names are escaped in the commits requests', async () => {
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1, { source: 'fix/a&b#1+c', destination: 'release/2.0' })]] },
+        commits: (repo, include) => (include === 'fix/a&b#1+c' ? 2 : 0)
+    }));
+    const data = await buildProjectData('P', { ...project, repositories: ['repo-a'] });
+    assert.deepEqual(commitsUrls(requests), [
+        `${bitbucket('repo-a')}/commits?include=fix%2Fa%26b%231%2Bc&exclude=release%2F2.0&pagelen=100`,
+        `${bitbucket('repo-a')}/commits?include=release%2F2.0&exclude=fix%2Fa%26b%231%2Bc&pagelen=100`
+    ]);
+    assert.equal(data.pullRequests[0].commitsAhead, 2);
+});
+
+test('a request that hangs fails the build after the timeout instead of holding it', async () => {
+    const atlassian = fakeAtlassian();
+    const hanging = {
+        requests: atlassian.requests,
+        fetch: (url, options) => (url.includes('/pullrequests')
+            ? new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)))
+            : atlassian.fetch(url, options))
+    };
+    const { buildProjectData } = setUp(hanging, { timeoutMs: 20 });
+    await assert.rejects(buildProjectData('P', project), { name: 'TimeoutError' });
+});
+
+test('no more commit requests at once than the limit', async () => {
+    const atlassian = fakeAtlassian({ pullRequests: { 'repo-a': [Array.from({ length: 10 }, (_, i) => pullRequest(i + 1))] } });
+    let inFlight = 0, maxInFlight = 0;
+    const tracked = {
+        requests: atlassian.requests,
+        fetch: async (url, options) => {
+            if (!url.includes('/commits?')) return atlassian.fetch(url, options);
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await new Promise(resolve => setImmediate(resolve));
+            inFlight--;
+            return atlassian.fetch(url, options);
+        }
+    };
+    const { buildProjectData, requests } = setUp(tracked, { maxConcurrentCommitRequests: 3 });
+    await buildProjectData('P', { ...project, repositories: ['repo-a'] });
+    assert.equal(commitsUrls(requests).length, 20);
+    assert.equal(maxInFlight, 3);
+});
+
+test('the sprints are fetched alongside the pull requests and the issues, not after them', async () => {
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)], [pullRequest(2)]] },
+        boards: { PROJ: [{ id: 1, name: 'Board 1' }] },
+        sprints: { 1: [{ id: 7, name: 'Sprint 7' }] },
+        sprintIssues: { 7: ['PROJ-1'] }
+    }));
+    const data = await buildProjectData('P', project);
+    const urls = requests.map(request => request.url);
+    assert.ok(urls.findIndex(url => url.includes('/agile/')) < urls.findIndex(url => url.includes('&page=2')));
+    assert.deepEqual(data.sprintIssues, { 7: ['PROJ-1'] });
 });
 
 test('a failed commits request leaves the count null and is logged; a failed pull-request page fails the build', async () => {
