@@ -85,15 +85,17 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
     // The changes of one side since the merge base for the given files, as parsed
     // by conflicts.mjs. Bitbucket's diff/{a}..{b}?topic=true is the three-dot diff
     // of side `a` (checked against diffstat on 2026-09-11); `path` can be repeated.
-    async function fetchPatch(repoName, sideCommit, otherCommit, filePaths) {
+    // `signal` stops the side: no next request, the one in flight aborted.
+    async function fetchPatch(repoName, sideCommit, otherCommit, filePaths, signal) {
         const files = new Map();
         for (let i = 0; i < filePaths.length; i += filesPerPatchRequest) {
+            signal.throwIfAborted();
             const paths = new Set(filePaths.slice(i, i + filesPerPatchRequest).flat());
             const query = [...paths].map(p => `path=${encodeURIComponent(p)}`).join('&');
             const url = `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoName}/diff/${sideCommit}..${otherCommit}?topic=true&${query}`;
             const response = await fetch(url, {
                 method: 'GET',
-                signal: AbortSignal.timeout(timeoutMs),
+                signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
                 headers: { 'Authorization': `Basic ${bbAuth}` }
             });
             if (!response.ok) {
@@ -135,9 +137,15 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
             try {
                 // The base path and the path on each side: a renamed file is found under both
                 const filePaths = toCheck.map(basePath => [basePath, sourceFiles.get(basePath).sidePath, destFiles.get(basePath).sidePath]);
+                // The first side to fail stops the other: its result would be thrown away
+                const stop = new AbortController();
+                const stopOnFailure = error => {
+                    stop.abort(error);
+                    throw error;
+                };
                 const [sourcePatch, destPatch] = await Promise.all([
-                    fetchPatch(repoName, sourceCommit, destCommit, filePaths),
-                    fetchPatch(repoName, destCommit, sourceCommit, filePaths)
+                    fetchPatch(repoName, sourceCommit, destCommit, filePaths, stop.signal).catch(stopOnFailure),
+                    fetchPatch(repoName, destCommit, sourceCommit, filePaths, stop.signal).catch(stopOnFailure)
                 ]);
                 for (const basePath of toCheck) {
                     checkPatch(basePath, sourcePatch, sourceFiles);

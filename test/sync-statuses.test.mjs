@@ -274,6 +274,42 @@ test('a diff request that times out: not checked with the timeout as the reason'
     assert.equal(logs.error.length, 1);
 });
 
+test('a side whose diff request fails stops the requests of the other side', async () => {
+    // Three diff requests per side
+    const files = manyFiles(2 * filesPerPatchRequest + 1).map(file => modified(file));
+    const diffOf = line => paths => paths.map(file => modify(file, line, 'X')).join('');
+    const scenario = { diffstats: { [`${source}..${dest}`]: files, [`${dest}..${source}`]: files }, diffs: { [`${source}..${dest}`]: diffOf(1), [`${dest}..${source}`]: diffOf(6) } };
+    const diffsOf = (requests, side) => requests.filter(request => request.url.includes(`/diff/${side}..`));
+    const reason = 'Request failed with status code 502';
+
+    // The source side fails at once, the destination's first request is in flight: aborted
+    const inFlight = setUp(fakeBitbucket({
+        ...scenario,
+        intercept: (count, url, options) => {
+            if (url.includes(`/diff/${source}..`)) return new Response('', { status: 502 });
+            if (url.includes(`/diff/${dest}..`)) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)));
+        }
+    }));
+    assert.deepEqual(await inFlight.computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { error: true, reason } });
+    assert.deepEqual(inFlight.logs.error, [`Error computing sync status for repo-one dddd..ssss: ${reason}`]);
+    const [destRequest, ...moreDest] = diffsOf(inFlight.requests, dest);
+    assert.ok(destRequest.options.signal.aborted, 'the request in flight is aborted');
+    assert.deepEqual(moreDest, [], 'the destination side sends no other request');
+
+    // The destination side fails at once, the source's first request answers later: no next request
+    const answersLate = setUp(fakeBitbucket({
+        ...scenario,
+        intercept: async (count, url) => {
+            if (url.includes(`/diff/${dest}..`)) return new Response('', { status: 502 });
+            if (url.includes(`/diff/${source}..`)) await new Promise(resolve => setTimeout(resolve, 20));
+        }
+    }));
+    assert.deepEqual(await answersLate.computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { error: true, reason } });
+    // Promise.all settles at the failure: the source side is left to run into its abort check
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(diffsOf(answersLate.requests, source).length, 1, 'the source side sends no other request');
+});
+
 test('a rate-limit pause in the middle of the requests: the fixed reason, nothing logged as an error', async () => {
     const pauseAt = n => (count) => { if (count >= n) throw new RateLimitError(); };
     const reason = 'Atlassian requests are paused after a rate limit';
