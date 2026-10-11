@@ -1,6 +1,9 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { request } from 'node:http';
+import { connect } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { once } from 'node:events';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -20,7 +23,8 @@ let baseUrl;
 before(async () => {
     server = spawn(process.execPath, ['index.mjs', '--fixtures'], {
         cwd: root,
-        env: { ...process.env, PORT: '0' },
+        // The default address and names: a PR_TREE_HOST of the environment would change them
+        env: { ...process.env, PORT: '0', PR_TREE_HOST: '', PR_TREE_ALLOWED_HOSTS: '' },
         stdio: ['ignore', 'pipe', 'pipe']
     });
     baseUrl = await new Promise((resolve, reject) => {
@@ -266,4 +270,53 @@ test('the cache statistics answer the five counters of node-cache', async () => 
     // (sync statuses are kept during a rate-limit pause only, #49)
     assert.ok(stats.keys >= 2, `${stats.keys} keys`);
     assert.ok(stats.hits > 0 && stats.misses > 0);
+});
+
+// fetch cannot set the Host header: a raw request to 127.0.0.1 with the given headers
+function rawGet(urlPath, headers) {
+    return new Promise((resolve, reject) => {
+        const request_ = request({ host: '127.0.0.1', port: new URL(baseUrl).port, path: urlPath, headers }, response => {
+            let body = '';
+            response.on('data', chunk => { body += chunk; });
+            response.on('end', () => resolve({ status: response.statusCode, body }));
+        });
+        request_.on('error', reject);
+        request_.end();
+    });
+}
+
+test('a request addressed to another host name gets a 403 on every route: a DNS-rebinding page reads nothing (#98)', async () => {
+    const port = new URL(baseUrl).port;
+    for (const urlPath of ['/api/pull-requests/SECOLLAB', '/api/version', '/', '/README.md']) {
+        const response = await rawGet(urlPath, { Host: `evil.example:${port}` });
+        assert.equal(response.status, 403, urlPath);
+        assert.match(JSON.parse(response.body).error, /PR_TREE_ALLOWED_HOSTS/);
+    }
+    for (const host of [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`]) {
+        assert.equal((await rawGet('/api/version', { Host: host })).status, 200, host);
+    }
+});
+
+test('an /api request a browser sends from another site gets a 403, a link from another site still opens the page (#98)', async () => {
+    const crossSite = { 'Sec-Fetch-Site': 'cross-site' };
+    const sync = await fetch(`${baseUrl}/api/sync-statuses/SECOLLAB`, { headers: crossSite });
+    assert.equal(sync.status, 403);
+    assert.deepEqual(await sync.json(), { error: 'Cross-site request refused' });
+    assert.equal((await fetch(`${baseUrl}/api/version`, { headers: { 'Sec-Fetch-Site': 'same-site' } })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/version`, { headers: { 'Sec-Fetch-Site': 'same-origin' } })).status, 200);
+    assert.equal((await fetch(`${baseUrl}/`, { headers: { ...crossSite, 'Sec-Fetch-Mode': 'navigate' } })).status, 200);
+});
+
+test('the server listens on the loopback interface only by default: the other addresses of the machine are refused (#98)', async t => {
+    const addresses = Object.values(networkInterfaces()).flat().filter(({ family, internal }) => family === 'IPv4' && !internal);
+    if (addresses.length === 0) {
+        t.skip('no network interface besides the loopback one');
+        return;
+    }
+    const error = await new Promise(resolve => {
+        const socket = connect({ host: addresses[0].address, port: Number(new URL(baseUrl).port) });
+        socket.on('connect', () => { socket.destroy(); resolve(null); });
+        socket.on('error', resolve);
+    });
+    assert.equal(error?.code, 'ECONNREFUSED', `${addresses[0].address} must not be reachable`);
 });

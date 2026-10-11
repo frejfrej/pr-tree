@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import os from 'os';
 
 import {
     getCachedProjects,
@@ -17,6 +18,7 @@ import { createSyncStatuses } from './sync-statuses.mjs';
 import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 import { conflictRuleVersion } from './conflicts.mjs';
+import { allowedHostnames, createRequestGuard } from './request-guard.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
 const fixtureOptions = parseFixtureOptions();
@@ -25,6 +27,14 @@ const fixtureSource = fixtureOptions.enabled ? createFixtureSource(config, { sca
 
 const app = express();
 const port = process.env.PORT || 3000;
+// The loopback interface unless PR_TREE_HOST opens another one (0.0.0.0 for every interface)
+const host = process.env.PR_TREE_HOST || '127.0.0.1';
+const hostnames = allowedHostnames({
+    host,
+    extraHosts: (process.env.PR_TREE_ALLOWED_HOSTS || '').split(',').map(name => name.trim()).filter(Boolean),
+    interfaces: os.networkInterfaces(),
+    machineName: os.hostname()
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +47,10 @@ const version = packageJson.version;
 const releaseDate = packageJson.releaseDate || new Date().toISOString().split('T')[0]; // Use current date if not specified
 const author = packageJson.author;
 const license = packageJson.license;
+
+// First in the chain: requests addressed to another name (DNS rebinding) and
+// /api requests sent by a page of another site get a 403 (request-guard.mjs)
+app.use(createRequestGuard({ allowedHostnames: hostnames, log: message => log(message, errorLogStream) }));
 
 // Serve all files in the public folder
 app.use(express.static('public'));
@@ -243,9 +257,10 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     }
 });
 
-const server = app.listen(port, () => {
+const server = app.listen(port, host, () => {
     // The port actually bound: PORT=0 lets the OS pick one (the server test does that)
     log(`Server is running at http://localhost:${server.address().port}`, accessLogStream);
+    log(`Listening on ${host}, answering to the host names ${[...hostnames].join(', ')}`, accessLogStream);
     if (fixtureSource) {
         log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
     }
