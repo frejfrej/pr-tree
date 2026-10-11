@@ -68,22 +68,26 @@ export class MultiSelect {
             this.toggle();
         });
 
-        // Keyboard support for trigger; ArrowDown opens it like a select
+        // Keyboard support for trigger
         this.trigger.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 this.toggle();
-            } else if (e.key === 'ArrowDown' && !this.isOpen()) {
-                e.preventDefault();
-                this.open();
             }
         });
 
-        // In an open dropdown, from any of its controls: Escape closes it and gives
-        // the focus back to the trigger (a hidden control would drop it to the
-        // page); the arrows walk the search box and the checkboxes
+        // ArrowDown on the closed trigger opens it, like a select. In an open
+        // dropdown, from any of its controls: Escape closes it and gives the focus
+        // back to the trigger (a hidden control would drop it to the page); the
+        // arrows walk the search box and the checkboxes
         this.element.addEventListener('keydown', (e) => {
-            if (!this.isOpen()) return;
+            if (!this.isOpen()) {
+                if (e.key === 'ArrowDown' && e.target === this.trigger) {
+                    e.preventDefault();
+                    this.open();
+                }
+                return;
+            }
             if (e.key === 'Escape') {
                 e.preventDefault();
                 this.close();
@@ -128,6 +132,16 @@ export class MultiSelect {
             }
         });
 
+        // Escape with the focus nowhere still closes it: Safari does not focus a
+        // clicked checkbox, the focus is then on the page body (app-shell.js
+        // leaves that Escape to an open multi-select)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.isOpen() && (e.target === document.body || e.target === document.documentElement)) {
+                this.close();
+                this.trigger.focus();
+            }
+        });
+
         // Prevent dropdown clicks from closing
         this.dropdown.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -138,12 +152,14 @@ export class MultiSelect {
         return this.element.classList.contains('open');
     }
 
-    // The search box, then the checkboxes shown, in order; stops at both ends
+    // The search box, then the checkboxes shown, in order; stops at both ends.
+    // The trigger is above them, Clear all and Select all below
     moveFocus(from, step) {
         const controls = [this.searchInput, ...this.optionsContainer.querySelectorAll('input[type="checkbox"]')];
-        const index = controls.indexOf(from);
-        const next = index === -1 ? 0 : Math.min(Math.max(index + step, 0), controls.length - 1);
-        controls[next].focus();
+        let index = controls.indexOf(from);
+        if (index === -1) index = from === this.trigger ? -1 : controls.length;
+        const next = index + step;
+        if (next >= 0 && next < controls.length) controls[next].focus();
     }
 
     toggle() {
@@ -198,12 +214,17 @@ export class MultiSelect {
     }
 
     renderOptions() {
+        // A re-render (the periodic refresh sets the options again) replaces the
+        // checkboxes: the focused one is focused again, or the search box when
+        // its option is gone, so the focus is not dropped to the page
+        const focusedValue = this.optionsContainer.contains(document.activeElement) ? document.activeElement.value : null;
         const filteredOptions = this.options.filter(opt =>
             opt.label.toLowerCase().includes(this.searchText)
         );
 
         if (filteredOptions.length === 0) {
             this.optionsContainer.innerHTML = '<div class="multi-select-no-results">No results found</div>';
+            if (focusedValue !== null) this.searchInput.focus();
             return;
         }
 
@@ -232,6 +253,11 @@ export class MultiSelect {
                 this.notifyChange();
             });
         });
+
+        if (focusedValue !== null) {
+            const checkboxes = [...this.optionsContainer.querySelectorAll('input[type="checkbox"]')];
+            (checkboxes.find(checkbox => checkbox.value === focusedValue) ?? this.searchInput).focus();
+        }
     }
 
     updateDisplay() {

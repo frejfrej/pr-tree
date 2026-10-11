@@ -159,8 +159,8 @@ test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion
     assert.ok(!html.includes('data-author="Rovo Dev"'));
     // Both pull requests link issues with different statuses; only PR 6 lacks other participants (Rovo Dev does not count)
     assert.equal(count(html, '<div class="warnings">'), 2);
-    assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses">'), 2);
-    assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants">'), 1);
+    assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="JIRA issues have different statuses">'), 2);
+    assert.equal(count(html, '<li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="Pull request has no other participants">'), 1);
     assert.ok(html.includes('href="https://bitbucket.org/ws/repo-one/branch/release%2F2026.09"'));
     assert.ok(html.includes('data-sync-key="repo-one/undefined..s6"'));
 });
@@ -205,6 +205,10 @@ test('renderRepositories renders every pull request of the fixture projects once
         // A children container per pull request stacked upon, within its own repository
         assert.equal(count(html, '<div class="children">'), data.pullRequests.filter(pr => data.pullRequests.some(other => other.source.repository.name === pr.source.repository.name && other.destination.branch.name === pr.source.branch.name)).length, name);
         assert.equal(count(html, 'tree-no-match'), 1, name);
+        // Every icon is hidden from screen readers, or names what it shows (a review status) (#109)
+        for (const [tag] of html.matchAll(/<i\b[^>]*>/g)) {
+            assert.ok(tag.includes('aria-hidden="true"') || /role="img" aria-label="[^"]+"/.test(tag), `${name}: ${tag}`);
+        }
         // The row of each pull request is keyed "repository/id", the key of its filter-index entry and of
         // its issues: the fixtures share ids between repositories, as Bitbucket does (#99)
         // One key per root branch, though repositories share branch names (#103)
@@ -278,7 +282,10 @@ test('renderOrphanedIssues counts one issue in the singular', () => {
 });
 
 test('renderParticipant gives each status its icon, and an unknown status no icon and a console line', () => {
-    const icon = html => html.match(/<i class="fas (\S*) icon">/)[1];
+    const icon = html => html.match(/<i class="fas (\S*) icon"/)[1];
+    const label = html => html.match(/<i [^>]*aria-label="([^"]*)"/)?.[1];
+    assert.equal(label(renderParticipant(jane, 'approved')), 'approved'); // the status is named for screen readers (#109)
+    assert.equal(label(renderParticipant(jane, 'requestedChanges')), 'requested changes');
     assert.equal(icon(renderParticipant(jane, 'approved')), 'fa-check-circle');
     assert.equal(icon(renderParticipant(jane, 'requestedChanges')), 'fa-times-circle');
     assert.equal(icon(renderParticipant(jane, 'toReview')), 'fa-question-circle');
@@ -287,6 +294,7 @@ test('renderParticipant gives each status its icon, and an unknown status no ico
     try {
         const html = renderParticipant(jane, 'unknown');
         assert.equal(icon(html), '');
+        assert.ok(html.includes('aria-hidden="true"'), 'an empty icon is hidden');
         assert.ok(html.includes('data-review-status="unknown"'));
         assert.ok(html.includes('src="https://avatars/jane.png"'));
         assert.deepEqual(log.mock.calls.map(call => call.arguments), [["Jane participant's status is invalid: unknown"]]);

@@ -27,3 +27,7 @@ over the DevTools protocol (`Input.dispatchKeyEvent` sends trusted keys:
 Tab, Escape and the dialog behave as with a keyboard; the Chrome
 extension's key presses never reach the page), in both themes, with
 screenshots of the focus rings and the dialog.
+
+After the /code-review: spec section 6; unit tests for each point
+(multi-select, app-render) and browser checks for the backdrop drag, the
+focus after a mouse close and ArrowUp from Select all, both themes.

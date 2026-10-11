@@ -92,3 +92,33 @@ tested in app-shell.test.mjs.
 
 Turned down: a third "system" state of the toggle (a three-way button or
 a menu for one preference; two clicks at most get back to the system now).
+
+## 6. After the /code-review
+
+- **The focus nowhere**: Safari does not focus a clicked checkbox, so the
+  focus can be on the page body with a dropdown open. The shell steps aside
+  for a key pressed in an open multi-select **or** on the body while one is
+  open (as before #109 in that case), and the component closes on an Escape
+  reaching the document from the body.
+- **A re-render of the options** (the periodic refresh calls `setOptions`)
+  replaced the focused checkbox and dropped the focus to the body: the
+  checkbox of the same value is focused again, or the search box when its
+  option is gone.
+- **Arrows from outside the list**: from the trigger (above the list)
+  ArrowDown goes to the search box, ArrowUp nowhere; from Clear all and
+  Select all (below) ArrowUp goes to the last checkbox, ArrowDown nowhere.
+  One `keydown` listener handles ArrowDown on the closed trigger too.
+- **Backdrop click**: closes only when the pointer was also pressed on the
+  backdrop; a text selection dragged out of the help onto it keeps it open.
+- **Focus restore**: the page focuses the element of before only when the
+  browser did not (the focus is on the body), so a mouse close does not
+  paint a keyboard ring on the help button.
+- **Icons of the tree** (app-render.js): the decorative ones are hidden
+  (filter, external link, commit badges, alerts next to their text, the
+  assignee icon next to the named avatar); the review-status icon of a
+  participant is named instead (`role="img"`, "approved", "requested
+  changes", "not reviewed yet", "author"). app-render.test.mjs checks every
+  icon of the fixture trees.
+- styles.test.mjs also catches `outline: 0px`, `transparent` and the
+  `outline-style`, `-width` and `-color` forms; one `MediaQueryList` for
+  the system theme.

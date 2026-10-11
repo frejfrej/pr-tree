@@ -118,7 +118,6 @@ export function themeToStore(theme, systemTheme) {
     return theme === systemTheme ? null : theme;
 }
 
-const systemDarkQuery = '(prefers-color-scheme: dark)';
 
 function currentTheme() {
     return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -139,11 +138,12 @@ function applyTheme(theme) {
 }
 
 function initializeTheme() {
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
     // The inline script in <head> already chose the theme; this syncs the button with it
     applyTheme(currentTheme());
     document.getElementById('themeToggle').addEventListener('click', () => {
         const next = currentTheme() === 'dark' ? 'light' : 'dark';
-        const stored = themeToStore(next, window.matchMedia(systemDarkQuery).matches ? 'dark' : 'light');
+        const stored = themeToStore(next, systemDark.matches ? 'dark' : 'light');
         if (stored) {
             writeStorage(THEME_STORAGE_KEY, stored);
         } else {
@@ -152,7 +152,7 @@ function initializeTheme() {
         applyTheme(next);
     });
     // Follow the OS setting live as long as no preference has been stored
-    window.matchMedia(systemDarkQuery).addEventListener('change', event => {
+    systemDark.addEventListener('change', event => {
         const stored = readStorage(THEME_STORAGE_KEY);
         if (stored !== 'light' && stored !== 'dark') {
             applyTheme(event.matches ? 'dark' : 'light');
@@ -199,7 +199,8 @@ function closeHelp() {
 }
 
 function restoreFocusAfterHelp() {
-    if (focusBeforeHelp?.isConnected) focusBeforeHelp.focus();
+    const browserRestored = document.activeElement && document.activeElement !== document.body;
+    if (!browserRestored && focusBeforeHelp?.isConnected) focusBeforeHelp.focus();
     focusBeforeHelp = null;
 }
 
@@ -234,9 +235,15 @@ function initializeHelpModal() {
     document.getElementById('helpButton').addEventListener('click', openHelp);
     document.getElementById('helpClose').addEventListener('click', closeHelp);
     modal.addEventListener('close', restoreFocusAfterHelp);
-    // The dialog covers the page: a click on it outside the content is a click on the backdrop
+    // The dialog covers the page: a click on it outside the content is a click on
+    // the backdrop. Pressed on the backdrop too: a text selection dragged out of
+    // the content ends there, and its click targets the dialog
+    let pressedOnBackdrop = false;
+    modal.addEventListener('pointerdown', event => {
+        pressedOnBackdrop = event.target === modal;
+    });
     modal.addEventListener('click', event => {
-        if (event.target === modal) {
+        if (event.target === modal && pressedOnBackdrop) {
             closeHelp();
         }
     });
@@ -277,12 +284,19 @@ export function isFindShortcut(event) {
         (event.key === 'f' || event.key === 'F');
 }
 
-// Registered in the capture phase: a key pressed in an open multi-select
-// reaches it still open, and the component handles Escape and the arrows
-// itself, so the shell stays out of its way; the help dialog closes itself
-// on Escape.
+// A key for an open multi-select: pressed in it, or with the focus nowhere
+// (Safari does not focus a clicked checkbox) while one is open
+function isForOpenMultiSelect(target) {
+    if (target instanceof Element && target.closest('.multi-select.open')) return true;
+    return (target === document.body || target === document.documentElement) &&
+        Boolean(document.querySelector('.multi-select.open'));
+}
+
+// Registered in the capture phase: a key for an open multi-select reaches it
+// still open, and the component handles Escape and the arrows itself, so the
+// shell stays out of its way; the help dialog closes itself on Escape.
 function handleKeydown(event) {
-    if (event.target instanceof Element && event.target.closest('.multi-select.open')) {
+    if (isForOpenMultiSelect(event.target)) {
         return;
     }
 
