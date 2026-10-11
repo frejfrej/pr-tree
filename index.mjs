@@ -7,6 +7,7 @@ import {
     getCachedProjects,
     getCachedProjectData,
     getCachedSyncStatuses,
+    syncStatusesKeep,
     getCacheStats,
     raiseAllCacheTtls
 } from './cache.mjs';
@@ -202,16 +203,14 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     try {
         const syncStatuses = await getCachedSyncStatuses(projectName, async () => {
             if (fixtureSource) {
-                return { data: await fixtureSource.buildSyncStatuses(projectName), keep: false };
+                return { data: await fixtureSource.buildSyncStatuses(projectName), ...syncStatusesKeep(atlassian.pause()) };
             }
             const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
             const { statuses, stopped } = await computeSyncStatuses(projectName, projectData.pullRequests);
 
-            // Only a response built during a rate-limit window is kept, until it
-            // closes, so the clicks meanwhile send nothing. Otherwise each click on
-            // the load button computes again (#49): sync-cache.json already spares
-            // the pull requests whose commits did not move, and the calls made
-            // during a computation share it
+            // Kept only until the end of a rate-limit pause (syncStatusesKeep, #49):
+            // sync-cache.json already spares the pull requests whose commits did
+            // not move, and the calls made during a computation share it
             const pause = atlassian.pause();
             const data = {
                 lastRefreshTime: new Date().toISOString(),
@@ -220,8 +219,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
                 stopped,
                 statuses: statuses
             };
-            if (pause.rateLimited) return { data, ttl: Math.max(1, Math.ceil(pause.remainingMs / 1000)) };
-            return { data, keep: false };
+            return { data, ...syncStatusesKeep(pause) };
         });
 
         res.json(syncStatuses);

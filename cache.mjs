@@ -88,6 +88,17 @@ export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
 }
 
 /**
+ * How long a SYNC response is kept (#49): until the end of the rate-limit pause
+ * it was built in, so the clicks meanwhile send nothing; outside a pause not at
+ * all, so each click on the load button computes again
+ * @param {{ rateLimited: boolean, remainingMs: number }} pause - the pause when the response was built (atlassian.pause())
+ * @returns {{ ttl: number } | { keep: false }} to spread into the build's answer to getCachedSyncStatuses
+ */
+export function syncStatusesKeep(pause) {
+    return pause.rateLimited ? { ttl: Math.max(1, Math.ceil(pause.remainingMs / 1000)) } : { keep: false };
+}
+
+/**
  * Raise the TTL of every cached entry so that nothing expires before the given
  * number of seconds from now. Entries expiring later are left untouched.
  * Used to keep serving cached data while Atlassian requests are paused after an HTTP 429.

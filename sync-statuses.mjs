@@ -17,7 +17,9 @@ import { createLimiter } from './limiter.mjs';
 export const filesPerPatchRequest = 20;
 
 // More files to check than this skips the patches: the pull request is not
-// checked, or only partly when the diffstats already proved a conflict
+// checked, or only partly when the diffstats already proved a conflict. That
+// result depends on the two commits alone and is stored like a complete one,
+// so a change of the limit bumps conflictRuleVersion.
 export const maxFilesToCheck = 100;
 
 // A checked file must be in the patch of each side, with the diffstat's line
@@ -50,6 +52,10 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
     // One SYNC load asks for every pull request of a project at once, and each
     // computation makes many Bitbucket calls of its own
     const conflictsLimiter = createLimiter(maxConcurrent);
+
+    // The over-limit results: not complete, but no later load can do better on
+    // the same commits, so they are stored too (#49)
+    const overLimitResults = new WeakSet();
 
     // The stop of one load: the requests of maxConsecutiveFailures checks in a row
     // fail (two rounds of the limiter by default), with no answer between them,
@@ -176,7 +182,9 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
         if (toCheck.length > maxFilesToCheck) {
             const reason = `too many files to check (${toCheck.length})`;
             log.error(`Conflict check for ${repoName} ${spec}: ${reason}, the limit is ${maxFilesToCheck}`);
-            return known.length > 0 ? { conflicts: true, files: known, reason } : { error: true, reason };
+            const result = known.length > 0 ? { conflicts: true, files: known, reason } : { error: true, reason };
+            overLimitResults.add(result);
+            return result;
         }
 
         const files = new Set(known);
@@ -217,7 +225,7 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
     /**
      * The statuses of the given pull requests, keyed by "repo/dest..source":
      * each result is read from the cache first, computed otherwise (at most
-     * maxConcurrent at once), and only a complete result is stored; a pull
+     * maxConcurrent at once), and only a complete or over-limit result is stored; a pull
      * request without commit hashes on both sides gets no entry (the
      * frontend flags it as invalid). The cache is saved once at the end.
      * Repeated Bitbucket failures stop the load (createLoad): the checks the
@@ -247,8 +255,9 @@ export function createSyncStatuses({ fetch, workspace, bbAuth, log, syncCache, t
                         computed++;
                         return computeConflicts(repoName, spec, load);
                     });
-                    // Complete results only: a failure or a partial SYNC is computed again at the next load
-                    if (!result.error && !result.reason) syncCache.set(key, result);
+                    // Complete and over-limit results only: a failure or a SYNC partial after
+                    // a failure is computed again at the next load
+                    if ((!result.error && !result.reason) || overLimitResults.has(result)) syncCache.set(key, result);
                 }
                 statuses[key] = result;
             } catch (error) {

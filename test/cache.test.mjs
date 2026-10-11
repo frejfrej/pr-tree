@@ -1,6 +1,6 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { getCachedProjects, getCachedProjectData, getCachedSyncStatuses, raiseAllCacheTtls, getCacheStats } from '../cache.mjs';
+import { getCachedProjects, getCachedProjectData, getCachedSyncStatuses, syncStatusesKeep, raiseAllCacheTtls, getCacheStats } from '../cache.mjs';
 import { RateLimitError } from '../atlassian-fetch.mjs';
 
 // The cache belongs to the module: every test uses project names of its own
@@ -163,4 +163,23 @@ test('keep: false caches nothing: the loads sharing the build get it, the next l
     assert.equal(computations, 1);
     const data = { stopped: null, statuses: {} };
     assert.equal(await getCachedSyncStatuses('STOPPED', async () => ({ data, ttl: 60 })), data);
+});
+
+test('a SYNC response is kept until the end of the pause it was built in, and not at all outside one (#49)', async () => {
+    assert.deepEqual(syncStatusesKeep({ rateLimited: false, remainingMs: 0 }), { keep: false });
+    assert.deepEqual(syncStatusesKeep({ rateLimited: true, remainingMs: 599001 }), { ttl: 600 });
+    assert.deepEqual(syncStatusesKeep({ rateLimited: true, remainingMs: 0 }), { ttl: 1 }); // 0 would be "forever" to node-cache
+
+    let computations = 0;
+    const build = pause => async () => {
+        computations++;
+        return { data: { computation: computations }, ...syncStatusesKeep(pause) };
+    };
+    const outside = { rateLimited: false, remainingMs: 0 };
+    assert.deepEqual(await getCachedSyncStatuses('EACH_CLICK', build(outside)), { computation: 1 });
+    assert.deepEqual(await getCachedSyncStatuses('EACH_CLICK', build(outside)), { computation: 2 });
+    const during = { rateLimited: true, remainingMs: 60000 };
+    assert.deepEqual(await getCachedSyncStatuses('EACH_CLICK', build(during)), { computation: 3 });
+    assert.deepEqual(await getCachedSyncStatuses('EACH_CLICK', build(during)), { computation: 3 });
+    assert.equal(computations, 3);
 });

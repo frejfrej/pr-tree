@@ -450,7 +450,8 @@ The application integrates with a Jira workflow where:
 - Project data: 120 seconds
 - Projects list: 300 seconds
 - Conflicts: kept on disk (`sync-cache.json`) across restarts; a result older than 90 days, or computed under another version of the conflict rule, is dropped the next time the file is written
-- SYNC statuses: the response is kept only when built during a rate-limit pause, until the pause ends; otherwise each load computes again, each pull request's result read from `sync-cache.json` first
+- SYNC statuses: the response is kept only when built during a rate-limit pause, until the pause ends; otherwise each load computes again (a load asked for while one runs shares it), each pull request's result read from `sync-cache.json` first
+- `sync-cache.json` keeps the complete results and the ones with too many files to check (they depend on the commits alone); a failure, or a result partial after a failure, is computed again at the next load
 - Everything else is in memory and lost on restart
 
 **Shared Builds:**
