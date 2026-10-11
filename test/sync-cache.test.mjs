@@ -154,17 +154,19 @@ test('a failed write leaves the entries to the next save', async () => {
 // A file system recording the calls of a save; failing: { 'sync:<path>': error, ... }
 function fakeFileSystem(failing = {}) {
     const calls = [];
+    const written = [];
     const fail = name => { if (failing[name]) throw failing[name]; };
     const fileSystem = {
         calls,
+        written,
         async open(filePath, flags) {
             calls.push(`open ${path.basename(filePath)} ${flags}`);
             fail(`open:${path.basename(filePath)}`);
             const name = path.basename(filePath);
             return {
-                async writeFile() { calls.push(`write ${name}`); fail(`write:${name}`); },
+                async writeFile(content) { calls.push(`write ${name}`); written.push(content); fail(`write:${name}`); },
                 async sync() { calls.push(`sync ${name}`); fail(`sync:${name}`); },
-                async close() { calls.push(`close ${name}`); }
+                async close() { calls.push(`close ${name}`); fail(`close:${name}`); }
             };
         },
         async rename(from, to) { calls.push(`rename ${path.basename(from)} ${path.basename(to)}`); fail('rename'); },
@@ -185,6 +187,7 @@ test('a save syncs the temporary file before the rename, then the directory', as
         `rename ${temporary} sync-cache.json`,
         'open cache r', 'sync cache', 'close cache'
     ]);
+    assert.deepEqual(Object.keys(JSON.parse(fileSystem.written[0]).entries), ['2:repo/a..b']);
 });
 
 test('a directory that cannot be opened or synced does not fail the save', async () => {
@@ -202,7 +205,8 @@ test('a failed write, sync or rename closes the handle and removes the temporary
     const temporary = `sync-cache.json.${process.pid}.tmp`;
     for (const step of ['write', 'sync', 'rename']) {
         const failure = new Error(`${step} failed`);
-        const fileSystem = fakeFileSystem({ [step === 'rename' ? 'rename' : `${step}:${temporary}`]: failure });
+        // a close failing after a failed write or sync does not hide the first error
+        const fileSystem = fakeFileSystem({ [step === 'rename' ? 'rename' : `${step}:${temporary}`]: failure, ...(step !== 'rename' && { [`close:${temporary}`]: new Error('close failed') }) });
         const cache = open(path.join(tempDir(), 'cache', 'sync-cache.json'), { fileSystem });
         cache.set('repo/a..b', { conflicts: false });
         await assert.rejects(cache.save(), failure);
@@ -224,4 +228,25 @@ test('a rename that fails on the real file system leaves no temporary file', asy
     rmSync(file, { recursive: true });
     assert.equal(await cache.save(), true); // the entries were kept for the next save
     assert.equal(open(file).size, 1);
+});
+
+test('a close that fails after the sync fails the save, and removes the temporary file', async () => {
+    const temporary = `sync-cache.json.${process.pid}.tmp`;
+    const failure = new Error('close failed');
+    const fileSystem = fakeFileSystem({ [`close:${temporary}`]: failure });
+    const cache = open(path.join(tempDir(), 'cache', 'sync-cache.json'), { fileSystem });
+    cache.set('repo/a..b', { conflicts: false });
+    await assert.rejects(cache.save(), failure);
+    assert.deepEqual(fileSystem.calls.slice(-2), [`close ${temporary}`, `unlink ${temporary}`]); // closed once, no rename
+});
+
+test('the temporary files of stopped processes are removed at open, those of running ones kept', () => {
+    const directory = tempDir();
+    const file = path.join(directory, 'sync-cache.json');
+    const stopped = 'sync-cache.json.2147483646.tmp'; // no such process
+    const running = `sync-cache.json.${process.pid}.tmp`;
+    const others = ['sync-cache.json.abc.tmp', 'other.json.2147483646.tmp', 'sync-cache.json.2147483646.tmp.bak'];
+    for (const name of [stopped, running, ...others]) writeFileSync(path.join(directory, name), '');
+    open(file);
+    assert.deepEqual(readdirSync(directory).sort(), [running, ...others].sort());
 });

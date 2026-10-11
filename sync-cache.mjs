@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, unlinkSync } from 'fs';
 import * as fsPromises from 'fs/promises';
 import path from 'path';
 
@@ -13,7 +13,9 @@ import path from 'path';
  * version. Only successful results are meant to be stored; a failure is
  * retried by the caller at the next load. A save is durable: the new file
  * reaches the disk before it replaces the old one, so a power loss leaves
- * one or the other, never an empty file.
+ * one or the other, never an empty file. The temporary files that a stopped
+ * process left behind ("sync-cache.json.<pid>.tmp" of a pid no longer
+ * running) are removed at open.
  */
 
 export const syncCacheVersion = 1;
@@ -28,7 +30,7 @@ const dayMs = 24 * 60 * 60 * 1000;
  * @param {number} [options.maxAgeDays=90] - entries older than this are dropped at save
  * @param {() => number} [options.now] - clock, for the tests
  * @param {(error: Error) => void} [options.onError] - called when the file cannot be used
- * @param {{ open: Function, rename: Function, unlink: Function }} [options.fileSystem] - fs/promises, for the tests
+ * @param {{ open: Function, rename: Function, unlink: Function }} [options.fileSystem] - the functions of fs/promises a save uses, for the tests (the read at open is the real file system's)
  */
 export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = () => Date.now(), onError = () => {}, fileSystem = fsPromises } = {}) {
     if (!Number.isInteger(ruleVersion)) throw new TypeError('openSyncCache needs the ruleVersion of its keys');
@@ -59,18 +61,24 @@ export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = ()
         }
     }
 
+    removeTemporaryFilesOfStoppedProcesses(filePath);
+
     // A temporary file synced to the disk, then a rename: neither a crash nor
     // a power loss leaves a truncated or empty cache. The temporary file goes
     // when the write or the rename fails.
     async function write(content) {
-        const temporary = `${filePath}.${process.pid}.tmp`;
+        const temporary = temporaryFile(filePath, process.pid);
         try {
             const handle = await fileSystem.open(temporary, 'w');
+            let closed = false;
             try {
                 await handle.writeFile(content);
                 await handle.sync();
-            } finally {
+                closed = true;
                 await handle.close();
+            } finally {
+                // after a failed write or sync, its error is the one reported
+                if (!closed) await handle.close().catch(() => {});
             }
             await fileSystem.rename(temporary, filePath);
         } catch (error) {
@@ -82,8 +90,8 @@ export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = ()
         return true;
     }
 
-    // The rename itself on the disk; best effort: Windows cannot open a
-    // directory, and some file systems refuse to sync one
+    // The rename itself on the disk; best effort: Windows opens a directory
+    // but cannot flush it, and some file systems refuse to sync one
     async function syncDirectory() {
         let handle;
         try {
@@ -129,4 +137,40 @@ export function openSyncCache(filePath, { ruleVersion, maxAgeDays = 90, now = ()
             return saving;
         }
     };
+}
+
+function temporaryFile(filePath, pid) {
+    return `${filePath}.${pid}.tmp`;
+}
+
+// A process killed during a save (Ctrl+C, a crash) leaves its temporary file;
+// a pid still running may be another instance saving in the same directory
+function removeTemporaryFilesOfStoppedProcesses(filePath) {
+    const directory = path.dirname(filePath);
+    const prefix = `${path.basename(filePath)}.`;
+    let names;
+    try {
+        names = readdirSync(directory);
+    } catch {
+        return;
+    }
+    for (const name of names) {
+        if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
+        const pid = name.slice(prefix.length, -'.tmp'.length);
+        if (!/^[1-9]\d*$/.test(pid) || isRunning(Number(pid))) continue;
+        try {
+            unlinkSync(path.join(directory, name));
+        } catch {
+            // removed by another instance, or not ours to remove
+        }
+    }
+}
+
+function isRunning(pid) {
+    try {
+        process.kill(pid, 0); // signal 0: an existence check, nothing is sent
+        return true;
+    } catch (error) {
+        return error.code === 'EPERM'; // running, under another user
+    }
 }

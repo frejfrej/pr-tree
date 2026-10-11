@@ -44,9 +44,23 @@ sync, close, rename, directory sync is checked against a fake; the clean-up
 of the temporary file is checked on the real file system (a rename over a
 non-empty directory fails).
 
+A close that fails after a failed write or sync is ignored, so the error
+reported (error.log: "sync-cache.json not written") is the first one; a close
+that fails after the sync fails the save.
+
 The cost: one fsync of the file and one of the directory per save, that is
-per SYNC load that computed something; a few milliseconds against a load of
-Bitbucket requests.
+per SYNC load that computed something. On macOS Node's fsync is
+`F_FULLFSYNC`, which flushes the drive's cache too: tens of milliseconds or
+more on a busy disk. `computeSyncStatuses` (sync-statuses.mjs) therefore no
+longer awaits the save: the answer goes out at once, a failure is still
+logged.
+
+At open, the temporary files of processes no longer running
+(`sync-cache.json.<pid>.tmp`, checked with `process.kill(pid, 0)`; `EPERM`
+is a running process) are removed: a Ctrl+C or a crash during a save, now
+longer with the fsync, leaves one, and the restarted server has another pid.
+Those of a running pid are kept: a second instance in the same directory
+may be saving.
 
 ## 3. Turned down
 
@@ -55,7 +69,3 @@ Bitbucket requests.
   the loser's results are only computed again, and a merge reads and parses
   the whole file on every save, with its own rules for the entries of
   another rule version. Left as the known behaviour.
-- **Removing the temporary files of earlier crashes at open**
-  (`sync-cache.json.<other pid>.tmp`): a crash between the open and the
-  rename is the only way to leave one now, and a running second instance
-  could be writing its own at that moment.
