@@ -19,6 +19,7 @@ import { createProjectData } from './project-data.mjs';
 import { openSyncCache } from './sync-cache.mjs';
 import { conflictRuleVersion } from './conflicts.mjs';
 import { createLogFile } from './log-file.mjs';
+import { securityHeaders } from './security-headers.mjs';
 import { hostnameMatcher, createRequestGuard, canonicalHostname, isWildcardHost, loopbackHostnames } from './request-guard.mjs';
 
 // Fixture mode (--fixtures): generated data instead of Atlassian, no config.js needed
@@ -52,7 +53,13 @@ const releaseDate = packageJson.releaseDate || new Date().toISOString().split('T
 const author = packageJson.author;
 const license = packageJson.license;
 
-// First in the chain: requests addressed to another name (DNS rebinding) and
+// Every answer of the app, a refusal included, carries the Content-Security-Policy and the
+// other security headers (security-headers.mjs; Express's own error pages keep its stricter
+// default-src 'none'); Express does not announce itself
+app.disable('x-powered-by');
+app.use(securityHeaders);
+
+// Before anything is served: requests addressed to another name (DNS rebinding) and
 // /api requests sent by a page of another site get a 403 (request-guard.mjs)
 app.use(createRequestGuard({ isAllowedHostname: hostnames.isAllowed, log: message => log(message, errorLogStream) }));
 

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDocumentTitle, isFindShortcut, loadReadme, partialDataTitle } from '../public/app-shell.js';
+import { readFileSync } from 'node:fs';
+import { buildDocumentTitle, isFindShortcut, loadReadme, partialDataTitle, SIDEBAR_STORAGE_KEY, THEME_STORAGE_KEY, WIDE_LAYOUT_QUERY } from '../public/app-shell.js';
 
 test('title without a project is the app name', () => {
     assert.equal(buildDocumentTitle({ project: null, attentionCount: 0 }), 'Bitbucket Pull-Requests Tree');
@@ -81,4 +82,12 @@ test('a failure of the README or of Marked says so, and the next opening of the 
     await loadReadme(content, { fetchReadme: readmeAnswer(200, 'Help'), loadMarked: async () => fakeMarked });
     assert.equal(content.innerHTML, '<p>Help</p>');
     assert.equal(content.dataset.readme, 'loaded');
+});
+
+test('the theme bootstrap of the page head reads the storage keys and the breakpoint app-shell.js writes (#110)', () => {
+    // A classic script that cannot import them: a key that differs brings back the flash of the wrong theme or sidebar
+    const bootstrap = readFileSync(new URL('../public/theme-bootstrap.js', import.meta.url), 'utf8');
+    for (const value of [SIDEBAR_STORAGE_KEY, THEME_STORAGE_KEY, WIDE_LAYOUT_QUERY]) {
+        assert.ok(bootstrap.includes(`'${value}'`), `theme-bootstrap.js uses ${value}`);
+    }
 });

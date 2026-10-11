@@ -1,0 +1,78 @@
+# Content-Security-Policy and security headers
+
+**Date:** 2026-10-11
+**Issue:** #110
+**Target version:** 3.1.0 (the user holds the version at 3.1.0)
+**Status:** Decided alone (the user asked for the fix without a brainstorm); decisions 1 and 3 completed by the review round (section 4)
+
+## 1. Goal
+
+The server sent no security header and announced Express. Two sources are
+shown as HTML as they come (NFR-SEC7): Bitbucket's rendered pull-request
+title and description in the popover, safe only as long as Bitbucket's
+renderer is, and README.md in the help. A Content-Security-Policy keeps a
+script that would get through from running, on the page that reads every
+`/api` answer.
+
+## 2. Decisions
+
+1. **The policy** (`security-headers.mjs`): `default-src 'self'`,
+   `script-src 'self'`, `style-src 'self'`, `font-src 'self'`,
+   `img-src 'self' https: data:`, `connect-src 'self'`, `object-src 'none'`,
+   `base-uri 'none'`, `form-action 'none'`, `frame-ancestors 'none'`. No CDN
+   origin (the libraries are vendored since #122, as the issue's comment
+   says). `img-src` keeps `https:` (Atlassian avatars and priority icons, any
+   image of a description) and `data:` (the fixtures' avatars and icons, the
+   stylesheet's chevrons). No `'unsafe-inline'`, no `'unsafe-eval'`.
+2. **The theme bootstrap moves to `public/theme-bootstrap.js`**, a classic
+   script in `<head>`: it still runs before the first paint, and the policy
+   needs neither `'unsafe-inline'` nor a hash to keep up to date. The page had
+   no other inline script, no inline handler and no `style=` attribute (styles
+   are set through `element.style`, which the policy allows).
+3. **Every answer carries the headers**, a 403 of the request guard included:
+   the middleware comes before it. `X-Content-Type-Options: nosniff`,
+   `Referrer-Policy: no-referrer` (the images of Atlassian and of any host a
+   description names, and the links opened from the tree, no longer get the
+   dashboard's address), `app.disable('x-powered-by')`.
+4. **No sanitizer** for the popover (the issue's optional point): with the
+   policy, a `<script>`, an `on…=` attribute or a `javascript:` link in that
+   HTML does not run; an image from any host still loads on hover (a
+   tracking pixel at worst), which `img-src https:` accepts on purpose for
+   the avatars.
+5. **3.1.0**, with the other fixes of the release.
+
+## 3. Verification
+
+server.test.mjs: the headers on the page, a script, README.md, an API answer,
+a 404 and a 403 of the request guard, no `unsafe-inline` or `unsafe-eval`, no
+`X-Powered-By`; the page has no inline script and no script or the page has
+an `on…=` or `style=` attribute. Both fail on the previous files. Manual,
+Chrome on the fixture server: no violation at load or while using the page
+(tree, 370 images, popover, help with Marked, both themes, SYNC load); the
+icon font loads; an `onload` attribute and a `javascript:` link injected
+into the page do not run.
+
+## 4. Review round
+
+The /code-review of #131 led to:
+
+- **`style-src-attr 'unsafe-inline'`**: Bitbucket renders the alignment of a
+  table column as a `style=` attribute, which the first policy blocked in the
+  popover (and reported at each hover). A style attribute runs no script and
+  loads nothing `img-src` would refuse; `<style>` elements stay blocked.
+  A video or a frame in a description does not load (`default-src`).
+- **Express's own pages** (a static file not found, an unhandled error) carry
+  its final handler's `default-src 'none'`, stricter, instead of the policy;
+  the docs say "every answer of the app", and the test checks it.
+- **The header test** compares with the exported policy and checks the three
+  headers on the 403 too.
+- **The scan of the page and the scripts** looks for an `on…=` attribute
+  inside a tag, a handler set by `setAttribute`, a `<style>` element and a
+  `javascript:` URL, instead of any `style=` or `on…=` text; it covers the
+  common cases, not every way to break the policy.
+- **The theme bootstrap** uses `const` and `let`, and app-shell.test.mjs
+  checks it reads the storage keys and the breakpoint app-shell.js exports.
+
+Not taken: keeping the bootstrap inline with a hash in `script-src` to save
+the request: it is served from the same server, revalidated once cached, and
+a hash would have to follow every edit of the script.
