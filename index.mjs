@@ -53,8 +53,9 @@ const releaseDate = packageJson.releaseDate || new Date().toISOString().split('T
 const author = packageJson.author;
 const license = packageJson.license;
 
-// Every answer, a refusal included, carries the Content-Security-Policy and the other
-// security headers (security-headers.mjs); Express does not announce itself
+// Every answer of the app, a refusal included, carries the Content-Security-Policy and the
+// other security headers (security-headers.mjs; Express's own error pages keep its stricter
+// default-src 'none'); Express does not announce itself
 app.disable('x-powered-by');
 app.use(securityHeaders);
 

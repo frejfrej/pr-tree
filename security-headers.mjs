@@ -7,8 +7,11 @@
  *
  * - script-src, style-src, font-src 'self': the page loads its scripts,
  *   stylesheets and fonts from itself (the libraries are vendored, the theme
- *   bootstrap is a file); no inline script, no `style=` attribute in markup
- *   (styles set through element.style are not affected), no eval
+ *   bootstrap is a file); no inline script, no <style> element, no eval
+ * - style-src-attr 'unsafe-inline': `style=` attributes, which Bitbucket's
+ *   rendering puts in a description (the alignment of a table column); a
+ *   style attribute runs no script and loads nothing img-src would refuse.
+ *   The page's own markup sets none (classes, or element.style)
  * - img-src 'self' https: data: avatars and priority icons come from
  *   Atlassian, a pull-request description may show an image from any host,
  *   the fixtures and the stylesheet use data: URLs
@@ -17,13 +20,19 @@
  *   plugin, no <base>, no form, no framing of the dashboard
  *
  * With the policy, an `onerror` attribute, a <script> or a javascript: link
- * in the popover's HTML does not run. Nothing is sanitized (NFR-SEC7).
+ * in the popover's HTML does not run. Nothing is sanitized (NFR-SEC7). A
+ * video or a frame in a description does not load (default-src).
+ *
+ * Express's own answers (a static file not found, an unhandled error) carry
+ * its stricter `default-src 'none'` instead: its final handler replaces the
+ * header. They are plain text pages that run nothing.
  */
 
 export const contentSecurityPolicy = [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
+    "style-src-attr 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' https: data:",
     "connect-src 'self'",

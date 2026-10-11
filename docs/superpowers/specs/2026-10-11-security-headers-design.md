@@ -3,7 +3,7 @@
 **Date:** 2026-10-11
 **Issue:** #110
 **Target version:** 3.1.0 (the user holds the version at 3.1.0)
-**Status:** Decided alone (the user asked for the fix without a brainstorm)
+**Status:** Decided alone (the user asked for the fix without a brainstorm); decisions 1 and 3 completed by the review round (section 4)
 
 ## 1. Goal
 
@@ -51,3 +51,28 @@ Chrome on the fixture server: no violation at load or while using the page
 (tree, 370 images, popover, help with Marked, both themes, SYNC load); the
 icon font loads; an `onload` attribute and a `javascript:` link injected
 into the page do not run.
+
+## 4. Review round
+
+The /code-review of #131 led to:
+
+- **`style-src-attr 'unsafe-inline'`**: Bitbucket renders the alignment of a
+  table column as a `style=` attribute, which the first policy blocked in the
+  popover (and reported at each hover). A style attribute runs no script and
+  loads nothing `img-src` would refuse; `<style>` elements stay blocked.
+  A video or a frame in a description does not load (`default-src`).
+- **Express's own pages** (a static file not found, an unhandled error) carry
+  its final handler's `default-src 'none'`, stricter, instead of the policy;
+  the docs say "every answer of the app", and the test checks it.
+- **The header test** compares with the exported policy and checks the three
+  headers on the 403 too.
+- **The scan of the page and the scripts** looks for an `on…=` attribute
+  inside a tag, a handler set by `setAttribute`, a `<style>` element and a
+  `javascript:` URL, instead of any `style=` or `on…=` text; it covers the
+  common cases, not every way to break the policy.
+- **The theme bootstrap** uses `const` and `let`, and app-shell.test.mjs
+  checks it reads the storage keys and the breakpoint app-shell.js exports.
+
+Not taken: keeping the bootstrap inline with a hash in `script-src` to save
+the request: it is served from the same server, revalidated once cached, and
+a hash would have to follow every edit of the script.

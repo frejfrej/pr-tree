@@ -10,6 +10,7 @@ import path from 'node:path';
 import { multiSelectMarkup } from '../public/multi-select.js';
 import { multiSelectFilters } from '../public/filter-registry.js';
 import { pullRequestKey } from '../public/pull-request-key.mjs';
+import { contentSecurityPolicy } from '../security-headers.mjs';
 
 /**
  * Runs the server in fixture mode on an ephemeral port and checks what it
@@ -345,41 +346,48 @@ test('the IPv6 loopback answers too, on the same port: localhost may resolve to 
     assert.equal(response.status, 200);
 });
 
-test('every answer carries the Content-Security-Policy and the security headers, a refusal included; Express does not announce itself (#110)', async () => {
+test('every answer of the app carries the Content-Security-Policy and the security headers, a refusal included; Express does not announce itself (#110)', async () => {
     const port = new URL(baseUrl).port;
-    const answers = [
+    const responses = [
         await fetch(`${baseUrl}/`), await fetch(`${baseUrl}/app.js`), await fetch(`${baseUrl}/README.md`),
         await fetch(`${baseUrl}/api/version`), await fetch(`${baseUrl}/api/pull-requests/NO_SUCH_PROJECT`)
-    ].map(response => ({ status: response.status, get: name => response.headers.get(name) }));
+    ].map(response => name => response.headers.get(name));
     const refused = await rawGet('/', { Host: `evil.example:${port}` });
     assert.equal(refused.status, 403);
-    for (const { get } of answers) {
-        const policy = get('content-security-policy');
-        for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "font-src 'self'", "img-src 'self' https: data:",
-            "connect-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"]) {
-            assert.ok(policy.split('; ').includes(directive), `${directive} in ${policy}`);
-        }
-        assert.ok(!/unsafe-inline|unsafe-eval/.test(policy));
+    for (const get of [...responses, name => refused.headers[name] ?? null]) {
+        assert.equal(get('content-security-policy'), contentSecurityPolicy);
         assert.equal(get('x-content-type-options'), 'nosniff');
         assert.equal(get('referrer-policy'), 'no-referrer');
         assert.equal(get('x-powered-by'), null);
     }
-    assert.match(refused.headers['content-security-policy'], /frame-ancestors 'none'/);
-    assert.equal(refused.headers['x-powered-by'], undefined);
+    // The policy itself: the page's own origin only, no inline script, no eval; style attributes only (Bitbucket's tables)
+    const directives = contentSecurityPolicy.split('; ');
+    for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'",
+        "img-src 'self' https: data:", "connect-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'"]) {
+        assert.ok(directives.includes(directive), directive);
+    }
+    assert.deepEqual(directives.filter(directive => /unsafe/.test(directive)), ["style-src-attr 'unsafe-inline'"]);
+    // Express's own pages (a static file not found) keep its stricter policy
+    assert.equal((await fetch(`${baseUrl}/no-such-file.js`)).headers.get('content-security-policy'), "default-src 'none'");
 });
 
-test('the page has nothing the policy would block: no inline script, no inline event handler, no style attribute (#110)', async () => {
+test('the page has nothing the policy would block: no inline script, no inline event handler, no <style>, no javascript: URL (#110)', async () => {
     const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
     for (const [, attributes, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
         assert.match(attributes, /\bsrc=/, 'every script is a file');
         assert.equal(body.trim(), '', 'no inline script');
     }
-    // The page and the markup the scripts build: an on…= or style= attribute would be blocked
+    // The page and the markup the scripts build or set: an attribute inside a tag, or set by setAttribute
     const publicDir = path.join(root, 'public');
     const sources = { 'index.html': html, ...Object.fromEntries(readdirSync(publicDir).filter(name => /\.m?js$/.test(name))
         .map(name => [name, readFileSync(path.join(publicDir, name), 'utf8')])) };
+    const blocked = {
+        'an inline event handler': /<[a-z][^<>]*\son[a-z]+\s*=/i,
+        'a handler set as an attribute': /setAttribute\(\s*['"`]on[a-z]+['"`]/i,
+        'a <style> element': /<style\b/i,
+        'a javascript: URL': /javascript:/i
+    };
     for (const [name, source] of Object.entries(sources)) {
-        assert.doesNotMatch(source, /\son[a-z]+\s*=\s*["'$]/i, `${name} has an inline event handler`);
-        assert.doesNotMatch(source, /\sstyle\s*=\s*["'$]/i, `${name} has a style attribute`);
+        for (const [what, pattern] of Object.entries(blocked)) assert.doesNotMatch(source, pattern, `${name} has ${what}`);
     }
 });

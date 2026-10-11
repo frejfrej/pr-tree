@@ -11,9 +11,9 @@ import { collapseAll, expandAll } from './tree-toggle.js';
 
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
-const SIDEBAR_STORAGE_KEY = 'prTree.sidebarHidden';
-const THEME_STORAGE_KEY = 'prTree.theme';
-const WIDE_LAYOUT_QUERY = '(min-width: 900px)';
+export const SIDEBAR_STORAGE_KEY = 'prTree.sidebarHidden';
+export const THEME_STORAGE_KEY = 'prTree.theme';
+export const WIDE_LAYOUT_QUERY = '(min-width: 900px)';
 
 let wideLayout = null;
 

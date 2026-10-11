@@ -4,15 +4,18 @@
  * loaded by index.html's <head>, not a module: it must run before the first
  * paint. Its own file rather than inline, so the Content-Security-Policy
  * needs no 'unsafe-inline' (#110).
+ *
+ * The storage keys and the breakpoint are app-shell.js's constants, which
+ * the page cannot import here (app-shell.test.mjs checks they match).
  */
 (function () {
-    var theme = null;
-    var sidebarHidden = null;
+    let theme = null;
+    let sidebarHidden = null;
     try {
         theme = localStorage.getItem('prTree.theme');
         sidebarHidden = localStorage.getItem('prTree.sidebarHidden');
     } catch (error) { /* storage unavailable */ }
-    var root = document.documentElement;
+    const root = document.documentElement;
     if (theme !== 'light' && theme !== 'dark') {
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
