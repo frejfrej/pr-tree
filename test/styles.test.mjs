@@ -98,9 +98,14 @@ test('every status border reaches 3:1 against the surface, in both themes', () =
 });
 
 // Amber and green, blue and purple look alike to a red-green colour-blind eye; lightness keeps those bands
-// apart (amber and green are 1.30:1 apart in dark)
+// apart (amber and green are 1.30:1 apart in dark). Blue and green keep their hues for that eye and are not
+// checked (1.05:1 in light): a tritan eye or a greyscale print does not tell them apart
 test('the bands a red-green colour-blind eye confuses differ in lightness, in both themes', () => {
-    const border = selector => bands.find(band => band.selector === selector).border;
+    const border = selector => {
+        const band = bands.find(band => band.selector === selector);
+        assert.ok(band, `${selector} is a status band of styles.css`);
+        return band.border;
+    };
     const pairs = [['.status-in-progress', '.status-in-review-all-approved'], ['.status-in-review', '.status-resolved']];
     for (const [theme, tokens] of Object.entries(themes)) {
         for (const [first, second] of pairs) {

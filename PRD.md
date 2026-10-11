@@ -519,7 +519,8 @@ YYYY-MM-DDTHH:mm:ss.sssZ - Message
 #### Color Coding
 - **Green**: Commits ahead, positive status, SYNC OK
 - **Red**: Commits behind, action required, conflicts, blocking issues, SYNC required
-- **Blue**: Informational badges (review status)
+- **Blue**: Informational badges, the in-review status band
+- **Purple**: The resolved status band (every linked issue resolved or closed; a pull request without a linked issue has no band)
 - **Yellow**: Priority indicators
 - **Gray**: Neutral/inactive state, SYNC not checked
 - Status text, status icons and the fills under white (dark-theme: dark) text, such as the OK, SYNC and `?`/`!` badges and the active-filter count, use "strong" status colours whose contrast with the surface and with that text is at least 4.5:1 (WCAG AA) in both themes; the plain status colours are kept for borders

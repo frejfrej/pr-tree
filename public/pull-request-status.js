@@ -30,10 +30,9 @@ export function syncKey(pullRequest) {
  * The class of the band: status-in-progress when a linked issue is in
  * progress; else, when one is in review, status-in-review-all-approved if
  * there are reviewers and every one approved, status-in-review otherwise;
- * else status-resolved when every linked issue is resolved or closed (a pull
- * request without any linked issue included, as it always was); an empty
- * string otherwise, and for a pull request the issue map does not know
- * (no list at all).
+ * else status-resolved when it has linked issues and every one is resolved
+ * or closed; an empty string otherwise: no linked issue, or a pull request
+ * the issue map does not know (no list at all).
  * @param {object} pullRequest - a Bitbucket pull request
  * @param {object[] | null | undefined} linkedIssues - the Jira issues it links, with their status
  * @returns {string}
@@ -47,6 +46,6 @@ export function statusClass(pullRequest, linkedIssues) {
         const allApproved = reviewers.length > 0 && reviewers.every(participant => participant.approved);
         return allApproved ? 'status-in-review-all-approved' : 'status-in-review';
     }
-    if (statuses.every(status => status === 'Resolved' || status === 'Closed')) return 'status-resolved';
+    if (statuses.length > 0 && statuses.every(status => status === 'Resolved' || status === 'Closed')) return 'status-resolved';
     return '';
 }

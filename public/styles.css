@@ -22,9 +22,9 @@
     --warning-color: #FFAB00;
     --error-color: #FF5630;
     --in-review-color: #0065FF;
-    /* A hue of its own and another lightness than --in-review-color, so the
-       two bands are told apart without hue too */
-    --resolved-color: #5E4DB2;
+    /* Purple, and darker than --in-review-color in both themes, so the two
+       bands are told apart without hue too (test/styles.test.mjs) */
+    --resolved-color: #5243AA;
     --danger-bg: #FFEBE6;
     /* Status colours for text, icons and fills under --on-accent-text: 4.5:1
        or more against --surface-color and with --on-accent-text (WCAG AA),

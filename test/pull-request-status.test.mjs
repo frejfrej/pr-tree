@@ -33,8 +33,8 @@ test('statusClass: in progress wins, then in review (all approved or not), then 
     assert.equal(statusClass(pullRequest([jane]), [{ fields: {} }]), ''); // an issue without a status
 });
 
-test('statusClass: no linked issues is resolved (every status of none), no issue list is no band', () => {
-    assert.equal(statusClass(pullRequest([jane]), []), 'status-resolved');
+test('statusClass: no linked issue and no issue list are no band', () => {
+    assert.equal(statusClass(pullRequest([jane]), []), '');
     assert.equal(statusClass(pullRequest([jane]), null), '');
     assert.equal(statusClass(pullRequest([jane]), undefined), '');
 });

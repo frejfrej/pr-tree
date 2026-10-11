@@ -12,4 +12,8 @@ Spec: `docs/superpowers/specs/2026-10-11-resolved-band-design.md`.
    section 8.2.
 4. **Browser**: fixture server, SECOLLAB, one card of each band side by side
    in both themes.
-5. Commit, push, pull request against master.
+5. **After the /code-review**: light purple #5243AA, no band for a pull
+   request without a linked issue (`statusClass` and its test), the README
+   line says darker in both themes, the PRD colour list has purple, the
+   test names a missing band instead of throwing.
+6. Commit, push, pull request against master.
