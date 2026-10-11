@@ -19,10 +19,11 @@ Spec: `docs/superpowers/specs/2026-10-11-stop-sync-load-design.md`.
    answers, a load object (controller, count) per `computeSyncStatuses`,
    passed to `computeConflicts` (optional: a direct call gets its own),
    `{ statuses, stopped }` returned.
-3. **Cache** (`cache.mjs`, CRLF): a TTL of 0 keeps nothing; test in
+3. **Cache** (`cache.mjs`, CRLF): `keep: false` caches nothing (a TTL of 0
+   is node-cache's "never expires"); test in
    `test/cache.test.mjs`.
-4. **Endpoint** (`index.mjs`, CRLF): `stopped` in the response, TTL 0 when
-   stopped outside a pause.
+4. **Endpoint** (`index.mjs`, CRLF): `stopped` in the response, `keep: false`
+   when stopped outside a pause.
 5. **Page** (`public/app-sync.js`): the SYNC warning for a stopped load;
    manual check with an overridden `window.fetch` on the fixture server.
 6. **Docs**: README changelog line under 2.12.0, PRD.md (endpoint, cache).
