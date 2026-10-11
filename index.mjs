@@ -195,6 +195,12 @@ app.get('/api/pull-requests/:project', async (req, res) => {
     const startTime = Date.now();
     const projectName = req.params.project;
 
+    // A mistyped or stale link: no build, no error.log line
+    if (!config.projects[projectName]) {
+        res.status(404).json({ error: 'Project not found' });
+        return;
+    }
+
     try {
         const projectData = await getCachedProjectData(projectName, () => buildProjectData(projectName));
 

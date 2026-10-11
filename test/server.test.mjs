@@ -253,10 +253,10 @@ test('the pull requests of a project have the documented shape, and the same dat
     assert.equal(again.dataHash, data.dataHash);
 });
 
-test('an unknown project: 500 from the pull requests route, 404 from the sync statuses one', async () => {
+test('an unknown project: 404 from both routes (#105)', async () => {
     const pullRequests = await fetch(`${baseUrl}/api/pull-requests/NO_SUCH_PROJECT`);
-    assert.equal(pullRequests.status, 500);
-    assert.equal(await pullRequests.text(), 'Internal Server Error');
+    assert.equal(pullRequests.status, 404);
+    assert.deepEqual(await pullRequests.json(), { error: 'Project not found' });
     const statuses = await fetch(`${baseUrl}/api/sync-statuses/NO_SUCH_PROJECT`);
     assert.equal(statuses.status, 404);
     assert.deepEqual(await statuses.json(), { error: 'Project not found' });
@@ -265,12 +265,11 @@ test('an unknown project: 500 from the pull requests route, 404 from the sync st
 test('a project name inherited from Object.prototype is an unknown project too (#105)', async () => {
     // Before, the check found Object.prototype.constructor and the like, and the build failed further on (a 500)
     for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
-        const statuses = await fetch(`${baseUrl}/api/sync-statuses/${name}`);
-        assert.equal(statuses.status, 404, name);
-        assert.deepEqual(await statuses.json(), { error: 'Project not found' }, name);
-        const pullRequests = await fetch(`${baseUrl}/api/pull-requests/${name}`);
-        assert.equal(pullRequests.status, 500, name);
-        assert.equal(await pullRequests.text(), 'Internal Server Error', name);
+        for (const route of ['sync-statuses', 'pull-requests']) {
+            const response = await fetch(`${baseUrl}/api/${route}/${name}`);
+            assert.equal(response.status, 404, `${route}/${name}`);
+            assert.deepEqual(await response.json(), { error: 'Project not found' }, `${route}/${name}`);
+        }
     }
 });
 
