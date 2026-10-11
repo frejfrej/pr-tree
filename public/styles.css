@@ -22,6 +22,9 @@
     --warning-color: #FFAB00;
     --error-color: #FF5630;
     --in-review-color: #0065FF;
+    /* Purple, and darker than --in-review-color in both themes, so the two
+       bands are told apart without hue too (test/styles.test.mjs) */
+    --resolved-color: #5243AA;
     --danger-bg: #FFEBE6;
     /* Status colours for text, icons and fills under --on-accent-text: 4.5:1
        or more against --surface-color and with --on-accent-text (WCAG AA),
@@ -77,6 +80,7 @@
     --warning-color: #F5CD47;
     --error-color: #F87168;
     --in-review-color: #579DFF;
+    --resolved-color: #8270DB;
     --danger-bg: #42221F;
     --success-strong: var(--success-color);
     --error-strong: var(--error-color);
@@ -973,7 +977,7 @@ select:disabled {
 .status-in-progress { border-color: var(--warning-border); }
 .status-in-review { border-color: var(--in-review-color); }
 .status-in-review-all-approved { border-color: var(--success-border); }
-.status-resolved { border-color: var(--primary-color); }
+.status-resolved { border-color: var(--resolved-color); }
 
 .warnings {
     margin-top: 10px;
