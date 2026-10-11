@@ -523,6 +523,7 @@ YYYY-MM-DDTHH:mm:ss.sssZ - Message
 - **Yellow**: Priority indicators
 - **Gray**: Neutral/inactive state, SYNC not checked
 - Status text, status icons and the fills under white (dark-theme: dark) text, such as the OK, SYNC and `?`/`!` badges and the active-filter count, use "strong" status colours whose contrast with the surface and with that text is at least 4.5:1 (WCAG AA) in both themes; the plain status colours are kept for borders
+- The status border of a card (in progress, in review, all approved, resolved) reaches 3:1 (WCAG 1.4.11) against the card's surface and the page background in both themes
 
 #### Status Badges
 - Rounded corners with 4px radius

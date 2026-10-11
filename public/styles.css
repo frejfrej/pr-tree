@@ -25,13 +25,17 @@
     --danger-bg: #FFEBE6;
     /* Status colours for text, icons and fills under --on-accent-text: 4.5:1
        or more against --surface-color and with --on-accent-text (WCAG AA),
-       which the status colours above miss; those stay for borders */
+       which the status colours above miss */
     --success-strong: #1F845A;
     --error-strong: #C9372C;
     --attention-strong: var(--error-strong);
     --warning-strong: #946F00;
     --neutral-strong: #626F86;
     --on-accent-text: #FFFFFF;
+    /* Status borders of the cards that the plain colours leave below 3:1
+       (WCAG 1.4.11) against --surface-color and --background-color */
+    --warning-border: #B38600;
+    --success-border: #22A06B;
     --shadow-color: rgba(9, 30, 66, 0.15);
     --focus-ring: rgba(0, 82, 204, 0.25);
     --backdrop-color: rgba(9, 30, 66, 0.45);
@@ -79,6 +83,8 @@
     --warning-strong: var(--warning-color);
     --neutral-strong: var(--text-muted);
     --on-accent-text: #1D2125;
+    --warning-border: var(--warning-color);
+    --success-border: var(--success-color);
     --shadow-color: rgba(0, 0, 0, 0.5);
     --focus-ring: rgba(87, 157, 255, 0.35);
     --backdrop-color: rgba(0, 0, 0, 0.6);
@@ -963,9 +969,9 @@ select:disabled {
 .icon.fa-question-circle { color: var(--primary-color); }
 .icon.fa-user { color: var(--text-color); }
 
-.status-in-progress { border-color: var(--warning-color); }
+.status-in-progress { border-color: var(--warning-border); }
 .status-in-review { border-color: var(--in-review-color); }
-.status-in-review-all-approved { border-color: var(--success-color); }
+.status-in-review-all-approved { border-color: var(--success-border); }
 .status-resolved { border-color: var(--primary-color); }
 
 .warnings {
