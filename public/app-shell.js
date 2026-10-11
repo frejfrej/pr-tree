@@ -159,28 +159,36 @@ async function fetchAndDisplayVersion() {
 
 function openHelp() {
     document.getElementById('helpModal').hidden = false;
-    const content = document.getElementById('helpContent');
-    if (!content.innerHTML) {
-        fetchAndRenderReadme(content);
-    }
+    loadReadme(document.getElementById('helpContent'));
 }
 
 function closeHelp() {
     document.getElementById('helpModal').hidden = true;
 }
 
-async function fetchAndRenderReadme(content) {
+const importMarked = async () => (await import('./vendor/marked/marked.esm.js')).marked;
+
+/**
+ * Renders README.md into the help modal, once. Marked is imported only
+ * then, so nothing waits for it at page load. A failure leaves no mark on
+ * the element, so the next opening tries again; an opening while a load is
+ * in flight does nothing.
+ */
+export async function loadReadme(content, { fetchReadme = () => fetch('README.md'), loadMarked = importMarked } = {}) {
+    if (content.dataset.readme) return;
+    content.dataset.readme = 'loading';
     content.textContent = 'Loading...';
     try {
-        const response = await fetch('README.md');
+        const [response, marked] = await Promise.all([fetchReadme(), loadMarked()]);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const markdown = await response.text();
-        content.innerHTML = marked.parse(markdown);
+        content.innerHTML = marked.parse(await response.text());
+        content.dataset.readme = 'loaded';
     } catch (error) {
-        console.error('Error fetching README:', error);
-        content.textContent = 'Error loading help content. Please try again later.';
+        console.error('Error loading the help content:', error);
+        content.textContent = 'Could not load the help content. Close the help and open it again to retry.';
+        delete content.dataset.readme;
     }
 }
 

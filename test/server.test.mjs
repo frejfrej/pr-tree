@@ -63,6 +63,48 @@ test('no other file of the project directory is served', async () => {
     }
 });
 
+// Absolute (`https:`) or protocol-relative (`//host`) URLs; `data:` URLs load nothing
+const otherOrigin = url => /^(?:[a-z][a-z\d+.-]*:|\/\/|\\\\)/i.test(url.trim()) && !/^data:/i.test(url.trim());
+
+test('the page loads nothing from another origin: its scripts, links, module imports and CSS urls are all local', async () => {
+    const html = await (await fetch(`${baseUrl}/`)).text();
+    const tags = [...html.matchAll(/<(?:script|link)\b[^>]*>/gi)].map(([tag]) => tag);
+    const urls = tags.flatMap(tag => [...tag.matchAll(/\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)]
+        .map(match => ({ tag, url: match[1] ?? match[2] ?? match[3] })));
+    assert.ok(urls.some(({ url }) => url === 'vendor/fontawesome/css/all.min.css'));
+    for (const { tag, url } of urls) assert.ok(!otherOrigin(url), `${tag} loads from another origin`);
+
+    const publicDir = path.join(root, 'public');
+    for (const file of readdirSync(publicDir).filter(name => name.endsWith('.js'))) {
+        const source = readFileSync(path.join(publicDir, file), 'utf8');
+        for (const [, specifier] of source.matchAll(/\b(?:from|import)\s*\(?\s*['"`]([^'"`]+)['"`]/g)) {
+            assert.ok(!otherOrigin(specifier), `${file} imports ${specifier}`);
+        }
+    }
+    for (const file of ['styles.css', 'vendor/fontawesome/css/all.min.css']) {
+        const css = readFileSync(path.join(publicDir, file), 'utf8');
+        for (const [, url] of css.matchAll(/url\(\s*['"]?([^'")]+)/g)) assert.ok(!otherOrigin(url), `${file} loads ${url}`);
+    }
+});
+
+test('the vendored libraries are served: Marked for the help modal, the Font Awesome stylesheet and every font it names', async () => {
+    const marked = await fetch(`${baseUrl}/vendor/marked/marked.esm.js`);
+    assert.equal(marked.status, 200);
+    assert.match(marked.headers.get('content-type'), /^(?:text|application)\/javascript/);
+    assert.match(await marked.text(), /export\s*\{[^}]*\bas marked\b/);
+
+    const css = await fetch(`${baseUrl}/vendor/fontawesome/css/all.min.css`);
+    assert.equal(css.status, 200);
+    assert.match(css.headers.get('content-type'), /^text\/css/);
+    const fonts = [...(await css.text()).matchAll(/url\((\.\.\/webfonts\/[^)]+\.woff2)\)/g)].map(([, url]) => url);
+    assert.equal(fonts.length, 3);
+    for (const font of fonts) {
+        const response = await fetch(new URL(font, `${baseUrl}/vendor/fontawesome/css/`));
+        assert.equal(response.status, 200, `${font} must be served`);
+        assert.match(response.headers.get('content-type'), /^font\/woff2/);
+    }
+});
+
 test('the app and the API still answer', async () => {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);

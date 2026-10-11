@@ -84,6 +84,10 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.0.1
+    * The page loads nothing from a CDN any more: Font Awesome 5.15.3 (its stylesheet and fonts) and Marked are served by the dashboard itself, from `public/vendor/`, as published on npm. Marked came from an unversioned CDN address with no integrity check (it served 15.0.12 of 2025): a changed or compromised file would have run on the page that reads the `/api` answers. The dashboard also works offline or behind a proxy that blocks the CDNs, and a slow CDN no longer holds back its start
+    * The help modal uses Marked 18.0.14, imported only when the help is first opened, so nothing waits for it at page load; the README renders the same. When the help content cannot be loaded, opening the help again retries, instead of showing the error until the page is reloaded
+    * Express's dependencies are updated past four advisories (`npm audit`): `proxy-addr` 2.0.8 (critical, IP spoofing through IPv4-mapped IPv6), `path-to-regexp` 8.4.2 (high, ReDoS), `qs` 6.16.0 (moderate, denial of service), `body-parser` 2.3.0 (low, size limit). Express itself stays 5.2.1
 * Version 3.0.0
     * During the 10-minute pause of the Atlassian requests after an HTTP 429, the page says so instead of failing silently: a project that cannot load meanwhile says "Atlassian requests are paused until 14:33 after a rate limit (HTTP 429)" instead of "Could not load", and the banner shows "Paused until 14:33" with a warning icon next to the refresh time while the tree is the data cached before the pause (below 900px, the icon only, the time in its tooltip) (#77)
     * The response of `/api/pull-requests/:project` carries `rateLimitedUntil`: the end of the pause in progress, `null` outside one
