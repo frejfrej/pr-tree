@@ -7,7 +7,7 @@ What the code cannot tell: where things are, how to work on them, the convention
 **Bitbucket Pull-Requests Tree** is a localhost dashboard of the open Bitbucket pull requests of a project, as a tree of stacked pull requests per repository, with their Jira issues, sprints, fix versions, epics and stories, reviewers, commit counts and conflicts (SYNC), the Jira issues in review without a pull request, and filters over all of it. Single user, developer workstation, not meant for production.
 
 - **Backend**: Node.js 20.11 or later (22.5 for `npm run test:coverage`), ES modules (`.mjs`), Express 5, node-cache, the built-in `fetch`; `config.js` and `projects.js` are CommonJS
-- **Frontend**: vanilla ES modules in `public/`, no framework, no build step; Font Awesome 5.15.3 and Marked.js (the help modal renders README.md) from CDNs
+- **Frontend**: vanilla ES modules in `public/`, no framework, no build step; Font Awesome 5.15.3 and Marked.js 18.0.14 (the help modal renders README.md) from CDNs, each at an exact version with its `integrity` hash (server.test.mjs checks it; recompute the hash on a version change: `curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`)
 - **Tests**: `node:test`, no test dependency, no DOM (fake elements where a DOM write is tested)
 - **APIs**: Bitbucket 2.0, Jira REST 3 (`/search/jql`), Jira Agile 1.0 (boards, sprints)
 

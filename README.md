@@ -84,6 +84,9 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.0.1
+    * The help modal loads Marked 18.0.14, named by its exact version and checked by the browser against its SHA-384 hash, instead of whatever the unversioned CDN address served (15.0.12 of 2025, the last version that shipped `marked.min.js`): a changed or compromised file on the CDN is refused instead of running on the page that reads the `/api` answers. The README renders the same. The Font Awesome stylesheet is checked against its hash too, and Marked no longer delays the first paint (`defer`)
+    * Express's dependencies are updated past four advisories (`npm audit`): `proxy-addr` 2.0.8 (critical, IP spoofing through IPv4-mapped IPv6), `path-to-regexp` 8.4.2 (high, ReDoS), `qs` 6.16.0 (moderate, denial of service), `body-parser` 2.3.0 (low, size limit). Express itself stays 5.2.1
 * Version 3.0.0
     * During the 10-minute pause of the Atlassian requests after an HTTP 429, the page says so instead of failing silently: a project that cannot load meanwhile says "Atlassian requests are paused until 14:33 after a rate limit (HTTP 429)" instead of "Could not load", and the banner shows "Paused until 14:33" with a warning icon next to the refresh time while the tree is the data cached before the pause (below 900px, the icon only, the time in its tooltip) (#77)
     * The response of `/api/pull-requests/:project` carries `rateLimitedUntil`: the end of the pause in progress, `null` outside one

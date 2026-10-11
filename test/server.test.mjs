@@ -63,6 +63,17 @@ test('no other file of the project directory is served', async () => {
     }
 });
 
+test('every script and stylesheet from a CDN names an exact version and carries its integrity hash', async () => {
+    const html = await (await fetch(`${baseUrl}/`)).text();
+    const external = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="(https?:\/\/[^"]+)"[^>]*>/g)];
+    assert.ok(external.length > 0);
+    for (const [tag, url] of external) {
+        assert.match(url, /[@/]\d+\.\d+\.\d+\//, `${url} must name an exact version`);
+        assert.match(tag, /\bintegrity="sha(256|384|512)-[A-Za-z0-9+/=]+"/, `${url} must carry an integrity hash`);
+        assert.match(tag, /\bcrossorigin="anonymous"/, `${url} needs crossorigin for its integrity check`);
+    }
+});
+
 test('the app and the API still answer', async () => {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);

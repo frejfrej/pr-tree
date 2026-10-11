@@ -408,8 +408,8 @@ The application integrates with a Jira workflow where:
 
 #### Frontend
 - **Core:** HTML5, CSS3, Vanilla JavaScript (ES6)
-- **Icons:** Font Awesome 5.15.3
-- **Markdown:** Marked.js
+- **Icons:** Font Awesome 5.15.3 (CDN, with an integrity hash)
+- **Markdown:** Marked.js 18.0.14 (CDN, exact version, with an integrity hash)
 
 #### External APIs
 - Bitbucket API v2.0 (REST)
