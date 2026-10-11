@@ -19,8 +19,8 @@ test('every element of the registry is a multi-select of index.html', () => {
     }
 });
 
-test('defaultFilters has the three scalar defaults and an empty, fresh selection per multi-select', () => {
+test('defaultFilters has the four scalar defaults and an empty, fresh selection per multi-select', () => {
     const filters = defaultFilters();
-    assert.deepEqual(filters, { text: '', work: 'all', sync: 'Show all', sprints: [], fixVersions: [], epics: [], stories: [], participants: [] });
+    assert.deepEqual(filters, { text: '', work: 'all', hideDrafts: false, sync: 'Show all', sprints: [], fixVersions: [], epics: [], stories: [], participants: [] });
     assert.notEqual(defaultFilters().sprints, filters.sprints); // a new array each call
 });

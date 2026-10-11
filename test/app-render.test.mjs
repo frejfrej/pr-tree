@@ -189,6 +189,23 @@ test('renderRepositories renders the issues, participants, commit badges and ale
     assert.ok(html.includes('Pull request has no other participants'));
 });
 
+test('renderRepositories marks a draft and counts its open tasks, nothing for a ready pull request without tasks (#119)', () => {
+    const plain = renderSample();
+    assert.equal(count(plain, 'class="draft-badge"'), 0);
+    assert.equal(count(plain, 'class="task-badge"'), 0);
+    const draft = { ...stacked, draft: true, task_count: 2 };
+    const oneTask = { ...recent, task_count: 1 };
+    const html = renderRepositories([draft, child, approved, oneTask], jiraIssuesMap, jiraIssuesDetails, 'site');
+    assert.equal(count(html, 'class="draft-badge"'), 1);
+    assert.match(html, /data-id="repo-one\/1">[\s\S]*?<\/a>\s*<span class="draft-badge"[^>]*>Draft<\/span>[\s\S]*?data-id="repo-one\/2"/); // after the title of PR 1
+    assert.ok(html.includes('title="2 open tasks"'));
+    assert.ok(html.includes('title="1 open task"'));
+    assert.ok(html.includes('<i class="fas fa-tasks" role="img" aria-label="open tasks"></i>2'));
+    for (const taskCount of [0, null, undefined, 'x']) {
+        assert.equal(count(renderRepositories([{ ...stacked, task_count: taskCount }], {}, [], 'site'), 'class="task-badge"'), 0, String(taskCount));
+    }
+});
+
 test('renderRepositories writes what the popovers and the SYNC badges read back', () => {
     const html = renderSample();
     assert.ok(html.includes(`data-rendered-title="${encodeURIComponent('<p>PR 1</p>')}"`));

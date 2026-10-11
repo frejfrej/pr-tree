@@ -45,7 +45,8 @@ function applyFilters() {
 
 // Puts every filter control back to its default without applying anything:
 // the search box, the multi-selects, the Work select ("All work"; its disabled
-// state follows the participants in readFilterControls) and the SYNC select
+// state follows the participants in readFilterControls), the Hide drafts box
+// and the SYNC select
 function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
@@ -55,6 +56,8 @@ function resetFilterControls() {
     }
     const workSelect = document.getElementById('workSelect');
     if (workSelect) workSelect.value = 'all';
+    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
+    if (hideDraftsCheckbox) hideDraftsCheckbox.checked = false;
     const syncSelect = document.getElementById('syncSelect');
     if (syncSelect) syncSelect.value = 'Show all';
 }
@@ -125,6 +128,9 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     restored.sync = (syncStatusesLoaded() && syncOffered) ? restored.sync : 'Show all';
     if (syncSelect) syncSelect.value = restored.sync;
 
+    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
+    if (hideDraftsCheckbox) hideDraftsCheckbox.checked = restored.hideDrafts;
+
     const textFilter = document.getElementById('textFilter');
     const typing = textFilter && document.activeElement === textFilter;
     if (typing && (preferTypedText || textFilter.value.trim() === restored.text)) {
@@ -142,6 +148,8 @@ function initializeWorkFilter() {
     const workSelect = document.getElementById('workSelect');
     if (workSelect) workSelect.addEventListener('change', handleFilterChange);
     updateWorkSelect();
+    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
+    if (hideDraftsCheckbox) hideDraftsCheckbox.addEventListener('change', handleFilterChange);
 }
 
 // The Work select depends on the participants: while none is selected the
@@ -333,6 +341,8 @@ function readFilterControls() {
     const syncSelect = document.getElementById('syncSelect');
     read.work = workSelect ? workSelect.value : 'all';
     read.sync = syncSelect ? syncSelect.value : 'Show all';
+    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
+    read.hideDrafts = hideDraftsCheckbox ? hideDraftsCheckbox.checked : false;
     filters = read;
     updateWorkSelect();
     updateTextFilterClearButton();

@@ -122,6 +122,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.4: Display commit ahead/behind counts relative to destination branch
 - F2.5: Show associated Jira issues with status badges
 - F2.6: Indicate when PR has conflicts with parent branch
+- F2.7: Mark draft pull requests with a "Draft" badge and show the number of open tasks of a pull request
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time
@@ -173,6 +174,7 @@ The application integrates with a Jira workflow where:
 - F4.5: "Ready for reviewers" shows only PRs where:
   - Associated Jira issue has "In Review" status
   - AND a selected participant reviews the PR and has not yet approved (indicated by red highlighting/action required)
+  - AND the PR is not a draft (its author wants no review yet)
   - This identifies PRs awaiting initial review or re-review after changes
 - F4.6: Filter by Jira fixVersion
 - F4.7: Support simultaneous multiple filters
@@ -184,6 +186,7 @@ The application integrates with a Jira workflow where:
 - F4.13: "Ready for assignees" shows only In Progress pull requests with a linked issue assigned to a selected participant; "Ready for participants" keeps the pull requests needing either attention
 - F4.14: Hide the repositories and branches left without a matching pull request; show a message when no pull request matches
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
+- F4.16: "Hide drafts" hides the draft pull requests, with or without participants selected
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values

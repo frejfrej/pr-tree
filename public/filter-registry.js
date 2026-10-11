@@ -19,11 +19,12 @@ export const multiSelectFilters = [
 /**
  * The filters at their defaults, the shape every filters object has: the
  * text, the Work value ('all', 'reviews', 'issues', 'ready', 'reviewers' or
- * 'assignees'), the SYNC value and an empty selection per multi-select.
- * @returns {{ text: string, work: string, sync: string, sprints: string[], fixVersions: string[], epics: string[], stories: string[], participants: string[] }}
+ * 'assignees'), whether drafts are hidden, the SYNC value and an empty
+ * selection per multi-select.
+ * @returns {{ text: string, work: string, hideDrafts: boolean, sync: string, sprints: string[], fixVersions: string[], epics: string[], stories: string[], participants: string[] }}
  */
 export function defaultFilters() {
-    const filters = { text: '', work: 'all', sync: 'Show all' };
+    const filters = { text: '', work: 'all', hideDrafts: false, sync: 'Show all' };
     for (const { key } of multiSelectFilters) filters[key] = [];
     return filters;
 }

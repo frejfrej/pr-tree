@@ -34,11 +34,12 @@ export function initializeFilter(apiResult) {
  * A multi-select with several values counts once.
  */
 export function countActiveFilters(filters) {
-    const { text = '', participants = [], work = 'all', sync } = filters;
+    const { text = '', participants = [], work = 'all', hideDrafts = false, sync } = filters;
     return [
         parseTextQuery(text).length > 0,
         ...multiSelectFilters.map(({ key }) => (filters[key] || []).length > 0),
         participants.length > 0 && work !== 'all',
+        hideDrafts === true,
         sync !== 'Show all'
     ].filter(Boolean).length;
 }
@@ -152,20 +153,21 @@ function splitIssueKey(key) {
  * everything it needs is in the index entry and the arguments.
  *
  * - assignee: the PR is in progress and a linked issue is assigned to a selected participant
- * - reviewer: the PR is in review and a selected participant reviews it (never the author) and has not approved
+ * - reviewer: the PR is in review, is not a draft (its author wants no review
+ *   yet), and a selected participant reviews it (never the author) and has not approved
  *
  * The title of a PR with attention is highlighted; with participants selected,
  * the Work filter keeps the PRs with reviewer attention ("Ready for
  * reviewers"), assignee attention ("Ready for assignees") or either ("Ready for
  * participants"); "All work", "All reviews" and "All issues" keep every PR of
  * the participants, whether it waits for them or not.
- * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean }} entry - an entry of buildFilterIndex().pullRequestsByKey
+ * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean, draft?: boolean }} entry - an entry of buildFilterIndex().pullRequestsByKey
  * @param {string[]} participants - the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
-export function computeAttention({ assignees, pendingReviewers, statusInProgress, statusInReview }, participants) {
+export function computeAttention({ assignees, pendingReviewers, statusInProgress, statusInReview, draft }, participants) {
     const assignee = statusInProgress === true && participants.some(name => assignees.has(name));
-    const reviewer = statusInReview === true && participants.some(name => pendingReviewers.has(name));
+    const reviewer = statusInReview === true && draft !== true && participants.some(name => pendingReviewers.has(name));
     return { assignee, reviewer, any: assignee || reviewer };
 }
 
@@ -247,6 +249,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             linkedIssues,
             statusInProgress: band === 'status-in-progress',
             statusInReview: band === 'status-in-review',
+            // A draft waits for no reviewer (computeAttention) and "Hide drafts" hides it
+            draft: pullRequest.draft === true,
             // The key of this pull request in a SYNC statuses response, the one
             // the render writes on its badge (pull-request-status.js)
             syncKey: syncKey(pullRequest),
@@ -326,14 +330,14 @@ function matchesIssueFilters(entry, filters) {
 /**
  * Applies the filters to one indexed pull request. Pure.
  * @param {object} entry - an entry of buildFilterIndex().pullRequestsByKey
- * @param {object} filters - { text, participants, work, sprints, fixVersions, epics, stories, sync };
+ * @param {object} filters - { text, participants, work, hideDrafts, sprints, fixVersions, epics, stories, sync };
  *   work is 'all', 'reviews', 'issues', 'ready', 'reviewers' or 'assignees' and only matters with participants selected
  * @param {object} [syncStatus] - the SYNC status of the pull request from the last load
  *   ({ conflicts, files?, reason? } or { error, reason }); undefined while none is loaded or known
  * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
 export function evaluatePullRequest(entry, filters, syncStatus) {
-    const { participants = [], work = 'all', sync } = filters;
+    const { participants = [], work = 'all', hideDrafts = false, sync } = filters;
     const attention = computeAttention(entry, participants);
 
     // Participants: without a selection, everybody's pull requests; with one, every
@@ -359,7 +363,7 @@ export function evaluatePullRequest(entry, filters, syncStatus) {
         (sync === 'unchecked' && !checked);
 
     return {
-        visible: matchesIssueFilters(entry, filters) && participantMatch && syncMatch,
+        visible: matchesIssueFilters(entry, filters) && participantMatch && !(hideDrafts && entry.draft) && syncMatch,
         attention
     };
 }
