@@ -262,6 +262,18 @@ test('an unknown project: 500 from the pull requests route, 404 from the sync st
     assert.deepEqual(await statuses.json(), { error: 'Project not found' });
 });
 
+test('a project name inherited from Object.prototype is an unknown project too (#105)', async () => {
+    // Before, the check found Object.prototype.constructor and the like, and the build failed further on (a 500)
+    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+        const statuses = await fetch(`${baseUrl}/api/sync-statuses/${name}`);
+        assert.equal(statuses.status, 404, name);
+        assert.deepEqual(await statuses.json(), { error: 'Project not found' }, name);
+        const pullRequests = await fetch(`${baseUrl}/api/pull-requests/${name}`);
+        assert.equal(pullRequests.status, 500, name);
+        assert.equal(await pullRequests.text(), 'Internal Server Error', name);
+    }
+});
+
 test('the cache statistics answer the five counters of node-cache', async () => {
     const response = await fetch(`${baseUrl}/api/cache/stats`);
     assert.equal(response.status, 200);

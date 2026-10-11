@@ -177,8 +177,12 @@ app.get('/api/projects', async (req, res) => {
     }
 });
 
+// The configuration of a project named in a URL: an own property only, so a name
+// inherited from Object.prototype (constructor, __proto__) is an unknown project (#105)
+const projectConfigOf = projectName => (Object.hasOwn(config.projects, projectName) ? config.projects[projectName] : undefined);
+
 async function buildProjectData(projectName) {
-    const projectConfig = config.projects[projectName];
+    const projectConfig = projectConfigOf(projectName);
     if (!projectConfig) {
         throw new Error('Project not found');
     }
@@ -217,7 +221,7 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     const startTime = Date.now();
     const projectName = req.params.project;
 
-    if (!config.projects[projectName]) {
+    if (!projectConfigOf(projectName)) {
         res.status(404).json({ error: 'Project not found' });
         return;
     }
