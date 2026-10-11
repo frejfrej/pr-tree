@@ -97,7 +97,8 @@ function fakeBitbucket({ diffstats = {}, diffs = {}, intercept = () => undefined
     return { fetch, requests };
 }
 
-function setUp(bitbucket, { cache = openSyncCache(tempFile()), timeoutMs = 30000, maxConcurrent } = {}) {
+// `computeSyncStatuses` answers the statuses of the load, `computeLoad` the whole result ({ statuses, stopped })
+function setUp(bitbucket, { cache = openSyncCache(tempFile()), timeoutMs = 30000, maxConcurrent, maxConsecutiveFailures } = {}) {
     const logs = { error: [], performance: [] };
     const { computeConflicts, computeSyncStatuses } = createSyncStatuses({
         fetch: bitbucket.fetch,
@@ -106,9 +107,17 @@ function setUp(bitbucket, { cache = openSyncCache(tempFile()), timeoutMs = 30000
         log: { error: message => logs.error.push(message), performance: message => logs.performance.push(message) },
         syncCache: cache,
         timeoutMs,
-        maxConcurrent
+        maxConcurrent,
+        maxConsecutiveFailures
     });
-    return { computeConflicts, computeSyncStatuses, logs, cache, requests: bitbucket.requests };
+    return {
+        computeConflicts,
+        computeSyncStatuses: async (...args) => (await computeSyncStatuses(...args)).statuses,
+        computeLoad: computeSyncStatuses,
+        logs,
+        cache,
+        requests: bitbucket.requests
+    };
 }
 
 // The scenarios of one file f.txt touched on both sides
@@ -443,4 +452,109 @@ test('a cache that cannot be written is logged, the statuses are still returned'
     assert.deepEqual(await computeSyncStatuses('PROJ', [pullRequest()]), { [key]: { conflicts: true, files: ['f.txt'] } });
     assert.equal(logs.error.length, 1);
     assert.match(logs.error[0], /^sync-cache\.json not written: ENOENT/);
+});
+
+// The stop of a whole load after repeated Bitbucket failures (#93)
+const stopReason = last => `SYNC load stopped after 8 Bitbucket failures in a row, the last one: ${last}`;
+const manyPullRequests = count => Array.from({ length: count }, (_, i) => pullRequest(`d${i}`, `s${i}`));
+const keyOf = i => `${repo}/d${i}..s${i}`;
+const hangUntilAborted = options => new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)));
+const networkFailure = () => {
+    const failure = new Error('fetch failed: ECONNRESET (url)');
+    failure.shortMessage = 'fetch failed: ECONNRESET';
+    return failure;
+};
+
+test('8 failed requests in a row stop the load: the checks not started send nothing and report the stop', async () => {
+    const { computeLoad, requests, logs } = setUp(fakeBitbucket({ intercept: () => new Response('', { status: 503 }) }), { maxConcurrent: 1 });
+    const { statuses, stopped } = await computeLoad('PROJ', manyPullRequests(40));
+    const reason = stopReason('Request failed with status code 503');
+    assert.equal(stopped, reason);
+    assert.equal(requests.length, 8);
+    for (let i = 0; i < 7; i++) assert.deepEqual(statuses[keyOf(i)], { error: true, reason: 'Request failed with status code 503' });
+    for (let i = 7; i < 40; i++) assert.deepEqual(statuses[keyOf(i)], { error: true, reason }, keyOf(i));
+    // The 7 failures before the stop, then the stop once
+    assert.equal(logs.error.length, 8);
+    assert.equal(logs.error.at(-1), `Sync statuses of PROJ: ${reason}`);
+    assert.equal(logs.performance.at(-1), 'Sync statuses of PROJ - 40 pull requests, 40 computed, 40 not checked, 0 partly checked, stopped after repeated Bitbucket failures');
+});
+
+test('requests that hang stop the load after two rounds of timeouts, the requests in flight are aborted', { timeout: 5000 }, async () => {
+    const { computeLoad, requests } = setUp(fakeBitbucket({ intercept: (count, url, options) => hangUntilAborted(options) }), { timeoutMs: 5 });
+    const { statuses, stopped } = await computeLoad('PROJ', manyPullRequests(40));
+    assert.equal(stopped, stopReason('The operation was aborted due to timeout'));
+    assert.equal(Object.keys(statuses).length, 40);
+    // 8 timeouts, and at most the 4 started meanwhile
+    assert.ok(requests.length >= 8 && requests.length <= 12, `${requests.length} requests`);
+    assert.ok(requests.every(request => request.options.signal.aborted));
+});
+
+test('timeouts, network failures and 5xx count together', { timeout: 5000 }, async () => {
+    const mixed = (count, url, options) => {
+        if (count % 3 === 0) throw networkFailure();
+        return count % 3 === 1 ? new Response('', { status: 502 }) : hangUntilAborted(options);
+    };
+    const { computeLoad, requests } = setUp(fakeBitbucket({ intercept: mixed }), { maxConcurrent: 1, timeoutMs: 5 });
+    const { stopped } = await computeLoad('PROJ', manyPullRequests(20));
+    // The 8th request is one that hangs
+    assert.equal(stopped, stopReason('The operation was aborted due to timeout'));
+    assert.equal(requests.length, 8);
+});
+
+test('an answer between two failures resets the count, a 404 included', async () => {
+    for (const answer of [undefined, new Response('', { status: 404 })]) {
+        // 7 failures, an answer, 7 failures: never 8 in a row
+        const { computeLoad, requests } = setUp(fakeBitbucket({ intercept: count => (count === 8 ? answer : new Response('', { status: 503 })) }), { maxConcurrent: 1 });
+        const { statuses, stopped } = await computeLoad('PROJ', manyPullRequests(15));
+        assert.equal(stopped, null);
+        assert.equal(requests.length, 15);
+        assert.ok(Object.values(statuses).every(status => !status.reason?.startsWith('SYNC load stopped')));
+    }
+});
+
+test('a rate-limit pause and the stop of the other side of a check count no failure', async () => {
+    const paused = setUp(fakeBitbucket({ intercept: () => { throw new RateLimitError(); } }), { maxConcurrent: 1 });
+    const pausedLoad = await paused.computeLoad('PROJ', manyPullRequests(10));
+    assert.equal(pausedLoad.stopped, null);
+    assert.equal(paused.requests.length, 10);
+
+    // One side fails, the other side's request in flight is aborted: one failure, not two
+    const oneSide = setUp(fakeBitbucket({
+        ...bothSides,
+        intercept: (count, url, options) => {
+            if (url.includes(`/diff/${source}..`)) return new Response('', { status: 502 });
+            if (url.includes(`/diff/${dest}..`)) return hangUntilAborted(options);
+        }
+    }), { maxConsecutiveFailures: 2 });
+    const oneSideLoad = await oneSide.computeLoad('PROJ', [pullRequest()]);
+    assert.equal(oneSideLoad.stopped, null);
+    assert.deepEqual(oneSideLoad.statuses, { [key]: { error: true, reason: 'Request failed with status code 502' } });
+});
+
+test('after a stop, the results read or completed before it are kept, a conflict the diffstats proved is partly checked', async () => {
+    const cache = openSyncCache(tempFile());
+    cache.set(`${repo}/c..c`, { conflicts: false });
+    const { computeLoad, requests, logs } = setUp(fakeBitbucket({
+        diffstats: {
+            'os..od': [modified('a.txt')], 'od..os': [modified('b.txt')], // complete before the stop: OK
+            'ps..pd': [removed('g.txt'), modified('f.txt')], 'pd..ps': [modified('g.txt'), modified('f.txt')] // its diffs stop the load
+        },
+        intercept: (count, url, options) => {
+            if (url.includes('/diff/ps..')) return new Response('', { status: 503 });
+            if (url.includes('/diff/pd..')) return hangUntilAborted(options);
+        }
+    }), { cache, maxConcurrent: 1, maxConsecutiveFailures: 1 });
+    const { statuses, stopped } = await computeLoad('PROJ', [pullRequest('c', 'c'), pullRequest('od', 'os'), pullRequest('pd', 'ps'), pullRequest('zd', 'zs')]);
+    const reason = 'SYNC load stopped after 1 Bitbucket failures in a row, the last one: Request failed with status code 503';
+    assert.equal(stopped, reason);
+    assert.deepEqual(statuses, {
+        [`${repo}/c..c`]: { conflicts: false },
+        [`${repo}/od..os`]: { conflicts: false },
+        [`${repo}/pd..ps`]: { conflicts: true, files: ['g.txt'], reason },
+        [`${repo}/zd..zs`]: { error: true, reason }
+    });
+    assert.deepEqual(cache.get(`${repo}/od..os`), { conflicts: false });
+    assert.equal(cache.get(`${repo}/pd..ps`), null);
+    assert.ok(requests.every(request => !request.url.includes('zs')), 'nothing is sent for the check after the stop');
+    assert.deepEqual(logs.error, [`Sync statuses of PROJ: ${reason}`]);
 });

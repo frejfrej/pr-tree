@@ -25,7 +25,7 @@ const pendingBuilds = new Map();
  * A failure (a RateLimitError included) reaches every call sharing the build
  * and is not cached: the next call builds again.
  * @param {string} key - Cache key
- * @param {() => Promise<{ data: any, ttl?: number }>} build - the value and its TTL in seconds (the default TTL when undefined)
+ * @param {() => Promise<{ data: any, ttl?: number, keep?: boolean }>} build - the value and its TTL in seconds (the default TTL when undefined); `keep: false` caches nothing, the calls sharing the build still get the value
  * @returns {Promise<any>} Cached or freshly built data
  */
 async function getOrBuild(key, build) {
@@ -37,8 +37,8 @@ async function getOrBuild(key, build) {
     let pending = pendingBuilds.get(key);
     if (!pending) {
         pending = (async () => {
-            const { data, ttl } = await build();
-            cache.set(key, data, ttl);
+            const { data, ttl, keep = true } = await build();
+            if (keep) cache.set(key, data, ttl);
             return data;
         })().finally(() => pendingBuilds.delete(key));
         pendingBuilds.set(key, pending);
@@ -77,9 +77,10 @@ export async function getCachedProjectData(projectName, fetchProjectData) {
 /**
  * Get sync statuses (conflicts for every pull request of a project) from cache
  * or fetch from source. The fetch function decides the TTL so that responses
- * built during an Atlassian rate-limit window can be kept until it closes.
+ * built during an Atlassian rate-limit window can be kept until it closes,
+ * and a load stopped after repeated Bitbucket failures not kept at all.
  * @param {string} projectName - Project identifier
- * @param {function} fetchSyncStatuses - Async function returning { data, ttl } on cache miss (ttl in seconds)
+ * @param {function} fetchSyncStatuses - Async function returning { data, ttl, keep } on cache miss (ttl in seconds, keep false to cache nothing)
  * @returns {Promise<Object>} Sync statuses data
  */
 export async function getCachedSyncStatuses(projectName, fetchSyncStatuses) {
