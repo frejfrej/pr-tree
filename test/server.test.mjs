@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
 import { connect } from 'node:net';
-import { networkInterfaces } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { once } from 'node:events';
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { multiSelectMarkup } from '../public/multi-select.js';
 import { multiSelectFilters } from '../public/filter-registry.js';
@@ -15,16 +15,22 @@ import { contentSecurityPolicy } from '../security-headers.mjs';
 /**
  * Runs the server in fixture mode on an ephemeral port and checks what it
  * serves: the app, the API, README.md for the help modal, and nothing else
- * from the project directory (config.js holds the credentials).
+ * from the project directory (config.js holds the credentials). The server
+ * is started from another directory, which has a public/ folder of its own:
+ * nothing it serves depends on the working directory (#107).
  */
 
 const root = path.resolve(import.meta.dirname, '..');
+const workingDirectory = mkdtempSync(path.join(tmpdir(), 'pr-tree-cwd-'));
+const decoyPage = '<!doctype html><title>Not the dashboard</title>';
 let server;
 let baseUrl;
 
 before(async () => {
-    server = spawn(process.execPath, ['index.mjs', '--fixtures'], {
-        cwd: root,
+    mkdirSync(path.join(workingDirectory, 'public'));
+    writeFileSync(path.join(workingDirectory, 'public', 'index.html'), decoyPage);
+    server = spawn(process.execPath, [path.join(root, 'index.mjs'), '--fixtures'], {
+        cwd: workingDirectory,
         // The default address and names: a PR_TREE_HOST of the environment would change them
         env: { ...process.env, PORT: '0', PR_TREE_HOST: '', PR_TREE_ALLOWED_HOSTS: '' },
         stdio: ['ignore', 'pipe', 'pipe']
@@ -49,6 +55,14 @@ after(async () => {
     const exited = once(server, 'exit');
     server.kill();
     await exited;
+});
+
+after(() => rmSync(workingDirectory, { recursive: true, force: true }));
+
+test('the page comes from the public/ folder of the dashboard, whatever the working directory', async () => {
+    const response = await fetch(`${baseUrl}/`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), readFileSync(path.join(root, 'public', 'index.html'), 'utf8'));
 });
 
 test('README.md is served for the help modal', async () => {
