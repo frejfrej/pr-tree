@@ -53,7 +53,7 @@ test('two repositories of each project have pull requests with the same id, as o
         const repositoriesById = new Map();
         for (const pr of data.pullRequests) {
             if (!repositoriesById.has(pr.id)) repositoriesById.set(pr.id, new Set());
-            repositoriesById.get(pr.id).add(pr.source.repository.name);
+            repositoriesById.get(pr.id).add(pr.destination.repository.name);
         }
         assert.ok([...repositoriesById.values()].some(repositories => repositories.size > 1), `${name}: an id shared by two repositories`);
         assert.equal(Object.keys(data.jiraIssuesMap).length, data.pullRequests.length, `${name}: one jiraIssuesMap entry per pull request`);
@@ -71,7 +71,7 @@ test('every pull request is in the response shape the frontend reads', () => {
         assert.ok(pr.participants.length >= 1);
         assert.equal(typeof pr.rendered.title.html, 'string');
         assert.equal(typeof pr.rendered.description.html, 'string');
-        assert.ok(Array.isArray(data.jiraIssuesMap[`${pr.source.repository.name}/${pr.id}`]));
+        assert.ok(Array.isArray(data.jiraIssuesMap[`${pr.destination.repository.name}/${pr.id}`]));
     }
     for (const issue of data.jiraIssuesDetails) {
         assert.match(issue.key, /^(SECOLLAB|PRDOSLC|WEBCMN)-\d+$/);

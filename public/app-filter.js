@@ -1,6 +1,7 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
-import { statusClass, otherReviewers, syncKey, pullRequestKey, atlassianAgent } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, atlassianAgent } from './pull-request-status.js';
+import { pullRequestKey } from './pull-request-key.mjs';
 
 // The multi-selects compared with the set of the index entry named like the
 // filter; the participants have the Work select and their own rule

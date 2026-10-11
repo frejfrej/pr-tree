@@ -165,6 +165,7 @@ export function restoreToggleStates(states) {
     });
 
     // By key, "repository/id" (#99): one lookup instead of a selector per pull request
+    if (!states.pullRequests.some(state => state.collapsed)) return;
     const pullRequestsByKey = new Map([...document.querySelectorAll('.pull-request')].map(pullRequest => [pullRequest.dataset.id, pullRequest]));
     states.pullRequests.filter(state => state.collapsed).forEach(state => {
         const pullRequest = pullRequestsByKey.get(state.id);

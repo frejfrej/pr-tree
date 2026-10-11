@@ -3,7 +3,7 @@
 **Date:** 2026-10-11
 **Issue:** #99
 **Target version:** 3.1.1
-**Status:** Decided alone (the user asked for the fix without a brainstorm)
+**Status:** Decided alone (the user asked for the fix without a brainstorm); decisions 1 and 2 were changed by the review round (section 4)
 
 ## 1. Goal
 
@@ -52,3 +52,31 @@ the previous tree-toggle.js), fixtures, project-data, server. Manual, fixture
 SECOLLAB in Chrome: the 112 rows show the issues of `jiraIssuesMap` under
 their own key; a text filter on SECOLLAB-5801 shows products.secollab/2400 and
 hides products.secollab.client/2400; the SYNC filter values work.
+
+## 4. Review round
+
+The /code-review of #124 led to:
+
+- **Decision 1 reversed: the destination repository.** Bitbucket numbers a
+  pull request in its destination; a fork bearing the name of another
+  repository of the project, opening #45 into a third one, gave a key
+  that collided again. The tree still groups by the source repository; the
+  key only has to be unique.
+- **Decision 2 reversed: one definition**, `public/pull-request-key.mjs`.
+  The `.mjs` extension lets Node load it as an ES module whatever the
+  package type, so the server imports it from `public/` and the two copies
+  (one without optional chaining, which threw on a missing repository and
+  failed the whole project) are gone. server.test.mjs scans `.mjs` files of
+  `public/` too, and the coverage includes them.
+- The unused `data-id="conflicts_…"` of the SYNC counter is removed (app-sync
+  reads `data-sync-key`).
+- The render test's class helper keys the rows by the whole `data-id`, so
+  two rows of the same id cannot hide one another in a test.
+- `restoreToggleStates` returns before mapping the rows when no pull request
+  is collapsed.
+
+Not taken: root branches restored by name across repositories (the same
+kind of collision, filed as #103); a tab left open across a server upgrade
+running the old page against the new keys until it is reloaded (a version
+check between page and server is a change of its own; the changelog says to
+reload).

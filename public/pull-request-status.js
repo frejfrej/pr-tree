@@ -6,16 +6,6 @@
  * the same goes for its reviewers and its SYNC key. Pure: no DOM.
  */
 
-/**
- * The key of a pull request in a project, "repository/id", as the server
- * keys jiraIssuesMap (project-assembly.mjs): pull-request ids are numbered
- * per repository, so two repositories of a project share ids (#99). The
- * render writes it as the data-id of the row, the filter index is keyed by it.
- */
-export function pullRequestKey(pullRequest) {
-    return `${pullRequest.source?.repository?.name}/${pullRequest.id}`;
-}
-
 // The Atlassian agent reviews pull requests too: never a reviewer to count,
 // never a person the participant filter offers
 export const atlassianAgent = 'Rovo Dev';

@@ -92,7 +92,7 @@
 ## Changelog:
 * Version 3.1.1
     * Two repositories of a project with an open pull request of the same number (Bitbucket numbers them per repository) no longer mix up: each row shows its own Jira issues, the filters (text, sprint, fix version, epic, story, participants and work) read its own issues and reviewers, and collapsing one keeps the other expanded after a refresh. Before, one of the two showed the issues of the other, or none, and was filtered on them (#99)
-    * The response of `/api/pull-requests/:project` keys `jiraIssuesMap` by `repository/id` instead of the bare id
+    * The response of `/api/pull-requests/:project` keys `jiraIssuesMap` by `repository/id` (the repository the pull request is opened into) instead of the bare id; reload a dashboard tab left open across the upgrade
     * Fixture mode: two repositories of each project share pull-request numbers, as they can on Bitbucket
 * Version 3.1.0
     * The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)

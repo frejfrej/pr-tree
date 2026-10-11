@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractJiraIssues, pullRequestKey, createJiraIssuesMap, missingParentKeys, inheritFixVersions, calculateHash, assembleProjectData } from '../project-assembly.mjs';
+import { pullRequestKey } from '../public/pull-request-key.mjs';
+import { extractJiraIssues, createJiraIssuesMap, missingParentKeys, inheritFixVersions, calculateHash, assembleProjectData } from '../project-assembly.mjs';
 
 const jiraRegex = /(PROJ-\d+|OTHER-\d+)/g;
 function pullRequest(id, title = `PROJ-${id} change ${id}`, repository = 'repo-a') {
-    return { id, title, source: { branch: { name: `feat-${id}` }, commit: { hash: `s${id}` }, repository: { name: repository } }, destination: { branch: { name: 'master' }, commit: { hash: `d${id}` } } };
+    return { id, title, source: { branch: { name: `feat-${id}` }, commit: { hash: `s${id}` }, repository: { name: repository } }, destination: { branch: { name: 'master' }, commit: { hash: `d${id}` }, repository: { name: repository } } };
 }
 function issue(key, { parent = null, fixVersions = [] } = {}) {
     const fields = { summary: `Summary of ${key}`, fixVersions };

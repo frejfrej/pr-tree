@@ -29,7 +29,8 @@
  * unit-tested with node:test.
  */
 
-import { otherReviewers, statusClass, syncKey, pullRequestKey } from './pull-request-status.js';
+import { otherReviewers, statusClass, syncKey } from './pull-request-status.js';
+import { pullRequestKey } from './pull-request-key.mjs';
 
 /**
  * The text as HTML: the five characters that can end an attribute or start a
@@ -284,7 +285,6 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                 </div>
             ` : ''}
             <div class="conflicts-counter"
-                 data-id="conflicts_${escapeHtml(key)}"
                  data-sync-key="${escapeHtml(syncKey(pullRequest))}">
             </div>
         </div>

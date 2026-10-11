@@ -31,7 +31,7 @@ function pullRequest(id, { repo = 'repo-one', source, destination, participants 
             commit: { hash: `s${id}` },
             repository: { name: repo, links: { html: { href: `https://bitbucket.org/ws/${repo}` } } }
         },
-        destination: { branch: { name: destination }, commit: { hash: `d${id}` } },
+        destination: { branch: { name: destination }, commit: { hash: `d${id}` }, repository: { name: repo } },
         links: { html: { href: `https://bitbucket.org/ws/${repo}/pull-requests/${id}` } },
         rendered: { title: { html: `<p>PR ${id}</p>` }, description: { html: '' } }
     };
@@ -54,9 +54,9 @@ function renderSample() {
     return renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, 'site');
 }
 
-// The classes of every pull request element, by id (its data-id is repository/id): { '1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
+// The classes of every pull request element, by data-id (repository/id): { 'repo-one/1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
 function pullRequestClasses(html) {
-    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="[^"/]*\/(\d+)">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
+    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="([^"]*)">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
 }
 
 test('findRootBranches keeps the destination branches that are no pull request source', () => {
@@ -128,10 +128,10 @@ test('renderRepositories groups per repository: two repositories sharing a branc
 
 test('renderRepositories derives the status class from the linked issues and the reviews', () => {
     const classes = pullRequestClasses(renderSample());
-    assert.deepEqual(classes['1'], ['pull-request', 'status-in-progress', 'pull-request-root']);
-    assert.deepEqual(classes['2'], ['pull-request']);
-    assert.deepEqual(classes['3'], ['pull-request', 'status-in-review-all-approved', 'pull-request-root']);
-    assert.deepEqual(classes['4'], ['pull-request', 'pull-request-root']);
+    assert.deepEqual(classes['repo-one/1'], ['pull-request', 'status-in-progress', 'pull-request-root']);
+    assert.deepEqual(classes['repo-one/2'], ['pull-request']);
+    assert.deepEqual(classes['repo-two/3'], ['pull-request', 'status-in-review-all-approved', 'pull-request-root']);
+    assert.deepEqual(classes['repo-two/4'], ['pull-request', 'pull-request-root']);
 });
 
 test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion, a slash in a root branch, a missing commit', () => {
@@ -149,8 +149,8 @@ test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion
     ];
     const html = renderRepositories([reviewed, resolved], issuesMap, details, 'site');
     const classes = pullRequestClasses(html);
-    assert.deepEqual(classes['5'], ['pull-request', 'status-in-review', 'pull-request-root']);
-    assert.deepEqual(classes['6'], ['pull-request', 'status-resolved', 'pull-request-root']);
+    assert.deepEqual(classes['repo-one/5'], ['pull-request', 'status-in-review', 'pull-request-root']);
+    assert.deepEqual(classes['repo-one/6'], ['pull-request', 'status-resolved', 'pull-request-root']);
     assert.ok(html.includes('data-author="Jane" data-review-status="requestedChanges"'));
     assert.ok(html.includes('data-author="Bob" data-review-status="toReview"'));
     assert.ok(!html.includes('data-author="Rovo Dev"'));
@@ -208,7 +208,7 @@ test('renderRepositories renders every pull request of the fixture projects once
         assert.equal(new Set(rowKeys).size, data.pullRequests.length, name);
         const { pullRequestsByKey } = buildFilterIndex(data);
         for (const key of rowKeys) {
-            assert.equal(pullRequestsByKey.get(key).pullRequest, data.pullRequests.find(pr => `${pr.source.repository.name}/${pr.id}` === key), key);
+            assert.equal(pullRequestsByKey.get(key).pullRequest, data.pullRequests.find(pr => `${pr.destination.repository.name}/${pr.id}` === key), key);
             assert.ok(Array.isArray(data.jiraIssuesMap[key]), key);
         }
     }

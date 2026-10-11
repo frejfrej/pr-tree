@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { pullRequestKey } from './public/pull-request-key.mjs';
 
 /**
  * The pure part of a project's data: what the server (project-data.mjs)
@@ -13,16 +14,8 @@ export function extractJiraIssues(title, jiraRegex) {
 }
 
 /**
- * The key of a pull request in a project, "repository/id": Bitbucket numbers
- * the pull requests of each repository from 1, so two repositories of a
- * project have pull requests with the same id (#99). The repository is the
- * one the tree groups the pull request under; the page computes the same key
- * (pull-request-status.js).
- */
-export const pullRequestKey = pullRequest => `${pullRequest.source.repository.name}/${pullRequest.id}`;
-
-/**
- * The issue keys of every pull request, by pull request key (pullRequestKey).
+ * The issue keys of every pull request, by pull request key, repository/id
+ * (pullRequestKey, shared with the page).
  * @returns {Map<string, string[]>}
  */
 export function createJiraIssuesMap(pullRequests, jiraRegex) {
