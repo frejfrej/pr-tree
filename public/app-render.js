@@ -161,9 +161,11 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
             const totalPullRequestCount = calculateTotalPullRequests(rootPullRequests, byDestination);
 
             const branchUrl = getBranchUrl(rootBranch, rootPullRequests[0]);
+            // Repositories share root branch names (master): its collapse state is kept by both (#103)
+            const rootBranchKey = `${rootPullRequests[0].source.repository.name}/${rootBranch}`;
 
             html += `
-                <div class="root-branch">
+                <div class="root-branch" data-root-branch-key="${escapeHtml(rootBranchKey)}">
                     <div class="root-branch-header">
                         ${toggleButton(escapeHtml(rootBranch))}
                         <h3 class="root-branch-name">

@@ -90,6 +90,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.1.2
+    * A collapsed root branch stays collapsed in its own repository after a refresh: when two repositories of a project have a root branch of the same name (`develop`, `master`), the refresh collapsed the first repository's branch and expanded the one the user had collapsed (#103)
 * Version 3.1.1
     * Two repositories of a project with an open pull request of the same number (Bitbucket numbers them per repository) no longer mix up: each row shows its own Jira issues, the filters (text, sprint, fix version, epic, story, participants and work) read its own issues and reviewers, and collapsing one keeps the other expanded after a refresh. Before, one of the two showed the issues of the other, or none, and was filtered on them (#99)
     * The response of `/api/pull-requests/:project` keys `jiraIssuesMap` by `repository/id` (the repository the pull request is opened into) instead of the bare id; reload a dashboard tab left open across the upgrade

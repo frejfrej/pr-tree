@@ -111,11 +111,32 @@ test('the collapse of a pull request survives a re-render by repository and id: 
     setPullRequestCollapsed(before[1], true);
     globalThis.document = tree(before);
     const states = captureToggleStates();
-    assert.deepEqual(states.pullRequests, [{ id: 'repo-a/45', collapsed: false }, { id: 'repo-b/45', collapsed: true }]);
+    assert.deepEqual(states.pullRequests, [{ key: 'repo-a/45', collapsed: false }, { key: 'repo-b/45', collapsed: true }]);
 
     // The re-rendered tree: only repo-b's #45 is collapsed again
     const after = [row('repo-a/45'), row('repo-b/45')];
     globalThis.document = tree(after);
     restoreToggleStates(states);
     assert.deepEqual(after.map(pullRequest => pullRequest.classList.contains('collapsed')), [false, true]);
+});
+
+test('the collapse of a root branch survives a re-render by repository and branch: master of two repositories are two branches (#103)', t => {
+    const branch = key => element({ classes: ['root-branch'], dataset: { rootBranchKey: key } });
+    const tree = branches => ({ querySelectorAll: selector => (selector === '.root-branch' ? branches : []) });
+    const previousDocument = globalThis.document;
+    t.after(() => { globalThis.document = previousDocument; });
+
+    // B's master collapsed, listed after A's: the name alone restored A's master and expanded B's again
+    const before = [branch('repo-a/master'), branch('repo-b/master'), branch('repo-b/develop')];
+    setRootBranchCollapsed(before[1], true);
+    globalThis.document = tree(before);
+    const states = captureToggleStates();
+    assert.deepEqual(states.rootBranches, [
+        { key: 'repo-a/master', collapsed: false }, { key: 'repo-b/master', collapsed: true }, { key: 'repo-b/develop', collapsed: false }
+    ]);
+
+    const after = [branch('repo-a/master'), branch('repo-b/master'), branch('repo-b/develop')];
+    globalThis.document = tree(after);
+    restoreToggleStates(states);
+    assert.deepEqual(after.map(rootBranch => rootBranch.classList.contains('collapsed')), [false, true, false]);
 });
