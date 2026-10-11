@@ -2,19 +2,20 @@
  * One log file of the server (access.log, error.log, performance.log, #104):
  * appended to, rotated by size, and never able to crash the server.
  *
- * - Rotation: when a line would take the file past `maxBytes`, the file
+ * - Each line is appended at once (`appendFileSync`): nothing is buffered, so
+ *   no line is lost when the process ends, by a signal or a crash, and no
+ *   file stays open. A line is a few dozen bytes and the server writes a few
+ *   lines per request, so the synchronous write costs the event loop nothing
+ *   it would notice.
+ * - Rotation: when a line would take the file past `maxBytes` (its size on
+ *   disk, so two servers writing one file count each other's lines), the file
  *   becomes `<name>.1`, `<name>.1` becomes `<name>.2` and so on, the oldest
- *   beyond `keep` is overwritten; the size is read at startup, so a restart
- *   goes on with the same file. The lines a closing stream still holds are
- *   written to the renamed file (an open file follows its rename; where the
- *   system refuses to rename an open file, the rotation is reported and the
- *   file goes on growing).
- * - Errors: a file that cannot be opened or written (permissions, a full disk)
- *   is reported once through `onError` and the lines are dropped (the server
- *   also prints every line to the console); the file is tried again a minute
- *   later.
- * - `end()` writes what is buffered and closes the file: the server calls it
- *   before exiting.
+ *   beyond `keep` is overwritten. A rotation that fails is reported once and
+ *   not tried again: the file goes on growing.
+ * - Errors: a file that cannot be written (permissions, a full disk) is
+ *   reported once through `onError` and its lines are dropped (the server
+ *   prints every line to the console too); the file is tried again a minute
+ *   later, and a failure is reported again only after a line went through.
  *
  * It does not timestamp or format lines (index.mjs does), nor compress the
  * rotated files.
@@ -29,78 +30,49 @@ import nodeFs from 'node:fs';
  * @param {(message: string) => void} [options.onError]
  * @param {() => number} [options.now]
  * @param {typeof nodeFs} [options.fs]
- * @returns {{ write: (text: string) => void, end: () => Promise<void> }}
+ * @returns {{ write: (text: string) => void }}
  */
 export function createLogFile(filePath, { maxBytes = 10 * 1024 * 1024, keep = 3, onError = () => {}, now = Date.now, fs = nodeFs } = {}) {
-    let stream = null;
-    let size = 0;
     let failedAt = null;
+    let reported = false;
+    let rotating = true;
 
-    const fail = error => {
-        if (failedAt === null) onError(`${filePath}: ${error.message} - its lines go to the console only, the file is tried again in a minute`);
-        failedAt = now();
-        stream = null;
-    };
-
-    const open = () => {
-        let fd;
+    const sizeOnDisk = () => {
         try {
-            // Opened at once, not by the stream later: a rotation then renames the file this
-            // stream writes to, and the lines it still buffers follow the file
-            fd = fs.openSync(filePath, 'a');
-            size = fs.fstatSync(fd).size;
+            return fs.statSync(filePath).size;
         } catch (error) {
-            if (fd !== undefined) fs.closeSync(fd);
-            fail(error);
-            return;
+            if (error.code === 'ENOENT') return 0;
+            throw error;
         }
-        const opened = fs.createWriteStream(null, { fd });
-        // The error of a write arrives here, later; without a listener it would crash the server
-        opened.on('error', error => { if (stream === opened) fail(error); });
-        stream = opened;
-        failedAt = null;
     };
 
     const rotate = () => {
-        stream.end();
-        stream = null;
         try {
             for (let index = keep - 1; index >= 1; index--) {
                 if (fs.existsSync(`${filePath}.${index}`)) fs.renameSync(`${filePath}.${index}`, `${filePath}.${index + 1}`);
             }
             fs.renameSync(filePath, `${filePath}.1`);
         } catch (error) {
-            onError(`${filePath}: rotation failed (${error.message}), the file goes on growing`);
+            // Tried again at every line, a failing rename would report each line and shift the old files away
+            rotating = false;
+            onError(`${filePath}: rotation failed (${error.message}), the file goes on growing until the server restarts`);
         }
-        open();
     };
-
-    open();
 
     return {
         write(text) {
-            if (!stream) {
-                if (now() - failedAt < 60000) return;
-                open();
-                if (!stream) return;
+            if (failedAt !== null && now() - failedAt < 60000) return;
+            try {
+                const size = sizeOnDisk();
+                if (rotating && size > 0 && size + Buffer.byteLength(text) > maxBytes) rotate();
+                fs.appendFileSync(filePath, text);
+                failedAt = null;
+                reported = false;
+            } catch (error) {
+                failedAt = now();
+                if (!reported) onError(`${filePath}: ${error.message} - its lines go to the console only, the file is tried again in a minute`);
+                reported = true;
             }
-            const bytes = Buffer.byteLength(text);
-            if (size > 0 && size + bytes > maxBytes) {
-                rotate();
-                if (!stream) return;
-            }
-            stream.write(text);
-            size += bytes;
-        },
-        end() {
-            const closing = stream;
-            stream = null;
-            failedAt = Number.POSITIVE_INFINITY;
-            if (!closing) return Promise.resolve();
-            return new Promise(resolve => {
-                closing.once('error', resolve);
-                closing.end(resolve);
-            });
         }
     };
 }

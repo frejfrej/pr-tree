@@ -73,8 +73,9 @@ app.get('/api/version', (req, res) => {
     res.json({ version, releaseDate, author, license });
 });
 
-// The log files (log-file.mjs): rotated at 10 MB, three old files kept (access.log.1 to .3);
-// a file that cannot be written is reported on the console instead of crashing the server
+// The log files (log-file.mjs): written line by line, rotated at 10 MB, three old files kept
+// (access.log.1 to .3); a file that cannot be written is reported on the console instead of
+// crashing the server
 const openLogFile = name => createLogFile(path.join(__dirname, name), {
     maxBytes: 10 * 1024 * 1024,
     keep: 3,
@@ -264,7 +265,6 @@ app.get('/api/sync-statuses/:project', async (req, res) => {
     }
 });
 
-const servers = [];
 const server = app.listen(port, host, () => {
     // The port actually bound: PORT=0 lets the OS pick one (the server test does that)
     const boundPort = server.address().port;
@@ -274,27 +274,15 @@ const server = app.listen(port, host, () => {
     log(`Listening on ${host}, answering to the host names ${[...hostnames.names].join(', ')}`, accessLogStream);
     if (!process.env.PR_TREE_HOST) {
         // localhost may resolve to ::1 alone (an /etc/hosts entry): the IPv6 loopback answers too, on the same port
-        servers.push(app.listen(boundPort, '::1').on('error', error => log(`Not listening on ::1: ${error.message}`, errorLogStream)));
+        app.listen(boundPort, '::1').on('error', error => log(`Not listening on ::1: ${error.message}`, errorLogStream));
     }
     if (fixtureSource) {
         log(`Fixture mode: serving generated data for ${Object.keys(config.projects).join(', ')} (scale ${fixtureSource.scale}, deepest stack ${fixtureSource.chainDepth}), no Atlassian request will be made`, accessLogStream);
     }
 });
 
-servers.push(server);
-
-// SIGTERM (how the server test stops the server) and SIGINT (Ctrl+C): no new connection, the
-// buffered log lines written, then a normal exit. A process killed by the signal loses those
-// lines and writes no coverage (npm run test:coverage would list every module but this one).
-// A second signal, or log files that take more than 2 seconds, exit at once.
-let shuttingDown = false;
-function shutDown(signal) {
-    if (shuttingDown) process.exit(0);
-    shuttingDown = true;
-    log(`Shutting down on ${signal} (pid ${process.pid})`, accessLogStream);
-    for (const listening of servers) listening.close();
-    setTimeout(() => process.exit(0), 2000).unref();
-    Promise.all([accessLogStream, errorLogStream, performanceLogStream].map(file => file.end())).then(() => process.exit(0));
-}
-process.on('SIGTERM', () => shutDown('SIGTERM'));
-process.on('SIGINT', () => shutDown('SIGINT'));
+// A SIGTERM (how the server test stops the server) ends the process normally: a process killed
+// by the signal writes no coverage, and npm run test:coverage would list every module but this one.
+// Nothing else to do first: the log files are written line by line (log-file.mjs), and Ctrl+C keeps
+// its default, which stops the server even while its event loop is blocked
+process.on('SIGTERM', () => process.exit(0));

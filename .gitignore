@@ -18,6 +18,8 @@ dist/
 
 # Log files
 *.log
+# The rotated log files (log-file.mjs): access.log.1 to .3 and so on
+*.log.*
 
 # Package files
 *.jar
