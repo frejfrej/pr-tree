@@ -7,7 +7,7 @@ import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActi
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
-import { checkPageBuild, pageIsStale, pageUpdatedStateText, initializePageUpdatedButton } from './page-updated.js';
+import { apiFetch, pageIsStale, pageUpdatedStateText, initializePageUpdatedButton } from './page-updated.js';
 
 // The projects the dropdown offers, from /api/projects
 let availableProjects = [];
@@ -170,9 +170,8 @@ function updateWorkSelect() {
 
 async function loadProjects() {
     try {
-        const response = await fetch('/api/projects');
-        // The first answer of the page names its build (page-updated.js)
-        checkPageBuild(response);
+        const response = await apiFetch('/api/projects');
+        if (!response) return;
         availableProjects = await response.json();
         const projectSelect = document.getElementById('projectSelect');
         // Option nodes: a project name is text, never markup (NFR-SEC7)
@@ -272,8 +271,12 @@ function renderProjectLoad(data) {
 function takeAnswer(result) {
     if (result.stale) {
         stopPeriodicChecking();
+        // The page reads nothing more, so it says nothing of the server's pause either
+        setPause(0);
         updateSyncControls();
         if (!currentApiResult) {
+            // Nothing to restore against: the options of the project left must not be offered for this one
+            clearFilterOptions();
             setToolbarVisible(false);
             showStateMessage('fas fa-redo', pageUpdatedStateText(currentProject));
         }
@@ -493,10 +496,9 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
 // an Atlassian pause, { stale } from a server serving another page than this
 // one (nothing is fetched once the page is stale), {} on any other failure
 async function fetchData(project) {
-    if (pageIsStale()) return { stale: true };
     try {
-        const response = await fetch(`/api/pull-requests/${encodeURIComponent(project)}`);
-        if (checkPageBuild(response)) return { stale: true };
+        const response = await apiFetch(`/api/pull-requests/${encodeURIComponent(project)}`);
+        if (!response) return { stale: true };
         const result = await readProjectResponse(response);
         if (!result.data && !result.pausedUntil) console.error(`Error fetching pull requests: HTTP ${response.status}`);
         return result;
@@ -577,7 +579,9 @@ async function checkForUpdates() {
         if (refreshIcon) refreshIcon.classList.remove('checking');
     }
 }
+// A stale page checks nothing: only a reload brings it data again (#125)
 function startPeriodicChecking(now) {
+    if (pageIsStale()) return;
     if (reloadInterval) {
         clearInterval(reloadInterval);
     }

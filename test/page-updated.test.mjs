@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextPageBuild, checkPageBuild, pageIsStale, pageUpdatedStateText, pageUpdatedTitle, initializePageUpdatedButton, pageBuildHeader } from '../public/page-updated.js';
-import { pageBuildHeader as serverPageBuildHeader } from '../page-build.mjs';
+import { nextPageBuild, apiFetch, pageIsStale, resetPageBuild, pageUpdatedStateText, pageUpdatedTitle, initializePageUpdatedButton } from '../public/page-updated.js';
+import { pageBuildHeader } from '../public/page-build-header.mjs';
 
 const fresh = { loaded: null, stale: false };
 
@@ -29,10 +29,6 @@ test('an answer without the header (a server from before #125) says nothing', ()
     assert.equal(nextPageBuild(state, ''), state);
 });
 
-test('the page reads the header the server sends', () => {
-    assert.equal(pageBuildHeader, serverPageBuildHeader);
-});
-
 // The banner indicator: a span holding the button, its icon and its text
 function fakeIndicator() {
     const button = { title: '', listeners: {}, addEventListener(type, listener) { this.listeners[type] = listener; } };
@@ -55,23 +51,45 @@ function withDocument(t, elements) {
 
 const answer = build => ({ headers: { get: name => (name === pageBuildHeader ? build : null) } });
 
-test('checkPageBuild: the first answer sets the build, another build shows the reload button once', t => {
+// A fetch answering the builds given, one per request, and counting the requests
+function fakeFetch(...builds) {
+    const sent = [];
+    return { sent, fetch: async url => { sent.push(url); return answer(builds.shift() ?? null); } };
+}
+
+test('apiFetch: the first answer sets the build, another build shows the reload button once and the answer is withheld', async t => {
+    t.after(resetPageBuild);
     const elements = fakeIndicator();
     withDocument(t, elements);
+    const server = fakeFetch('aaaa', null, 'aaaa', 'bbbb');
 
-    assert.equal(checkPageBuild(answer('aaaa')), false);
-    assert.equal(checkPageBuild(answer(null)), false);
-    assert.equal(checkPageBuild(answer('aaaa')), false);
+    assert.ok(await apiFetch('/api/projects', server));
+    assert.ok(await apiFetch('/api/version', server));
+    assert.ok(await apiFetch('/api/pull-requests/A', server));
     assert.equal(pageIsStale(), false);
     assert.equal(elements.indicator.hidden, true);
 
-    assert.equal(checkPageBuild(answer('bbbb')), true);
+    assert.equal(await apiFetch('/api/pull-requests/A', server), null);
     assert.equal(pageIsStale(), true);
     assert.equal(elements.indicator.hidden, false);
     assert.equal(elements.text.textContent, 'Reload: dashboard updated');
     assert.equal(elements.button.title, pageUpdatedTitle);
+});
 
-    assert.equal(checkPageBuild(answer('aaaa')), true);
+test('apiFetch: once stale, nothing is sent', async t => {
+    t.after(resetPageBuild);
+    withDocument(t, fakeIndicator());
+    const server = fakeFetch('aaaa', 'bbbb', 'aaaa');
+    await apiFetch('/api/projects', server);
+    await apiFetch('/api/pull-requests/A', server);
+    assert.equal(await apiFetch('/api/sync-statuses/A', server), null);
+    assert.deepEqual(server.sent, ['/api/projects', '/api/pull-requests/A']);
+});
+
+test('apiFetch rejects as fetch does on a network failure, and the page stays fresh', async t => {
+    t.after(resetPageBuild);
+    await assert.rejects(apiFetch('/api/projects', { fetch: async () => { throw new TypeError('Failed to fetch'); } }), TypeError);
+    assert.equal(pageIsStale(), false);
 });
 
 test('the reload button reloads the page', t => {

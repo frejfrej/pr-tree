@@ -289,8 +289,9 @@ input {
     cursor: pointer;
 }
 
+/* An underline, not a fill: the text keeps its 4.5:1 against the banner */
 .page-updated-button:hover {
-    background-color: var(--header-control-bg);
+    text-decoration: underline;
 }
 
 .refresh-icon {

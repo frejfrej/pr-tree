@@ -11,22 +11,30 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-/** The header of the /api answers that carries the page build */
-export const pageBuildHeader = 'X-Page-Build';
+export { pageBuildHeader } from './public/page-build-header.mjs';
 
 // The files under a directory, as relative paths with "/" separators, in
-// path order; dot files and dot directories are skipped, as express.static does
-function listFiles(directory, prefix = '') {
-    const entries = readdirSync(directory, { withFileTypes: true })
-        .filter(entry => !entry.name.startsWith('.'))
-        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    return entries.flatMap(entry => {
-        const relative = `${prefix}${entry.name}`;
-        if (entry.isDirectory()) return listFiles(path.join(directory, entry.name), `${relative}/`);
-        return entry.isFile() ? [relative] : [];
+// path order; dot files and dot directories are skipped, as express.static
+// does. Symbolic links are followed, as express.static serves their targets;
+// a broken one is skipped (it serves nothing), and a link back to a folder
+// being listed is not entered again.
+function listFiles(directory, prefix = '', visited = new Set()) {
+    visited = new Set([...visited, realpathSync(directory)]);
+    const names = readdirSync(directory).filter(name => !name.startsWith('.')).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    return names.flatMap(name => {
+        const entryPath = path.join(directory, name);
+        let stats;
+        try {
+            stats = statSync(entryPath);
+        } catch (error) {
+            return [];
+        }
+        const relative = `${prefix}${name}`;
+        if (stats.isDirectory()) return visited.has(realpathSync(entryPath)) ? [] : listFiles(entryPath, `${relative}/`, visited);
+        return stats.isFile() ? [relative] : [];
     });
 }
 

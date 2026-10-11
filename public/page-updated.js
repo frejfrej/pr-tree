@@ -8,13 +8,13 @@
  * page's; an answer naming another build makes the page stale, for good, and
  * the banner offers a reload.
  *
- * This module keeps the build and paints the banner button and the main-pane
- * message. Not reading a stale answer, and stopping the checks, belong to
- * app.js and app-sync.js. Nothing here touches the DOM at import time.
+ * This module keeps the build, sends the page's /api requests (apiFetch, so
+ * none escapes the check) and paints the banner button and the main-pane
+ * message. What a stale page stops doing (the checks, the SYNC load) belongs
+ * to app.js and app-sync.js. Nothing here touches the DOM at import time.
  */
 
-/** The header of the /api answers that carries the page build (page-build.mjs) */
-export const pageBuildHeader = 'X-Page-Build';
+import { pageBuildHeader } from './page-build-header.mjs';
 
 /**
  * The build state after an answer naming `served` (null without the header).
@@ -31,23 +31,40 @@ export function nextPageBuild(state, served) {
     return served === state.loaded ? state : { loaded: state.loaded, stale: true };
 }
 
-let pageBuild = { loaded: null, stale: false };
+const freshPageBuild = { loaded: null, stale: false };
+let pageBuild = freshPageBuild;
+
+/** Forgets the build, as at page load: for the tests */
+export function resetPageBuild() {
+    pageBuild = freshPageBuild;
+}
 
 /** Whether the server serves another page than this one: its answers are not read */
 export function pageIsStale() {
     return pageBuild.stale;
 }
 
-/**
- * Takes the build an /api answer names and returns whether the page is stale;
- * the banner button shows when it just became so.
- * @param {Response} response
- */
-export function checkPageBuild(response) {
+// Takes the build an /api answer names and returns whether the page is
+// stale; the banner button shows when it just became so
+function checkPageBuild(response) {
     const wasStale = pageBuild.stale;
     pageBuild = nextPageBuild(pageBuild, response.headers.get(pageBuildHeader));
     if (pageBuild.stale && !wasStale) showPageUpdatedIndicator();
     return pageBuild.stale;
+}
+
+/**
+ * Every /api request of the page: the answer, or null when the page is stale
+ * (the answer names another build, or an earlier one did and nothing is
+ * sent). A null answer is not to be read: the banner already offers the reload.
+ * @param {string} url
+ * @param {{ fetch?: typeof fetch }} [options]
+ * @returns {Promise<Response|null>} rejects as fetch does on a network failure
+ */
+export async function apiFetch(url, { fetch: send = (...args) => fetch(...args) } = {}) {
+    if (pageBuild.stale) return null;
+    const response = await send(url);
+    return checkPageBuild(response) ? null : response;
 }
 
 /** The main-pane message of a project that is not loaded because the page is stale */

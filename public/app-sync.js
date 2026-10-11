@@ -15,7 +15,7 @@
  */
 
 import { formatPauseEnd, parsePauseEnd } from './atlassian-pause.js';
-import { checkPageBuild, pageIsStale } from './page-updated.js';
+import { apiFetch, pageIsStale } from './page-updated.js';
 
 // The last /api/sync-statuses response: null until the user loads it, and again after a project switch
 let currentSyncStatuses = null;
@@ -120,10 +120,9 @@ async function loadSyncStatuses() {
 // server serving another page than this one (#125; nothing is fetched once
 // the page is stale), {} on a failure
 async function fetchSyncStatuses(project) {
-    if (pageIsStale()) return { stale: true };
     try {
-        const response = await fetch(`/api/sync-statuses/${encodeURIComponent(project)}`);
-        if (checkPageBuild(response)) return { stale: true };
+        const response = await apiFetch(`/api/sync-statuses/${encodeURIComponent(project)}`);
+        if (!response) return { stale: true };
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
