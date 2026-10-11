@@ -103,7 +103,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
     if (Object.keys(pullRequestsByRepo).length > 0) {
         html += `
             <div class="state-message tree-no-match" hidden>
-                <i class="fas fa-filter"></i>
+                <i class="fas fa-filter" aria-hidden="true"></i>
                 <span>No pull request matches the filters</span>
             </div>
         `;
@@ -158,7 +158,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
                         <h3 class="root-branch-name">
                             <a href="${escapeHtml(branchUrl)}" target="_blank" class="root-branch-link">
                                 ${escapeHtml(rootBranch)}
-                                <i class="fas fa-external-link-alt external-link-icon"></i>
+                                <i class="fas fa-external-link-alt external-link-icon" aria-hidden="true"></i>
                             </a>
                         </h3>
                         <div class="branch-pr-counter" title="${totalPullRequestCount} total pull request${totalPullRequestCount !== 1 ? 's' : ''} (including all descendants)">
@@ -218,7 +218,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     }
 
     let noOtherParticipantsAlert = reviewers.length === 0 ?
-        `<li><i class="fas fa-exclamation-triangle red" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
+        `<li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="Pull request has no other participants"></i> Pull request has no other participants</li>` : '';
 
     // The linked issues, in the order of the map; null for a pull request the map does not know
     const key = pullRequestKey(pullRequest);
@@ -234,7 +234,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     if (linkedIssues) {
         const uniqueJiraIssuesStatuses = new Set(linkedIssues.map(issueDetails => issueDetails.fields.status?.name));
         let sameStatusIcon = uniqueJiraIssuesStatuses.size > 1 ?
-            `<li><i class="fas fa-exclamation-triangle red" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
+            `<li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
         jiraIssuesHtml = linkedIssues.map(issueDetails => {
             return `<li>${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
@@ -311,12 +311,12 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                         ${approvedDetails} ${requestedChangesDetails} ${notYetDecidedDetails}
                         ${pullRequest.commitsBehind !== null && pullRequest.commitsBehind !== undefined ?
                             `<span class="commit-badge commit-badge-behind" title="Number of commits behind destination branch">
-                                <i class="fas fa-code-branch"></i>${pullRequest.commitsBehind === 100 ? 'at least ': ''}-${pullRequest.commitsBehind}
+                                <i class="fas fa-code-branch" aria-hidden="true"></i>${pullRequest.commitsBehind === 100 ? 'at least ': ''}-${pullRequest.commitsBehind}
                             </span>`
                             : ''}
                         ${pullRequest.commitsAhead ?
                             `<span class="commit-badge commit-badge-ahead" title="Number of commits ahead of destination branch">
-                                <i class="fas fa-code-branch"></i>${pullRequest.commitsAhead === 100 ? 'at least ': ''}+${pullRequest.commitsAhead}
+                                <i class="fas fa-code-branch" aria-hidden="true"></i>${pullRequest.commitsAhead === 100 ? 'at least ': ''}+${pullRequest.commitsAhead}
                             </span>`
                             : ''}
                     </div>
@@ -330,6 +330,14 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     }
     return html;
 }
+
+// What the status icon of a participant says, for screen readers (#109)
+const participantStatusLabels = {
+    approved: 'approved',
+    requestedChanges: 'requested changes',
+    toReview: 'not reviewed yet',
+    author: 'author'
+};
 
 // Function to render participant information
 export function renderParticipant(participant, status) {
@@ -350,7 +358,7 @@ export function renderParticipant(participant, status) {
     return `
         <span class="image-container" data-author="${name}" data-review-status="${status}">
             <img src="${escapeHtml(participant.links.avatar.href)}" alt="${name}">
-            <i class="fas ${iconClass} icon"></i>
+            <i class="fas ${iconClass} icon" ${Object.hasOwn(participantStatusLabels, status) ? `role="img" aria-label="${participantStatusLabels[status]}"` : 'aria-hidden="true"'}></i>
         </span>
     `;
 }
@@ -415,7 +423,7 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
     const staleHtml = days >= staleAfterDays ? `
         <div class="warnings">
             <ul>
-                <li><i class="fas fa-exclamation-triangle red" title="No update for ${days} days"></i> No update for ${days} days</li>
+                <li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="No update for ${days} days"></i> No update for ${days} days</li>
             </ul>
         </div>
     ` : '';
@@ -456,7 +464,7 @@ function renderAssignee(assignee) {
     return `
         <span class="image-container" data-author="${name}" title="Assignee: ${name}">
             ${avatar ? `<img src="${escapeHtml(avatar)}" alt="${name}">` : ''}
-            <i class="fas fa-user icon"></i>
+            <i class="fas fa-user icon" aria-hidden="true"></i>
         </span>
     `;
 }

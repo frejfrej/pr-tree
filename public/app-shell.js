@@ -47,6 +47,14 @@ function writeStorage(key, value) {
     }
 }
 
+function removeStorage(key) {
+    try {
+        localStorage.removeItem(key);
+    } catch (error) {
+        // Storage unavailable: nothing was remembered
+    }
+}
+
 // ----------------------------------------------------------------- sidebar
 
 function isSidebarHidden() {
@@ -102,6 +110,15 @@ function initializeSidebar() {
 
 // ------------------------------------------------------------------- theme
 
+/**
+ * The theme preference to store when the toggle picks `theme`: none when it
+ * is the system's, so the page follows the system again from then on
+ */
+export function themeToStore(theme, systemTheme) {
+    return theme === systemTheme ? null : theme;
+}
+
+
 function currentTheme() {
     return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
@@ -117,18 +134,25 @@ function applyTheme(theme) {
     icon.classList.toggle('fa-moon', !dark);
     icon.classList.toggle('fa-sun', dark);
     button.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    button.setAttribute('aria-label', button.title);
 }
 
 function initializeTheme() {
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
     // The inline script in <head> already chose the theme; this syncs the button with it
     applyTheme(currentTheme());
     document.getElementById('themeToggle').addEventListener('click', () => {
         const next = currentTheme() === 'dark' ? 'light' : 'dark';
-        writeStorage(THEME_STORAGE_KEY, next);
+        const stored = themeToStore(next, systemDark.matches ? 'dark' : 'light');
+        if (stored) {
+            writeStorage(THEME_STORAGE_KEY, stored);
+        } else {
+            removeStorage(THEME_STORAGE_KEY);
+        }
         applyTheme(next);
     });
     // Follow the OS setting live as long as no preference has been stored
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+    systemDark.addEventListener('change', event => {
         const stored = readStorage(THEME_STORAGE_KEY);
         if (stored !== 'light' && stored !== 'dark') {
             applyTheme(event.matches ? 'dark' : 'light');
@@ -157,13 +181,27 @@ async function fetchAndDisplayVersion() {
 
 // -------------------------------------------------------------- help modal
 
+// A modal <dialog>: the browser moves the focus in (the close button), makes
+// the page behind inert and closes it on Escape. The focus goes back to where
+// it was, here as well as by the browser, which not every version does.
+let focusBeforeHelp = null;
+
 function openHelp() {
-    document.getElementById('helpModal').hidden = false;
+    const modal = document.getElementById('helpModal');
+    if (modal.open) return;
+    focusBeforeHelp = document.activeElement;
+    modal.showModal();
     loadReadme(document.getElementById('helpContent'));
 }
 
 function closeHelp() {
-    document.getElementById('helpModal').hidden = true;
+    document.getElementById('helpModal').close();
+}
+
+function restoreFocusAfterHelp() {
+    const browserRestored = document.activeElement && document.activeElement !== document.body;
+    if (!browserRestored && focusBeforeHelp?.isConnected) focusBeforeHelp.focus();
+    focusBeforeHelp = null;
 }
 
 const importMarked = async () => (await import('./vendor/marked/marked.esm.js')).marked;
@@ -196,8 +234,16 @@ function initializeHelpModal() {
     const modal = document.getElementById('helpModal');
     document.getElementById('helpButton').addEventListener('click', openHelp);
     document.getElementById('helpClose').addEventListener('click', closeHelp);
+    modal.addEventListener('close', restoreFocusAfterHelp);
+    // The dialog covers the page: a click on it outside the content is a click on
+    // the backdrop. Pressed on the backdrop too: a text selection dragged out of
+    // the content ends there, and its click targets the dialog
+    let pressedOnBackdrop = false;
+    modal.addEventListener('pointerdown', event => {
+        pressedOnBackdrop = event.target === modal;
+    });
     modal.addEventListener('click', event => {
-        if (event.target === modal) {
+        if (event.target === modal && pressedOnBackdrop) {
             closeHelp();
         }
     });
@@ -218,8 +264,7 @@ function isFilledTextBox(target) {
 }
 
 function isHelpOpen() {
-    const modal = document.getElementById('helpModal');
-    return Boolean(modal) && !modal.hidden;
+    return Boolean(document.getElementById('helpModal')?.open);
 }
 
 function focusTextFilter() {
@@ -239,20 +284,24 @@ export function isFindShortcut(event) {
         (event.key === 'f' || event.key === 'F');
 }
 
-// Registered in the capture phase: an open multi-select is still open here and
-// handles Escape itself, so the shell stays out of its way.
+// A key for an open multi-select: pressed in it, or with the focus nowhere
+// (Safari does not focus a clicked checkbox) while one is open
+function isForOpenMultiSelect(target) {
+    if (target instanceof Element && target.closest('.multi-select.open')) return true;
+    return (target === document.body || target === document.documentElement) &&
+        Boolean(document.querySelector('.multi-select.open'));
+}
+
+// Registered in the capture phase: a key for an open multi-select reaches it
+// still open, and the component handles Escape and the arrows itself, so the
+// shell stays out of its way; the help dialog closes itself on Escape.
 function handleKeydown(event) {
-    if (document.querySelector('.multi-select.open')) {
+    if (isForOpenMultiSelect(event.target)) {
         return;
     }
 
     if (event.key === 'Escape') {
-        if (isFilledTextBox(event.target)) {
-            return;
-        }
-        if (isHelpOpen()) {
-            closeHelp();
-        } else {
+        if (!isFilledTextBox(event.target) && !isHelpOpen()) {
             closeSidebarDrawer();
         }
         return;
@@ -317,12 +366,20 @@ export function showPartialDataIndicator(incomplete = []) {
 
 // -------------------------------------------------------- filters and tree
 
-/** Shows the number of active filters on the sidebar toggle and the clear button in the sidebar. */
+/**
+ * Shows the number of active filters on the sidebar toggle, in its name too
+ * (its aria-label replaces its content, the badge, as its name), and the
+ * clear button in the sidebar.
+ */
 export function updateActiveFilterBadge(count) {
     const badge = document.getElementById('activeFilterBadge');
     if (badge) {
         badge.textContent = String(count);
         badge.hidden = count === 0;
+    }
+    const toggle = document.getElementById('sidebarToggle');
+    if (toggle) {
+        toggle.setAttribute('aria-label', count === 0 ? 'Toggle filters' : `Toggle filters, ${count} active`);
     }
     const clearButton = document.getElementById('clearFiltersButton');
     if (clearButton) {
