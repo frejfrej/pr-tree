@@ -5,10 +5,9 @@
  * element with the class and the id.
  */
 
-const instances = new Map();
+import { escapeHtml } from './escape-html.js';
 
-// Text and attribute values are both double-quoted here; quotes are escaped too
-const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const instances = new Map();
 
 // The trigger and the dropdown of every multi-select; the element in index.html
 // is an empty <div class="multi-select" id="..."> and gets this markup at
@@ -182,8 +181,8 @@ export class MultiSelect {
             const isChecked = this.selectedValues.includes(opt.value);
             return `
                 <label class="multi-select-option">
-                    <input type="checkbox" value="${this.escapeHtml(opt.value)}" ${isChecked ? 'checked' : ''}>
-                    <span class="multi-select-option-label" title="${this.escapeHtml(opt.label)}">${this.escapeHtml(opt.label)}</span>
+                    <input type="checkbox" value="${escapeHtml(opt.value)}" ${isChecked ? 'checked' : ''}>
+                    <span class="multi-select-option-label" title="${escapeHtml(opt.label)}">${escapeHtml(opt.label)}</span>
                 </label>
             `;
         }).join('');
@@ -249,10 +248,6 @@ export class MultiSelect {
         if (this.onChange) {
             this.onChange(this.getSelectedValues());
         }
-    }
-
-    escapeHtml(text) {
-        return String(text ?? '').replace(/[&<>"']/g, character => htmlEscapes[character]);
     }
 }
 

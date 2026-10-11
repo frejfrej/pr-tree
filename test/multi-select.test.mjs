@@ -95,3 +95,12 @@ test('a click on the page re-renders only the dropdown it closes, not the closed
     assert.ok(!sprint.root.classList.contains('open'));
     assert.deepEqual([sprintOptions.renders, epicOptions.renders], [before[0] + 1, before[1]]); // the search reset of the one closed
 });
+
+test('the options are escaped: a Jira sprint, epic or story name is text, never markup (#111)', () => {
+    const { instance, parts } = open('sprintFilter');
+    instance.setOptions([{ value: 'a"b', label: '<img src=x onerror=alert(1)> & co' }]);
+    const html = parts['.multi-select-options'].innerHTML;
+    assert.ok(html.includes('value="a&quot;b"'));
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt; &amp; co'));
+    assert.ok(!html.includes('<img'));
+});

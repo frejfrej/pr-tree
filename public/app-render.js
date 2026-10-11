@@ -31,23 +31,10 @@
 
 import { otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
+import { escapeHtml } from './escape-html.js';
 
-/**
- * The text as HTML: the five characters that can end an attribute or start a
- * tag are escaped, so it can be interpolated anywhere. null and undefined
- * give an empty string.
- */
-export function escapeHtml(text) {
-    if (text === null || text === undefined) {
-        return '';
-    }
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
+// The one escape of the page, shared with the filter options (escape-html.js)
+export { escapeHtml };
 
 // The chevron button of a collapsible block. `name` is the accessible name
 // (escaped); the chevrons are decoration. No handler of its own: the click

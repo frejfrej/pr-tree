@@ -161,8 +161,8 @@ async function loadProjects() {
         const response = await fetch('/api/projects');
         availableProjects = await response.json();
         const projectSelect = document.getElementById('projectSelect');
-        projectSelect.innerHTML = '<option value="">Select a project</option>' +
-            availableProjects.map(project => `<option value="${project}">${project}</option>`).join('');
+        // Option nodes: a project name is text, never markup (NFR-SEC7)
+        projectSelect.replaceChildren(new Option('Select a project', ''), ...availableProjects.map(project => new Option(project, project)));
         projectSelect.addEventListener('change', event => selectProject(event.target.value));
 
         // Open the project the URL names, with the filters it carries
