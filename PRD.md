@@ -125,6 +125,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.7: Mark draft pull requests with a "Draft" badge and show the number of open tasks of a pull request
 - F2.8: Walk the tree from the keyboard: ↓ / `j` and ↑ / `k` select the next and previous row shown (each root-branch header, the pull requests under it, then orphaned issues), → unfolds the selected branch or stack or selects its first pull request, ← folds it or selects its parent (a root pull request's branch header), `o` opens the selected row, `i` its first Jira issue, Enter or Space fold or unfold the focused row's stack, `x` goes back to the root of the stack and folds it; ignored while typing, in an open filter list or with the help open
 - F2.9: One row is selected whenever a row is shown, the one the URL names (`selected`) when it is shown, the first pull request otherwise; a selection by the user (a key, a click, Tab) replaces the URL entry, a refresh or a filter change never writes it; a load and Back/Forward scroll the selected row into view
+- F2.10: The folded repositories, root branches and stacked pull requests of a project are kept by the browser (localStorage, per project, never the URL) and restored at the project's first render (page load, reopened tab, project switch); written after each user fold (click, key, Collapse all, Expand all), pruned to the rendered keys after every render
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time

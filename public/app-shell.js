@@ -10,6 +10,7 @@
 import { collapseAll, expandAll } from './tree-toggle.js';
 import { apiFetch } from './page-updated.js';
 import { isPageTarget } from './tree-keyboard.js';
+import { readStorage, writeStorage, removeStorage } from './local-storage.js';
 
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
@@ -31,32 +32,6 @@ export function buildDocumentTitle({ project, attentionCount }) {
 
 export function updateDocumentTitle(state) {
     document.title = buildDocumentTitle(state);
-}
-
-// ----------------------------------------------------------------- storage
-
-function readStorage(key) {
-    try {
-        return localStorage.getItem(key);
-    } catch (error) {
-        return null;
-    }
-}
-
-function writeStorage(key, value) {
-    try {
-        localStorage.setItem(key, value);
-    } catch (error) {
-        // Storage unavailable (private window, blocked site data): the preference is not remembered
-    }
-}
-
-function removeStorage(key) {
-    try {
-        localStorage.removeItem(key);
-    } catch (error) {
-        // Storage unavailable: nothing was remembered
-    }
 }
 
 // ----------------------------------------------------------------- sidebar
@@ -408,9 +383,15 @@ export function setToolbarVisible(visible) {
     }
 }
 
-function initializeToolbar() {
-    document.getElementById('collapseAllButton').addEventListener('click', collapseAll);
-    document.getElementById('expandAllButton').addEventListener('click', expandAll);
+function initializeToolbar(onCollapseChange) {
+    document.getElementById('collapseAllButton').addEventListener('click', () => {
+        collapseAll();
+        onCollapseChange();
+    });
+    document.getElementById('expandAllButton').addEventListener('click', () => {
+        expandAll();
+        onCollapseChange();
+    });
 }
 
 // -------------------------------------------------------------------- init
@@ -419,13 +400,14 @@ function initializeToolbar() {
  * @param {object} handlers
  * @param {() => void} handlers.onClearFilters - the sidebar's "Clear filters"
  * @param {(event: KeyboardEvent) => boolean} [handlers.onTreeKey] - a key the shell leaves to the tree; true when taken
+ * @param {() => void} [handlers.onCollapseChange] - after "Collapse all" or "Expand all"
  */
-export function initializeAppShell({ onClearFilters, onTreeKey = () => false }) {
+export function initializeAppShell({ onClearFilters, onTreeKey = () => false, onCollapseChange = () => {} }) {
     treeKeyHandler = onTreeKey;
     initializeSidebar();
     initializeTheme();
     initializeHelpModal();
-    initializeToolbar();
+    initializeToolbar(onCollapseChange);
     document.getElementById('clearFiltersButton').addEventListener('click', onClearFilters);
     document.addEventListener('keydown', handleKeydown, true);
     fetchAndDisplayVersion();

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setRepositoryCollapsed, setRootBranchCollapsed, setPullRequestCollapsed, handleTreeClick, captureToggleStates, restoreToggleStates } from '../public/tree-toggle.js';
+import { setRepositoryCollapsed, setRootBranchCollapsed, setPullRequestCollapsed, handleTreeClick, captureToggleStates, restoreToggleStates, collapseStateStorageKey, parseToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates } from '../public/tree-toggle.js';
 
 // The surface of an element the helpers touch: classList, the attributes, one
 // querySelector and one closest answering the selectors of the module, hidden,
@@ -74,7 +74,7 @@ test('handleTreeClick toggles the block the click lands on, and nothing inside a
     const repositoryHeader = element({ closest: { '.repository': repository } });
     const repositoryButton = element({ closest: { '.repository-header': repositoryHeader, '.repository': repository } });
     // A click on the header, and one on its button (what a keyboard activation dispatches): one toggle each
-    handleTreeClick({ target: element({ closest: { '.repository-header': repositoryHeader } }) });
+    assert.equal(handleTreeClick({ target: element({ closest: { '.repository-header': repositoryHeader } }) }), true);
     assert.ok(repository.classList.contains('collapsed'));
     handleTreeClick({ target: repositoryButton });
     assert.ok(!repository.classList.contains('collapsed'));
@@ -84,7 +84,7 @@ test('handleTreeClick toggles the block the click lands on, and nothing inside a
     handleTreeClick({ target: element({ closest: { '.root-branch-header': rootBranchHeader } }) });
     assert.ok(rootBranch.classList.contains('collapsed'));
     // The root-branch link, inside the header: the link does its job, the branch stays
-    handleTreeClick({ target: element({ closest: { 'a': element(), '.root-branch-header': rootBranchHeader } }) });
+    assert.equal(handleTreeClick({ target: element({ closest: { 'a': element(), '.root-branch-header': rootBranchHeader } }) }), false);
     assert.ok(rootBranch.classList.contains('collapsed'));
 
     const children = element({ classes: ['children'] });
@@ -95,8 +95,8 @@ test('handleTreeClick toggles the block the click lands on, and nothing inside a
     assert.ok(pullRequest.classList.contains('collapsed'));
     assert.equal(children.hidden, true);
 
-    // A click on the content of a pull request toggles nothing
-    handleTreeClick({ target: element() });
+    // A click on the content of a pull request toggles nothing, and says so
+    assert.equal(handleTreeClick({ target: element() }), false);
     assert.ok(pullRequest.classList.contains('collapsed'));
 });
 
@@ -175,4 +175,108 @@ test('isCollapsedAway: a row inside a collapsed repository, root branch or pull 
     assert.equal(isCollapsedAway(orphan), false);
     orphanedIssues.classList.add('collapsed');
     assert.equal(isCollapsedAway(orphan), true);
+});
+
+// ------------------------------------------------- across a page reload (#142)
+
+// A localStorage keeping its entries in a Map and counting the writes, and a
+// document over the given elements, both put on globalThis for the test
+function withStorageAndTree(t, elements, entries = {}) {
+    const previous = { localStorage: globalThis.localStorage, document: globalThis.document };
+    t.after(() => Object.assign(globalThis, previous));
+    const map = new Map(Object.entries(entries));
+    const storage = {
+        writes: 0,
+        map,
+        getItem: key => map.get(key) ?? null,
+        setItem(key, value) { this.writes++; map.set(key, String(value)); },
+        removeItem(key) { this.writes++; map.delete(key); }
+    };
+    globalThis.localStorage = storage;
+    globalThis.document = fakeTree(elements);
+    return storage;
+}
+
+const pullRequestRow = key => element({ classes: ['pull-request'], next: element({ classes: ['children'] }), dataset: { id: key } });
+const rootBranchElement = key => element({ classes: ['root-branch'], dataset: { rootBranchKey: key } });
+const repositoryElement = name => element({ classes: ['repository'], children: { '.repository-name': { textContent: name } } });
+
+test('collapseStateStorageKey: one entry per project', () => {
+    assert.equal(collapseStateStorageKey('SECOLLAB'), 'prTree.collapsed.SECOLLAB');
+    assert.notEqual(collapseStateStorageKey('A'), collapseStateStorageKey('B'));
+});
+
+test('parseToggleStates: the three kinds of a stored entry; nothing collapsed for a missing entry, junk or another shape', () => {
+    const none = { repositories: [], rootBranches: [], pullRequests: [] };
+    assert.deepEqual(parseToggleStates(null), none);
+    assert.deepEqual(parseToggleStates('not json'), none);
+    assert.deepEqual(parseToggleStates('42'), none);
+    assert.deepEqual(parseToggleStates('["repo-a"]'), none);
+    assert.deepEqual(parseToggleStates('{"repositories":"repo-a","pullRequests":null}'), none);
+    assert.deepEqual(parseToggleStates('{"repositories":["repo-a",3,null],"rootBranches":["repo-a:master"],"pullRequests":["repo-a/45"],"other":["x"]}'),
+        { repositories: ['repo-a'], rootBranches: ['repo-a:master'], pullRequests: ['repo-a/45'] });
+});
+
+test('storeToggleStates writes what the tree has collapsed, only when it changed; nothing collapsed removes the entry', t => {
+    const tree = [repositoryElement('repo-a'), rootBranchElement('repo-a:master'), pullRequestRow('repo-a/45'), pullRequestRow('repo-a/46')];
+    const storage = withStorageAndTree(t, tree);
+    const key = collapseStateStorageKey('P');
+    setRootBranchCollapsed(tree[1], true);
+    setPullRequestCollapsed(tree[3], true);
+    storeToggleStates('P');
+    assert.deepEqual(JSON.parse(storage.map.get(key)), { repositories: [], rootBranches: ['repo-a:master'], pullRequests: ['repo-a/46'] });
+    assert.equal(storage.writes, 1);
+    // A key move, or a click that folds and unfolds back: nothing new is written
+    storeToggleStates('P');
+    assert.equal(storage.writes, 1);
+    setRootBranchCollapsed(tree[1], false);
+    setPullRequestCollapsed(tree[3], false);
+    storeToggleStates('P');
+    assert.equal(storage.map.has(key), false);
+    assert.equal(storage.writes, 2);
+    storeToggleStates('P');
+    assert.equal(storage.writes, 2);
+});
+
+test('a page load restores what was stored: the collapse survives a reload by key, in the project it was made in (#142)', t => {
+    const makeTree = () => [repositoryElement('repo-b'), rootBranchElement('repo-a:master'), rootBranchElement('repo-b:master'), pullRequestRow('repo-a/45'), pullRequestRow('repo-b/45')];
+    const before = makeTree();
+    withStorageAndTree(t, before);
+    setRepositoryCollapsed(before[0], true);
+    setRootBranchCollapsed(before[2], true);
+    setPullRequestCollapsed(before[4], true);
+    storeToggleStates('P');
+
+    // The reload: a new tree, nothing in memory
+    const after = makeTree();
+    globalThis.document = fakeTree(after);
+    restoreToggleStates(storedToggleStates('P'));
+    assert.deepEqual(after.map(block => block.classList.contains('collapsed')), [true, false, true, false, true]);
+    // Another project has its own entry: nothing collapsed there
+    assert.deepEqual(storedToggleStates('Q'), { repositories: [], rootBranches: [], pullRequests: [] });
+});
+
+test('pruneStoredToggleStates drops the keys the render no longer has, keeps those it shows expanded, and removes an emptied entry', t => {
+    const key = collapseStateStorageKey('P');
+    const stored = JSON.stringify({ repositories: ['repo-a', 'gone-repo'], rootBranches: ['repo-a:release'], pullRequests: ['repo-a/45', 'repo-a/merged', '45'] });
+    // repo-a/45 is rendered expanded: another tab may have folded it since this tab's render
+    const storage = withStorageAndTree(t, [repositoryElement('repo-a'), rootBranchElement('repo-a:master'), pullRequestRow('repo-a/45')], { [key]: stored });
+    pruneStoredToggleStates('P');
+    assert.deepEqual(JSON.parse(storage.map.get(key)), { repositories: ['repo-a'], rootBranches: [], pullRequests: ['repo-a/45'] });
+    assert.equal(storage.writes, 1);
+    pruneStoredToggleStates('P');
+    assert.equal(storage.writes, 1); // nothing more to drop: no write
+    globalThis.document = fakeTree([]);
+    pruneStoredToggleStates('P');
+    assert.equal(storage.map.has(key), false);
+});
+
+test('the stored state does without storage: a blocked localStorage reads as nothing collapsed and writes nothing, without throwing', t => {
+    withStorageAndTree(t, [pullRequestRow('repo-a/45')]);
+    const blocked = () => { throw new Error('SecurityError'); };
+    globalThis.localStorage = { getItem: blocked, setItem: blocked, removeItem: blocked };
+    setPullRequestCollapsed(globalThis.document.querySelectorAll('.pull-request')[0], true);
+    assert.doesNotThrow(() => storeToggleStates('P'));
+    assert.doesNotThrow(() => pruneStoredToggleStates('P'));
+    assert.deepEqual(storedToggleStates('P'), { repositories: [], rootBranches: [], pullRequests: [] });
 });

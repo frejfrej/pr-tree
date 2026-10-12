@@ -8,7 +8,14 @@
  * together. The chevrons are pure CSS, driven by the "collapsed" class.
  * app.js installs handleTreeClick on the tree pane; the rendered tree carries
  * no inline handler.
+ *
+ * What is collapsed is kept by key, per kind: across a re-render in memory
+ * (captureToggleStates, restoreToggleStates), across a page reload in
+ * localStorage, one entry per project (#142). app.js decides when the entry
+ * is read, written and pruned; nothing here writes it on its own.
  */
+
+import { readStorage, writeStorage, removeStorage } from './local-storage.js';
 
 // The toggle button of a block announces whether the block is open
 function setExpanded(button, collapsed) {
@@ -70,23 +77,25 @@ function toggleChildren(button) {
  * request toggles its stacked pull requests; anywhere else on a root-branch
  * or a repository header toggles the branch or the repository, the button
  * inside the header included (a keyboard activation dispatches a click on
- * it, which lands here once).
+ * it, which lands here once). Returns whether it toggled a block.
  */
 export function handleTreeClick(event) {
     const target = event.target;
-    if (target.closest('a')) return;
+    if (target.closest('a')) return false;
     const pullRequestButton = target.closest('.pull-request-header .toggle-button');
     if (pullRequestButton) {
         toggleChildren(pullRequestButton);
-        return;
+        return true;
     }
     const rootBranchHeader = target.closest('.root-branch-header');
     if (rootBranchHeader) {
         toggleRootBranch(rootBranchHeader);
-        return;
+        return true;
     }
     const repositoryHeader = target.closest('.repository-header');
-    if (repositoryHeader) toggleRepository(repositoryHeader);
+    if (!repositoryHeader) return false;
+    toggleRepository(repositoryHeader);
+    return true;
 }
 
 /**
@@ -147,4 +156,68 @@ export function restoreToggleStates(states) {
             if (element) setCollapsed(element, true);
         }
     }
+}
+
+// ------------------------------------------------- across a page reload (#142)
+
+/** The localStorage entry of a project's collapse state */
+export function collapseStateStorageKey(project) {
+    return `prTree.collapsed.${project}`;
+}
+
+/**
+ * The collapse state of a stored entry, as captureToggleStates returns it;
+ * nothing collapsed for a missing entry or one of another shape (junk, a
+ * hand edit): a key of each kind is a string
+ * @param {string | null} text
+ * @returns {{ repositories: string[], rootBranches: string[], pullRequests: string[] }}
+ */
+export function parseToggleStates(text) {
+    let stored = null;
+    try {
+        stored = JSON.parse(text);
+    } catch (error) {
+        // Not JSON: nothing collapsed
+    }
+    return Object.fromEntries(Object.keys(collapsibleKinds).map(kind => {
+        const keys = stored?.[kind];
+        return [kind, Array.isArray(keys) ? keys.filter(key => typeof key === 'string') : []];
+    }));
+}
+
+/** The collapse state stored for a project, to restore at its first render */
+export function storedToggleStates(project) {
+    return parseToggleStates(readStorage(collapseStateStorageKey(project)));
+}
+
+// Writes a project's entry when it changes; nothing collapsed removes it
+function writeToggleStates(project, states) {
+    const key = collapseStateStorageKey(project);
+    if (Object.values(states).every(keys => keys.length === 0)) {
+        if (readStorage(key) !== null) removeStorage(key);
+        return;
+    }
+    const text = JSON.stringify(states);
+    if (readStorage(key) !== text) writeStorage(key, text);
+}
+
+/** Stores what the rendered tree has collapsed as the project's entry: after a user action that can fold */
+export function storeToggleStates(project) {
+    writeToggleStates(project, captureToggleStates());
+}
+
+/**
+ * Drops from the project's entry the keys the rendered tree no longer has
+ * (a merged pull request, a deleted branch): after every render. The entry
+ * is pruned, not replaced by this tree's folds, so a refresh in one tab
+ * does not undo a fold made in another tab of the project since.
+ */
+export function pruneStoredToggleStates(project) {
+    const stored = storedToggleStates(project);
+    const pruned = Object.fromEntries(Object.entries(collapsibleKinds).map(([kind, { selector, keyOf }]) => {
+        if (stored[kind].length === 0) return [kind, []];
+        const rendered = new Set([...document.querySelectorAll(selector)].map(keyOf));
+        return [kind, stored[kind].filter(key => rendered.has(key))];
+    }));
+    writeToggleStates(project, pruned);
 }
