@@ -18,8 +18,9 @@
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
- * Both kinds of rows are focusable but outside the Tab order (tabindex="-1"):
- * the keys of tree-keyboard.js move the focus between them.
+ * Both kinds of rows, and the root-branch headers, are focusable but outside
+ * the Tab order (tabindex="-1"): the keys of tree-keyboard.js move the focus
+ * between them.
  * Every text from Bitbucket or Jira (titles, branch and repository names,
  * summaries, display names, priority names, URLs) goes through escapeHtml
  * before it is interpolated, whether into an attribute or between tags; the
@@ -155,7 +156,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
 
             html += `
                 <div class="root-branch" data-root-branch-key="${escapeHtml(branchKey)}">
-                    <div class="root-branch-header">
+                    <div class="root-branch-header" tabindex="-1">
                         ${toggleButton(escapeHtml(rootBranch))}
                         <h3 class="root-branch-name">
                             <a href="${escapeHtml(branchUrl)}" target="_blank" class="root-branch-link">

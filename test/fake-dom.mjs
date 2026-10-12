@@ -66,6 +66,7 @@ export function node({ tag = 'div', classes = [], dataset = {}, hidden = false }
     const attributes = {};
     const element = {
         tag,
+        tagName: tag.toUpperCase(),
         children,
         parentElement: null,
         dataset: { ...dataset },
@@ -81,6 +82,7 @@ export function node({ tag = 'div', classes = [], dataset = {}, hidden = false }
         },
         getAttribute: name => attributes[name] ?? null,
         setAttribute(name, value) { attributes[name] = value; },
+        removeAttribute(name) { delete attributes[name]; },
         get firstElementChild() { return children[0] ?? null; },
         get nextElementSibling() { return this.parentElement?.children[this.parentElement.children.indexOf(this) + 1] ?? null; },
         get previousElementSibling() { return this.parentElement?.children[this.parentElement.children.indexOf(this) - 1] ?? null; },
@@ -124,6 +126,8 @@ export function node({ tag = 'div', classes = [], dataset = {}, hidden = false }
 export function fakeDocument(root) {
     const document = {
         activeElement: null,
+        body: root,
+        documentElement: null,
         keyboard: true,
         events: [],
         querySelectorAll: selector => [root, ...descendants(root)].filter(candidate => candidate.matches(selector)),

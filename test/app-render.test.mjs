@@ -97,7 +97,9 @@ test('renderRepositories renders one block per repository with its root branches
     // Root branch counters include the descendants: main has 1 + 1, develop 2
     assert.equal(count(html, 'title="2 total pull requests (including all descendants)"'), 2);
     assert.equal(count(html, 'class="pull-request '), 4);
-    assert.equal(count(html, 'tabindex="-1"'), 4); // every row focusable by the tree keys, outside the Tab order (#118)
+    // Every row and root-branch header focusable by the tree keys, outside the Tab order (#118)
+    assert.equal(count(html, 'tabindex="-1"'), 6);
+    assert.equal(count(html, '<div class="root-branch-header" tabindex="-1">'), 2);
     // The no-match message is rendered hidden after the repositories; the filter pass shows it
     assert.equal(count(html, '<div class="state-message tree-no-match" hidden>'), 1);
 });

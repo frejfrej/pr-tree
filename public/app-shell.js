@@ -9,6 +9,7 @@
 
 import { collapseAll, expandAll } from './tree-toggle.js';
 import { apiFetch } from './page-updated.js';
+import { isPageTarget } from './tree-keyboard.js';
 
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
@@ -298,8 +299,7 @@ export function isFindShortcut(event) {
 // (Safari does not focus a clicked checkbox) while one is open
 function isForOpenMultiSelect(target) {
     if (target instanceof Element && target.closest('.multi-select.open')) return true;
-    return (target === document.body || target === document.documentElement) &&
-        Boolean(document.querySelector('.multi-select.open'));
+    return isPageTarget(target) && Boolean(document.querySelector('.multi-select.open'));
 }
 
 // Registered in the capture phase: a key for an open multi-select reaches it

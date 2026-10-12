@@ -3,9 +3,9 @@ import { renderRepositories, renderOrphanedIssues, initializePopovers } from './
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
-import { handleTreeKey, captureFocusedRow, restoreFocusedRow } from './tree-keyboard.js';
+import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
-import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from './app-url.js';
+import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
 import { apiFetch, pageIsStale, pageUpdatedStateText, initializePageUpdatedButton } from './page-updated.js';
@@ -37,6 +37,18 @@ let projectLoading = false;
 let loadPrefersTypedText = true;
 // The rows the last filter pass left displayed, in document order: where j and k go (tree-keyboard.js)
 let treeRows = [];
+// The row the user last selected (its key, the `selected` URL parameter), and
+// the row selected: that one when the last pass shows it, the first row shown
+// otherwise. Only a selection by the user changes the first (see selectRow)
+let wantedRowKey = null;
+let selectedRow = null;
+// The URL write of a selection waits for the keys to rest (see selectRow)
+let selectionWriteTimer = null;
+// While a re-render gives the focus back, the focus selects nothing: a refresh never writes the URL
+let restoringFocus = false;
+// Whether the last click was in the tree's pane: the arrows then move the selection
+// with the focus on the page itself; after a click in the sidebar or the banner they scroll it
+let lastPointerInTree = true;
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
@@ -44,6 +56,11 @@ let treeRows = [];
 function applyFilters() {
     const { attentionCount, shownRows } = filterBranches(filters, loadedSyncStatuses());
     treeRows = shownRows;
+    selectedRow = paintSelectedRow(treeRows, wantedRowKey, selectedRow);
+    // The selection moved without the user (Back, a filter): a row still holding the focus
+    // lets it go, so the keys and the focus a refresh gives back follow the selected row
+    const focusedRow = rowOf(document.activeElement);
+    if (focusedRow && focusedRow !== selectedRow) document.activeElement.blur();
     updateActiveFilterBadge(countActiveFilters(filters));
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
@@ -85,11 +102,46 @@ function clearAllFilters() {
     handleFilterChange();
 }
 
-// Writes the project and the filters (the state unless others are given) to
+// A selection by the user: a key, a click in a row, Tab into a row. The URL
+// entry is replaced (no entry per row, like typing in the search box), once
+// the keys rest: a held arrow would spend the browser's budget of URL updates.
+// A refresh never gets here: the focus it gives back selects nothing
+// (restoringFocus), so a refresh never writes the URL (#61)
+function selectRow(row) {
+    const key = rowKey(row);
+    if (key === wantedRowKey && row === selectedRow) return;
+    wantedRowKey = key;
+    selectedRow = markSelectedRow(row, selectedRow);
+    clearTimeout(selectionWriteTimer);
+    selectionWriteTimer = setTimeout(writeSelection, 250);
+}
+
+function writeSelection() {
+    selectionWriteTimer = null;
+    try {
+        window.history.replaceState(window.history.state, '', urlWithSelection(new URL(window.location), wantedRowKey));
+    } catch (error) {
+        // Safari's update limit: the address bar catches up at the next write
+    }
+}
+
+// A selection not written yet: a write of the URL takes it along, Back/Forward and a project switch drop it
+function cancelSelectionWrite() {
+    clearTimeout(selectionWriteTimer);
+    selectionWriteTimer = null;
+}
+
+// The selected row after a project load or Back/Forward: in the middle of the view
+function scrollToSelectedRow() {
+    selectedRow?.scrollIntoView({ block: 'center' });
+}
+
+// Writes the project, the filters (the state unless others are given) and the wanted row to
 // the URL. `replace` swaps the current history entry instead of pushing one:
 // while typing in the search box, and when the address bar catches up after a load.
 function updateUrlWithFilters({ replace = false, filters: written = filters } = {}) {
-    const url = urlWithFilters(new URL(window.location), { project: currentProject, filters: written });
+    cancelSelectionWrite();
+    const url = urlWithSelection(urlWithFilters(new URL(window.location), { project: currentProject, filters: written }), wantedRowKey);
 
     // Update URL without reloading the page. Safari throws past 100 updates
     // per 30 seconds: the URL then catches up on the next change
@@ -209,6 +261,11 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     const generation = ++loadGeneration;
     projectLoading = false;
     loadPrefersTypedText = !fromUrl;
+    // The row wanted belongs to the project: from the dropdown none is, the URL write drops it.
+    // A refresh does not read it: the state is the user's last selection
+    cancelSelectionWrite();
+    wantedRowKey = fromUrl ? selectedFromUrl(window.location.search) : null;
+    selectedRow = null;
     // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
     currentApiResult = null;
     currentProject = projectName || null;
@@ -263,6 +320,7 @@ function catchUpUrl() {
 function renderProjectLoad(data) {
     renderEverything(data, { preferTypedText: loadPrefersTypedText });
     catchUpUrl();
+    scrollToSelectedRow();
 }
 
 // Takes the server's pause from an answer of a load or a check (see
@@ -306,17 +364,23 @@ function takeAnswer(result) {
 // Nothing here pushes a history entry. Browsers no longer fire popstate on
 // page load.
 function handlePopState() {
+    // A selection not written yet belongs to the entry left
+    cancelSelectionWrite();
     const projectName = projectFromUrl(window.location.search, availableProjects);
     if (projectName !== currentProject) {
         document.getElementById('projectSelect').value = projectName || '';
         selectProject(projectName, { fromUrl: true });
         return;
     }
-    // Nothing rendered (loading, or the last load failed): the next render restores from the URL
+    // The row wanted is the entry's, rendered or not: the next render selects it and writes it back
+    wantedRowKey = selectedFromUrl(window.location.search);
+    // Nothing rendered (loading, or the last load failed): the next render restores the filters from the URL
     if (!currentApiResult) return;
+    const selectedBefore = selectedRow;
     restoreFiltersFromUrl({ preferTypedText: false });
     applyFilters();
     catchUpUrl();
+    if (selectedRow !== selectedBefore) scrollToSelectedRow();
 }
 
 // Messages shown in the main pane instead of the tree. Built with DOM nodes so
@@ -487,7 +551,15 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
     restoreFiltersFromUrl({ preferTypedText });
     applyFilters();
-    restoreFocusedRow(focusedRow, treeRows);
+    // The focus is given back to the selected row only: a refresh must not select another (selectRow would write the URL)
+    if (selectedRow && focusedRow?.key === rowKey(selectedRow)) {
+        restoringFocus = true;
+        try {
+            restoreFocusedRow(focusedRow, treeRows);
+        } finally {
+            restoringFocus = false;
+        }
+    }
     setToolbarVisible(true);
 
     // Update the last refresh time
@@ -623,10 +695,9 @@ function initializeMultiSelects() {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
-    const mainPane = document.querySelector('.main-pane');
     initializeAppShell({
         onClearFilters: clearAllFilters,
-        onTreeKey: event => handleTreeKey(event, treeRows, { viewTop: () => mainPane.getBoundingClientRect().top })
+        onTreeKey: event => handleTreeKey(event, { shownRows: treeRows, selectedRow, select: selectRow, arrowsFromPage: lastPointerInTree })
     });
     initializePageUpdatedButton();
     initializeMultiSelects();
@@ -634,7 +705,16 @@ document.addEventListener('DOMContentLoaded', function() {
     showEmptyState();
     loadProjects();
     initializePopovers();
-    document.getElementById('pull-requests').addEventListener('click', handleTreeClick);
+    const treePane = document.getElementById('pull-requests');
+    treePane.addEventListener('click', handleTreeClick);
+    // A click in a row, or Tab into one, selects it (a row is focusable)
+    treePane.addEventListener('focusin', event => {
+        const row = rowOf(event.target);
+        if (row && !restoringFocus) selectRow(row);
+    });
+    document.addEventListener('pointerdown', event => {
+        lastPointerInTree = event.target instanceof Element && Boolean(event.target.closest('.main-pane'));
+    }, true);
     initializeWorkFilter();
     initializeHideDraftsFilter();
     initializeSyncControls({
