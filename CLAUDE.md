@@ -43,7 +43,7 @@ public/page-updated.js apiFetch, the one way to /api: a tab whose server serves 
 public/page-build-header.mjs   The X-Page-Build header name, shared with page-build.mjs
 public/atlassian-pause.js      The Atlassian pause on the page: 503 of a project load, pause end, banner indicator
 public/app-shell.js    Banner, sidebar, theme, help, keyboard shortcuts, tab title
-public/filter-registry.js      The five multi-select filters (key, element, URL parameter), defaultFilters()
+public/filter-registry.js      The five multi-select filters (key, element, URL parameter) and the single-value ones (Work, Hide drafts, SYNC: default, URL form, control property), defaultFilters()
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
 public/pull-request-key.mjs    Keys naming the repository: pull request "repository/id", root branch "repository:branch" (.mjs: the server imports it)
 public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders and, per project in localStorage, across reloads
@@ -88,6 +88,8 @@ Bump `version` and `releaseDate` in package.json (the UI shows them through `/ap
 3. An empty `<div class="multi-select" id="<elementId>">` in index.html with its visible label in an element with the id `<elementId>Label`
 4. In `buildFilterIndex` (app-filter.js): the option list under `key` (`{ value, label }[]`, display order) and the set of values under `key` on each pull-request entry and each orphaned-issue entry; `matchesIssueFilters` does the rest
 5. Tests in app-filter, app-url and filter-registry (which checks the element ids exist in index.html)
+
+**Add a single-value filter** (a select or a checkbox): one row in `singleValueFilters` (filter-registry.js: `key`, `elementId`, `urlParam`, `defaultValue`, `property`, `fromUrl`, `toUrl`, `requires`), its element in index.html, its test in `evaluatePullRequest` (app-filter.js); the state, the URL, the listener, Clear filters, the restore and the count follow. A rule over app state (Work disabled without participants, SYNC only while loaded) stays in app.js.
 
 **Add a Jira field**: the `fields` of the request in `fetchJiraIssuesDetails` (project-data.mjs, and `fetchInReviewIssuesWithoutPR` if orphaned issues need it), the fixture generator, the rendering in app-render.js through `escapeHtml`; it reaches the hash through `calculateHash` (project-assembly.mjs) since the details are hashed whole.
 

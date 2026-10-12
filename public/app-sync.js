@@ -30,19 +30,15 @@ let getSyncFilter = () => 'Show all';
 let onLoadEnd = () => {};
 
 /**
- * Wires the SYNC select and the load button, and shows the initial state.
+ * Wires the load button and shows the initial state; app.js listens to the
+ * SYNC select like to the other filters (filter-registry.js).
  * @param {object} options
  * @param {() => (string|null)} options.getProject - the selected project; the load button is enabled while there is one
  * @param {() => string} options.getSyncFilter - the selected SYNC filter, put back on the select when its options are rebuilt
- * @param {() => void} options.onFilterChange - called when the SYNC select changes
  * @param {() => void} options.onLoadEnd - called once a load ends, successful or not, so the filters use the new statuses
  */
 export function initializeSyncControls(options) {
     ({ getProject, getSyncFilter, onLoadEnd } = options);
-    const syncSelect = document.getElementById('syncSelect');
-    if (syncSelect) {
-        syncSelect.addEventListener('change', options.onFilterChange);
-    }
     const loadSyncButton = document.getElementById('loadSyncButton');
     if (loadSyncButton) {
         loadSyncButton.addEventListener('click', loadSyncStatuses);

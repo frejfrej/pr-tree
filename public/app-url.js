@@ -6,15 +6,12 @@
  * writes keep it, and only a selection by the user writes it.
  */
 
-import { multiSelectFilters, defaultFilters } from './filter-registry.js';
+import { multiSelectFilters, singleValueFilters, defaultFilters, singleValueFilterActive } from './filter-registry.js';
 
 // Parameters written by the filters, and the former ones: assignee, reviewer,
 // readyReviewer, readyAssignee and ready were the people filters before 2.8.0,
 // never read any more, only ever removed when writing.
-export const filterUrlParams = ['q', ...multiSelectFilters.map(filter => filter.urlParam), 'work', 'drafts', 'sync', 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready'];
-
-// The values of the Work select besides 'all', its default
-const workValues = ['reviews', 'issues', 'ready', 'reviewers', 'assignees'];
+export const filterUrlParams = ['q', ...[...multiSelectFilters, ...singleValueFilters].map(filter => filter.urlParam), 'assignee', 'reviewer', 'readyReviewer', 'readyAssignee', 'ready'];
 
 /**
  * The filters a query string describes, in the shape of defaultFilters().
@@ -25,10 +22,7 @@ export function filtersFromUrl(search) {
     const params = new URLSearchParams(search);
     const filters = defaultFilters();
     filters.text = params.get('q') || '';
-    const work = params.get('work');
-    filters.work = workValues.includes(work) ? work : 'all';
-    filters.hideDrafts = params.get('drafts') === 'hide';
-    filters.sync = params.get('sync') || 'Show all';
+    for (const { key, urlParam, fromUrl } of singleValueFilters) filters[key] = fromUrl(params.get(urlParam));
     for (const { key, urlParam } of multiSelectFilters) filters[key] = params.getAll(urlParam);
     return filters;
 }
@@ -91,10 +85,10 @@ export function urlWithFilters(url, { project, filters }) {
     const text = filters.text.trim();
     if (text !== '') params.set('q', text);
     for (const { key, urlParam } of multiSelectFilters) filters[key].forEach(value => params.append(urlParam, value));
-    // The work value only means something with participants selected
-    if (filters.participants.length > 0 && filters.work !== 'all') params.set('work', filters.work);
-    if (filters.hideDrafts) params.set('drafts', 'hide');
-    if (filters.sync !== 'Show all') params.set('sync', filters.sync);
+    // The single-value filters after the multi-selects, the order of the links of 2.10
+    for (const filter of singleValueFilters) {
+        if (singleValueFilterActive(filter, filters)) params.set(filter.urlParam, filter.toUrl ? filter.toUrl(filters[filter.key]) : filters[filter.key]);
+    }
     return result;
 }
 
