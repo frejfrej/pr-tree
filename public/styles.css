@@ -269,6 +269,31 @@ input {
     cursor: help;
 }
 
+/* A tab running an earlier page than the server serves (#125); its border is
+   its text colour, 4.5:1 against the banner */
+.page-updated {
+    display: flex;
+}
+
+.page-updated-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--header-warning);
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* An underline, not a fill: the text keeps its 4.5:1 against the banner */
+.page-updated-button:hover {
+    text-decoration: underline;
+}
+
 .refresh-icon {
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -1372,7 +1397,8 @@ select:disabled {
 
     /* Visually hidden, still read in the status region: the icon is aria-hidden */
     .atlassian-pause-text,
-    .partial-data-text {
+    .partial-data-text,
+    .page-updated-text {
         position: absolute;
         width: 1px;
         height: 1px;

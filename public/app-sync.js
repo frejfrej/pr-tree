@@ -15,6 +15,7 @@
  */
 
 import { formatPauseEnd, parsePauseEnd } from './atlassian-pause.js';
+import { apiFetch, pageIsStale } from './page-updated.js';
 
 // The last /api/sync-statuses response: null until the user loads it, and again after a project switch
 let currentSyncStatuses = null;
@@ -99,28 +100,37 @@ async function loadSyncStatuses() {
         }
     });
 
-    let statuses = null;
-    try {
-        const response = await fetch(`/api/sync-statuses/${encodeURIComponent(project)}`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        statuses = await response.json();
-    } catch (error) {
-        console.error('Error fetching sync statuses:', error);
-    }
+    const { statuses, stale } = await fetchSyncStatuses(project);
     if (generation !== syncLoadGeneration) {
         return;
     }
     syncStatusLoading = false;
-    // A failed refresh keeps the previously loaded statuses
+    // A failed refresh keeps the previously loaded statuses, and so does an
+    // answer of a server serving another page: the banner offers the reload
     if (statuses) currentSyncStatuses = statuses;
-    syncLoadFailed = !statuses;
+    syncLoadFailed = !statuses && !stale;
 
     updateSyncControls();
     applySyncStatuses();
     // The caller re-applies its filters, so an already selected SYNC filter uses the new statuses
     onLoadEnd();
+}
+
+// The answer of /api/sync-statuses/:project: { statuses }, { stale } from a
+// server serving another page than this one (#125; nothing is fetched once
+// the page is stale), {} on a failure
+async function fetchSyncStatuses(project) {
+    try {
+        const response = await apiFetch(`/api/sync-statuses/${encodeURIComponent(project)}`);
+        if (!response) return { stale: true };
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return { statuses: await response.json() };
+    } catch (error) {
+        console.error('Error fetching sync statuses:', error);
+        return {};
+    }
 }
 
 // One badge of the conflicts counter, built as DOM so file names and reasons need no escaping
@@ -182,7 +192,8 @@ export function updateSyncControls() {
         syncSelect.disabled = true;
         syncSelect.innerHTML = '<option value="Show all">Loading SYNC status...</option>';
     } else {
-        loadSyncButton.disabled = !getProject();
+        // A stale page reads no SYNC answer (#125)
+        loadSyncButton.disabled = !getProject() || pageIsStale();
         if (buttonIcon) buttonIcon.classList.remove('fa-spin');
         if (currentSyncStatuses) {
             syncSelect.disabled = false;

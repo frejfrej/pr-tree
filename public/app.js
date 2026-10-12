@@ -7,6 +7,7 @@ import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActi
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
+import { apiFetch, pageIsStale, pageUpdatedStateText, initializePageUpdatedButton } from './page-updated.js';
 
 // The projects the dropdown offers, from /api/projects
 let availableProjects = [];
@@ -169,7 +170,8 @@ function updateWorkSelect() {
 
 async function loadProjects() {
     try {
-        const response = await fetch('/api/projects');
+        const response = await apiFetch('/api/projects');
+        if (!response) return;
         availableProjects = await response.json();
         const projectSelect = document.getElementById('projectSelect');
         // Option nodes: a project name is text, never markup (NFR-SEC7)
@@ -240,7 +242,7 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     if (result.data) renderProjectLoad(result.data);
     // A hidden tab starts them when it becomes visible again. A 503 whose
     // pause ended while it was on its way: the check is sent at once.
-    if (!document.hidden) startPeriodicChecking(Boolean(result.pausedUntil) && !pausedUntil);
+    if (!document.hidden && !result.stale) startPeriodicChecking(Boolean(result.pausedUntil) && !pausedUntil);
 }
 
 // The address bar catches up with the filters the render validated, without
@@ -263,8 +265,23 @@ function renderProjectLoad(data) {
 // pauseEndAfter) and, when the answer has no data and nothing is rendered,
 // paints its message: the pause while it is ahead, a failure otherwise. The
 // message follows the answer, the indicator the server: a failure during a
-// pause still says "Could not load", with the time of the next check.
+// pause still says "Could not load", with the time of the next check. An
+// answer of a server serving another page is not read (#125): the checks
+// stop, the tree shown stays, the banner offers the reload.
 function takeAnswer(result) {
+    if (result.stale) {
+        stopPeriodicChecking();
+        // The page reads nothing more, so it says nothing of the server's pause either
+        setPause(0);
+        updateSyncControls();
+        if (!currentApiResult) {
+            // Nothing to restore against: the options of the project left must not be offered for this one
+            clearFilterOptions();
+            setToolbarVisible(false);
+            showStateMessage('fas fa-redo', pageUpdatedStateText(currentProject));
+        }
+        return;
+    }
     setPause(pauseEndAfter(pausedUntil, result));
     if (result.data || currentApiResult) return;
     setToolbarVisible(false);
@@ -476,10 +493,12 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
 }
 
 // The answer of /api/pull-requests/:project: { data }, { pausedUntil } during
-// an Atlassian pause, {} on any other failure
+// an Atlassian pause, { stale } from a server serving another page than this
+// one (nothing is fetched once the page is stale), {} on any other failure
 async function fetchData(project) {
     try {
-        const response = await fetch(`/api/pull-requests/${encodeURIComponent(project)}`);
+        const response = await apiFetch(`/api/pull-requests/${encodeURIComponent(project)}`);
+        if (!response) return { stale: true };
         const result = await readProjectResponse(response);
         if (!result.data && !result.pausedUntil) console.error(`Error fetching pull requests: HTTP ${response.status}`);
         return result;
@@ -560,7 +579,9 @@ async function checkForUpdates() {
         if (refreshIcon) refreshIcon.classList.remove('checking');
     }
 }
+// A stale page checks nothing: only a reload brings it data again (#125)
 function startPeriodicChecking(now) {
+    if (pageIsStale()) return;
     if (reloadInterval) {
         clearInterval(reloadInterval);
     }
@@ -596,6 +617,7 @@ function initializeMultiSelects() {
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
     initializeAppShell({ onClearFilters: clearAllFilters });
+    initializePageUpdatedButton();
     initializeMultiSelects();
     initializeTextFilter();
     showEmptyState();

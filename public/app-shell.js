@@ -8,6 +8,7 @@
  */
 
 import { collapseAll, expandAll } from './tree-toggle.js';
+import { apiFetch } from './page-updated.js';
 
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
@@ -164,7 +165,9 @@ function initializeTheme() {
 
 async function fetchAndDisplayVersion() {
     try {
-        const response = await fetch('/api/version');
+        const response = await apiFetch('/api/version');
+        // A stale page keeps the version it was loaded with: the banner offers the reload
+        if (!response) return;
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }

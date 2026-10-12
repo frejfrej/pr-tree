@@ -212,6 +212,7 @@ The application integrates with a Jira workflow where:
 - F5.5: Pause updates when tab is inactive
 - F5.6: Trigger refresh when tab becomes active
 - F5.7: Prevent concurrent update checks
+- F5.8: A tab running an earlier page than the server serves (the `X-Page-Build` header of the `/api` answers) reads no more answers and offers a reload in the banner
 
 **Acceptance Criteria:**
 - Page automatically updates every 2 minutes when active
@@ -222,6 +223,7 @@ The application integrates with a Jira workflow where:
 - Loading spinner appears during checks
 - No updates occur when tab in background
 - Selecting tab triggers immediate update check
+- After a server upgrade that changed the page, an open tab shows "Reload: dashboard updated" at its next check, project load or SYNC load instead of rendering the new answers; the reload keeps the project and the filters
 
 ---
 
@@ -485,6 +487,8 @@ The application integrates with a Jira workflow where:
 | `/api/cache/stats` | GET | None | Cache performance statistics |
 
 During a rate-limit pause, `/api/pull-requests/:project` answers 503 with `rateLimitedUntil` when nothing is cached (`null` when the pause ended while the build waited), and its cached data with `rateLimitedUntil` otherwise (`null` outside a pause), and `/api/sync-statuses/:project` answers with `rateLimited: true` and `rateLimitedUntil`. An unknown project gets a 404 with `{ error: 'Project not found' }` from both.
+
+Every `/api` answer carries `X-Page-Build`: a hash of the files of `public/` computed at start-up, so a tab running an earlier page knows it must be reloaded (F5.8).
 
 Every route answers 403 with `{ error }` to a `Host` that is not a name of the server, and every `/api` route to a request with `Sec-Fetch-Site: cross-site` or `same-site` (NFR-SEC6).
 

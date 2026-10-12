@@ -55,6 +55,7 @@
     * Refresh date is visible at the top right of the page
     * Displays an icon when it's checking for updates
     * Preserves toggle states across reloads (collapsed/expanded repositories, branches, and pull requests)
+    * After the server is upgraded, a tab left open shows "Reload: dashboard updated" in the banner instead of updating: its page may misread the new data. The reload keeps the project and the filters
 * Pseudo-cache
     * Bitbucket PR and Jira issues data are retrieved server-side
     * A hash is computed based on that data
@@ -93,6 +94,7 @@
 
 ## Changelog:
 * Version 3.1.0
+    * A dashboard tab left open while the server is upgraded no longer misreads the new answers: the banner shows a "Reload: dashboard updated" button (below 900px, its icon only), the tree already shown stays, and the tab sends no more checks nor SYNC loads until it is reloaded; a project chosen meanwhile says "reload the page to load" it. The reload keeps the project and the filters (the SYNC statuses need loading again). Every `/api` answer names the page the server serves in an `X-Page-Build` header, a hash of the `public/` folder. A tab opened before this version needs one manual reload (#125)
     * A draft pull request shows a "Draft" badge next to its title, and a pull request with open tasks an amber badge with their number. A draft waits for no reviewer: it is no longer highlighted for a selected reviewer, counted in the tab title for them, or kept by "Ready for reviewers" (its assignee still sees it when its issue is in progress; "All reviews" keeps it), and no longer warned about for having no reviewer. A "Hide drafts" box in the sidebar hides the drafts (URL `drafts=hide`) (#119)
     * The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)
     * The server answers only requests addressed to one of its names (localhost, 127.0.0.1, [::1], plus the bound address and `PR_TREE_ALLOWED_HOSTS`): a web page whose domain is redirected to 127.0.0.1 (DNS rebinding) gets a 403 instead of the `/api` answers

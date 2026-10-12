@@ -11,6 +11,7 @@ import { multiSelectMarkup } from '../public/multi-select.js';
 import { multiSelectFilters } from '../public/filter-registry.js';
 import { pullRequestKey } from '../public/pull-request-key.mjs';
 import { contentSecurityPolicy } from '../security-headers.mjs';
+import { pageBuildHeader, pageBuildOf } from '../page-build.mjs';
 
 /**
  * Runs the server in fixture mode on an ephemeral port and checks what it
@@ -243,6 +244,20 @@ test('the help is a dialog the browser makes modal: focus moved in, page behind 
     assert.doesNotMatch(dialog, /\shidden\b/, 'a closed dialog is hidden by the browser');
     const shell = readFileSync(path.join(root, 'public', 'app-shell.js'), 'utf8');
     assert.match(shell, /\.showModal\(\)/);
+});
+
+test('every /api answer names the build of the page served, a 404 included; the page files do not (#125)', async () => {
+    const build = pageBuildOf(path.join(root, 'public'));
+    for (const route of ['version', 'projects', 'cache/stats', 'pull-requests/SECOLLAB', 'sync-statuses/SECOLLAB', 'pull-requests/NO_SUCH_PROJECT']) {
+        const response = await fetch(`${baseUrl}/api/${route}`);
+        await response.arrayBuffer();
+        assert.equal(response.headers.get(pageBuildHeader), build, route);
+    }
+    for (const file of ['', 'app.js']) {
+        const response = await fetch(`${baseUrl}/${file}`);
+        await response.arrayBuffer();
+        assert.equal(response.headers.get(pageBuildHeader), null, file);
+    }
 });
 
 test('the per-pull-request conflicts endpoint is gone, the sync statuses endpoint stays', async () => {
