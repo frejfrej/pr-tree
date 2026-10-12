@@ -2,6 +2,8 @@
  * The project and the filters as URL parameters: what the address bar shows,
  * what a shared link carries and what Back and Forward put back. Pure: nothing
  * here reads the page. Multi-selects use repeated parameters (?participant=A&participant=B).
+ * The selected row of the tree (`selected`) is not a filter: the filter
+ * writes keep it, and only a selection by the user writes it.
  */
 
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
@@ -93,5 +95,32 @@ export function urlWithFilters(url, { project, filters }) {
     if (filters.participants.length > 0 && filters.work !== 'all') params.set('work', filters.work);
     if (filters.hideDrafts) params.set('drafts', 'hide');
     if (filters.sync !== 'Show all') params.set('sync', filters.sync);
+    return result;
+}
+
+/**
+ * The row the URL wants selected (`selected`, a pull-request key or the issue
+ * key of an orphaned issue); null without one.
+ * @param {string} search - window.location.search, with or without the leading "?"
+ * @returns {string | null}
+ */
+export function selectedFromUrl(search) {
+    return new URLSearchParams(search).get('selected') || null;
+}
+
+/**
+ * A copy of a URL wanting that row selected, or none (null); every other
+ * parameter is kept.
+ * @param {URL} url - left untouched
+ * @param {string | null} key
+ * @returns {URL}
+ */
+export function urlWithSelection(url, key) {
+    const result = new URL(url);
+    if (key) {
+        result.searchParams.set('selected', key);
+    } else {
+        result.searchParams.delete('selected');
+    }
     return result;
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterUrlParams, filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from '../public/app-url.js';
+import { filterUrlParams, filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from '../public/app-url.js';
 
 const noFilters = { text: '', participants: [], work: 'all', hideDrafts: false, sprints: [], fixVersions: [], epics: [], stories: [], sync: 'Show all' };
 
@@ -141,4 +141,23 @@ test('filtersKeptOverGaps: the filters a gap feeds keep the values of the URL, t
     assert.deepEqual(filtersKeptOverGaps(state, fromUrl, []), state);
     assert.deepEqual(filtersKeptOverGaps(state, fromUrl, ['orphaned']), state);
     assert.deepEqual(filtersKeptOverGaps(state, fromUrl, undefined), state);
+});
+
+test('selectedFromUrl reads the row wanted, a pull-request key or an issue key; null without one', () => {
+    assert.equal(selectedFromUrl('?project=P&selected=repo-one%2F45'), 'repo-one/45');
+    assert.equal(selectedFromUrl('selected=PROJ-9'), 'PROJ-9');
+    assert.equal(selectedFromUrl('?selected='), null);
+    assert.equal(selectedFromUrl(''), null);
+});
+
+test('urlWithSelection sets or drops the row wanted and keeps every other parameter; the filter writes keep it', () => {
+    const url = new URL('http://localhost:3000/?project=P&q=fix&selected=repo-one%2F1');
+    const moved = urlWithSelection(url, 'repo-two/2');
+    assert.equal(selectedFromUrl(moved.search), 'repo-two/2');
+    assert.equal(moved.searchParams.get('q'), 'fix');
+    assert.equal(url.searchParams.get('selected'), 'repo-one/1'); // left untouched
+    assert.equal(urlWithSelection(url, null).searchParams.has('selected'), false);
+    assert.equal(urlWithSelection(url, null).searchParams.get('project'), 'P');
+    assert.ok(!filterUrlParams.includes('selected'));
+    assert.equal(selectedFromUrl(urlWithFilters(url, { project: 'P', filters: noFilters }).search), 'repo-one/1');
 });

@@ -926,6 +926,13 @@ select:disabled {
     scroll-margin-top: calc(var(--repo-header-height) + 8px);
 }
 
+/* The row the tree keys act on, outlined like the focus ring whether it has the focus or not */
+.pull-request.selected,
+.orphaned-issue.selected {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
 .pull-request:hover,
 .orphaned-issue:hover {
     box-shadow: 0 0 5px var(--shadow-color);
