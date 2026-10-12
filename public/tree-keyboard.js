@@ -75,16 +75,35 @@ export function rowKey(row) {
 /**
  * Selects, among the rows of a filter pass, the row of `wantedKey`, or when
  * none is (no key, a row gone or filtered out) the first pull request the
- * filters keep (not one shown only for a pull request stacked on it), the
- * first row without one; clears `previous`. A row folded away stays selected.
+ * filters keep (not one shown only for a pull request stacked on it), in
+ * sight before one folded away, the first row without one; clears
+ * `previous`. A wanted row folded away gives way to the row in sight that
+ * folds it (rowInSightOf): a fold stored before a reload (#142) keeps the
+ * row out of sight, its folded parent shows where it is. A row folded away
+ * with no row in sight above it (a collapsed repository) stays selected.
  * @returns {Element | null} the row selected; null without a row shown
  */
 export function paintSelectedRow(shownRows, wantedKey, previous) {
     const isPullRequest = candidate => candidate.classList.contains('pull-request');
-    const row = (wantedKey && shownRows.find(candidate => rowKey(candidate) === wantedKey)) ||
-        shownRows.find(candidate => isPullRequest(candidate) && !candidate.classList.contains('filtered')) ||
+    const isKept = candidate => isPullRequest(candidate) && !candidate.classList.contains('filtered');
+    const wanted = wantedKey && shownRows.find(candidate => rowKey(candidate) === wantedKey);
+    const row = (wanted && (rowInSightOf(wanted) ?? wanted)) ||
+        shownRows.find(candidate => isKept(candidate) && !isCollapsedAway(candidate)) ||
+        shownRows.find(isKept) ||
         shownRows.find(isPullRequest) || shownRows[0] || null;
     return markSelectedRow(row, previous);
+}
+
+/**
+ * The row in sight for `row`: the row itself when no collapse hides it,
+ * else the nearest row above it that folds it (its folded pull request, the
+ * header of its folded branch); null when none is in sight (a collapsed
+ * repository, or the orphaned-issues block, hides the rows and their headers).
+ */
+export function rowInSightOf(row) {
+    let current = row;
+    while (current && isCollapsedAway(current)) current = parentRowOf(current);
+    return current;
 }
 
 /** Marks `row` selected (none when null) and clears `previous`; returns `row` */

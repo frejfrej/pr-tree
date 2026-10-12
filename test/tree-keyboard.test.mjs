@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey, paintSelectedRow, markSelectedRow, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
+import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey, paintSelectedRow, markSelectedRow, rowInSightOf, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
 import { setPullRequestCollapsed, setRootBranchCollapsed } from '../public/tree-toggle.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
@@ -92,6 +92,30 @@ test('rowKey: the pull-request key of a pull request, the issue key of an orphan
     assert.equal(rowKey(rows.two), 'repo-one/2');
     assert.equal(rowKey(rows.orphan), 'PROJ-9');
     assert.equal(rowKey(rows.branch), 'repo-one:main');
+});
+
+test('paintSelectedRow: a wanted row folded away gives way to the row in sight that folds it, and the first pull request is one in sight (#142)', () => {
+    const { rows, shown, rootBranch } = sampleTree();
+    const repository = rootBranch.parentElement.parentElement;
+    assert.equal(rowInSightOf(rows.three), rows.three);
+    setPullRequestCollapsed(rows.two, true);
+    assert.equal(paintSelectedRow(shown, 'repo-one/3', null), rows.two);
+    setPullRequestCollapsed(rows.one, true);
+    assert.equal(paintSelectedRow(shown, 'repo-one/3', rows.two), rows.one);
+    assert.ok(!rows.two.classList.contains('selected'));
+    setRootBranchCollapsed(rootBranch, true);
+    assert.equal(paintSelectedRow(shown, 'repo-one/3', rows.one), rows.branch);
+    // A collapsed repository hides the header too: no row in sight, the wanted row stays selected
+    repository.classList.add('collapsed');
+    assert.equal(rowInSightOf(rows.three), null);
+    assert.equal(paintSelectedRow(shown, 'repo-one/3', rows.branch), rows.three);
+    repository.classList.toggle('collapsed', false);
+    setRootBranchCollapsed(rootBranch, false);
+    // Nothing wanted: the first pull request the filters keep that is in sight, before one folded away
+    rows.one.classList.add('filtered');
+    assert.equal(paintSelectedRow(shown, null, rows.three), rows.four);
+    setPullRequestCollapsed(rows.one, false);
+    assert.equal(paintSelectedRow(shown, null, rows.four), rows.two);
 });
 
 test('paintSelectedRow selects the row wanted when the pass shows it, the first pull request otherwise, and clears the previous one', () => {

@@ -2,7 +2,7 @@ import { initializeFilter, filterBranches, countActiveFilters } from './app-filt
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
-import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
+import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates, onFoldChange } from './tree-toggle.js';
 import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
@@ -506,13 +506,21 @@ function formatRefreshTime(isoString) {
     return `Last refreshed: ${date.toLocaleString(undefined, options)}`;
 }
 
+// The collapse state of the tree shown, kept for the next page load (#142),
+// after the user folds or unfolds. Only over the project's tree: during its
+// load the pane shows a message, and storing that would unfold its stored folds
+function saveCollapseState() {
+    if (currentProject && currentApiResult) storeToggleStates(currentProject);
+}
+
 function renderEverything(apiResult, { preferTypedText = true } = {}) {
     if (!currentProject) {
         return;
     }
 
-    // Capture current toggle states before re-rendering
-    const toggleStates = captureToggleStates();
+    // The folds to put back: the tree's own across a refresh, the stored ones
+    // at the project's first render, which replaces a message (#142)
+    const toggleStates = currentApiResult ? captureToggleStates() : storedToggleStates(currentProject);
     const container = document.getElementById('pull-requests');
     // The focus is lost with the rows it was in: the row is focused again after the pass
     const focusedRow = captureFocusedRow(container, document.activeElement);
@@ -534,8 +542,9 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Combine content
     container.innerHTML = mainContent + orphanedIssuesHtml;
 
-    // Restore toggle states after rendering
+    // Restore toggle states after rendering; the stored ones lose the keys gone from the tree
     restoreToggleStates(toggleStates);
+    pruneStoredToggleStates(currentProject);
 
     // Re-paint the last loaded SYNC statuses (without fetching them again); the
     // filters read the statuses themselves, so the order does not matter
@@ -707,6 +716,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initializePopovers();
     const treePane = document.getElementById('pull-requests');
     treePane.addEventListener('click', handleTreeClick);
+    // Every fold of the user's, by a click, a key or Collapse all, is kept for the next page load
+    onFoldChange(saveCollapseState);
     // A click in a row, or Tab into one, selects it (a row is focusable)
     treePane.addEventListener('focusin', event => {
         const row = rowOf(event.target);

@@ -10,6 +10,7 @@
 import { collapseAll, expandAll } from './tree-toggle.js';
 import { apiFetch } from './page-updated.js';
 import { isPageTarget } from './tree-keyboard.js';
+import { readStorage, writeStorage, removeStorage } from './local-storage.js';
 
 export const APP_NAME = 'Bitbucket Pull-Requests Tree';
 
@@ -31,32 +32,6 @@ export function buildDocumentTitle({ project, attentionCount }) {
 
 export function updateDocumentTitle(state) {
     document.title = buildDocumentTitle(state);
-}
-
-// ----------------------------------------------------------------- storage
-
-function readStorage(key) {
-    try {
-        return localStorage.getItem(key);
-    } catch (error) {
-        return null;
-    }
-}
-
-function writeStorage(key, value) {
-    try {
-        localStorage.setItem(key, value);
-    } catch (error) {
-        // Storage unavailable (private window, blocked site data): the preference is not remembered
-    }
-}
-
-function removeStorage(key) {
-    try {
-        localStorage.removeItem(key);
-    } catch (error) {
-        // Storage unavailable: nothing was remembered
-    }
 }
 
 // ----------------------------------------------------------------- sidebar
