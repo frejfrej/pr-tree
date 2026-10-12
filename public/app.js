@@ -6,7 +6,7 @@ import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggle
 import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
-import { multiSelectFilters, defaultFilters, singleValueFilters, readSingleValueControls, writeSingleValueControls } from './filter-registry.js';
+import { multiSelectFilters, defaultFilters, singleValueFilters, applyFilterRequirements, readSingleValueControls, writeSingleValueControls } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
 import { apiFetch, pageIsStale, pageUpdatedStateText, initializePageUpdatedButton } from './page-updated.js';
 
@@ -179,7 +179,7 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
 
     const syncSelect = document.getElementById('syncSelect');
     const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === restored.sync);
-    if (!syncStatusesLoaded() || !syncOffered) restored.sync = 'Show all';
+    if (!syncStatusesLoaded() || !syncOffered) restored.sync = defaultFilters().sync;
     writeSingleValueControls(restored, elementById);
 
     const textFilter = document.getElementById('textFilter');
@@ -191,26 +191,15 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     }
 
     filters = restored;
-    updateWorkSelect();
+    applyFilterRequirements(filters, elementById);
     updateTextFilterClearButton();
 }
 
 function initializeSingleValueFilters() {
     for (const { elementId } of singleValueFilters) document.getElementById(elementId)?.addEventListener('change', handleFilterChange);
-    updateWorkSelect();
+    applyFilterRequirements(filters, elementById);
 }
 
-// The Work select depends on the participants: while none is selected the
-// state is back to "All work" (so a work=ready without a participant in
-// the URL is dropped) and the select is disabled; otherwise it shows the state
-function updateWorkSelect() {
-    if (filters.participants.length === 0) filters.work = 'all';
-    const workSelect = document.getElementById('workSelect');
-    if (workSelect) {
-        workSelect.disabled = filters.participants.length === 0;
-        workSelect.value = filters.work;
-    }
-}
 
 async function loadProjects() {
     try {
@@ -414,7 +403,7 @@ function readFilterControls() {
     }
     readSingleValueControls(read, elementById);
     filters = read;
-    updateWorkSelect();
+    applyFilterRequirements(filters, elementById);
     updateTextFilterClearButton();
 }
 
@@ -436,7 +425,7 @@ function handleTextFilterInput() {
 // while statuses are loaded (a first load may have failed), and the filters
 // run again so a selected SYNC filter uses the new statuses
 function handleSyncLoadEnd() {
-    if (!syncStatusesLoaded()) filters.sync = 'Show all';
+    if (!syncStatusesLoaded()) filters.sync = defaultFilters().sync;
     applyFilters();
     // A 429 of the SYNC load pauses every Atlassian request: the banner shows it now, not at the next check
     const syncPause = syncPauseEnd();

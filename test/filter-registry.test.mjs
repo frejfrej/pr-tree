@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { multiSelectFilters, singleValueFilters, defaultFilters, singleValueFilterActive, readSingleValueControls, writeSingleValueControls } from '../public/filter-registry.js';
+import { multiSelectFilters, singleValueFilters, defaultFilters, singleValueFilterActive, applyFilterRequirements, readSingleValueControls, writeSingleValueControls } from '../public/filter-registry.js';
 
 const html = readFileSync(path.resolve(import.meta.dirname, '../public/index.html'), 'utf8');
 
@@ -28,11 +28,22 @@ test('defaultFilters has the four scalar defaults and an empty, fresh selection 
     assert.notEqual(defaultFilters().sprints, filters.sprints); // a new array each call
 });
 
+// The opening tag of the element of that id in index.html
+const openingTag = id => html.match(new RegExp(`<(select|input)\\b[^>]*\\bid="${id}"[^>]*>`))?.[0] ?? '';
+
 test('every single-value filter is a select or a checkbox of index.html, read through the matching property', () => {
     for (const { elementId, property } of singleValueFilters) {
-        const tag = property === 'checked' ? `<input type="checkbox" id="${elementId}"` : `<select id="${elementId}"`;
-        assert.ok(html.includes(tag), elementId);
+        const tag = openingTag(elementId);
+        assert.ok(property === 'checked' ? /^<input\b[^>]*\btype="checkbox"/.test(tag) : tag.startsWith('<select'), `${elementId}: ${tag}`);
     }
+});
+
+test('the Work values read from the URL are the options of the Work select', () => {
+    const select = html.match(/<select\b[^>]*\bid="workSelect"[^>]*>([\s\S]*?)<\/select>/)[1];
+    const options = [...select.matchAll(/<option value="([^"]*)"/g)].map(match => match[1]);
+    const [work] = singleValueFilters;
+    assert.deepEqual(options.filter(value => work.fromUrl(value) === value), options.filter(value => value !== work.defaultValue));
+    assert.ok(options.includes(work.defaultValue));
 });
 
 test('defaultFilters holds the text, the default of every single-value filter and a selection per multi-select, nothing else', () => {
@@ -43,14 +54,16 @@ test('defaultFilters holds the text, the default of every single-value filter an
 
 test('a single-value filter reads its default from a missing or empty URL parameter, and a value written to the URL back', () => {
     const written = { work: 'ready', hideDrafts: true, sync: 'requested' };
-    for (const { key, defaultValue, fromUrl, toUrl = value => value } of singleValueFilters) {
-        assert.equal(fromUrl(null), defaultValue, key);
-        assert.equal(fromUrl(''), defaultValue, key);
-        assert.equal(fromUrl(toUrl(written[key])), written[key], key);
+    for (const { key, fromUrl, toUrl = value => value } of singleValueFilters) {
+        assert.equal(fromUrl(null), undefined, key);
+        assert.equal(fromUrl(''), undefined, key);
+        // Through the URL, as the browser does: the parameter is a string
+        const param = new URLSearchParams({ [key]: toUrl(written[key]) }).get(key);
+        assert.equal(fromUrl(param), written[key], key);
     }
     const [work, hideDrafts] = singleValueFilters;
-    assert.equal(work.fromUrl('true'), 'all'); // a value the select does not offer
-    assert.equal(hideDrafts.fromUrl('show'), false);
+    assert.equal(work.fromUrl('true'), undefined); // a value the select does not offer
+    assert.equal(hideDrafts.fromUrl('show'), undefined);
 });
 
 test('singleValueFilterActive: away from the default, and with a selection of the multi-select it requires', () => {
@@ -82,4 +95,18 @@ test('the single-value controls: written values read back, defaultFilters resets
     readSingleValueControls(none, () => null);
     assert.deepEqual(none, defaultFilters());
     writeSingleValueControls(values, () => null); // nothing to write, no throw
+});
+
+test('applyFilterRequirements: without participants Work is back to its default and its select disabled; with some, the select shows the state', () => {
+    const workSelect = { value: 'ready', disabled: false };
+    const getElement = id => (id === 'workSelect' ? workSelect : null);
+    const without = { ...defaultFilters(), work: 'ready' };
+    applyFilterRequirements(without, getElement);
+    assert.equal(without.work, 'all');
+    assert.deepEqual(workSelect, { value: 'all', disabled: true });
+    const withParticipant = { ...defaultFilters(), work: 'reviewers', participants: ['Ann'] };
+    applyFilterRequirements(withParticipant, getElement);
+    assert.equal(withParticipant.work, 'reviewers');
+    assert.deepEqual(workSelect, { value: 'reviewers', disabled: false });
+    applyFilterRequirements({ ...defaultFilters(), hideDrafts: true, sync: 'OK' }, () => null); // no control, no throw
 });

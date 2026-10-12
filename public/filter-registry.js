@@ -25,25 +25,27 @@ export const multiSelectFilters = [
  * The single-value filters, a select or a checkbox. `defaultValue` is the
  * value of "Clear filters", never written to the URL; `property` the property
  * of the element holding the value (`value` of a select, `checked` of a
- * checkbox); `fromUrl` turns the URL parameter (null when absent) into a
- * value, `toUrl` a value into the parameter (the value itself without one);
- * `requires` names the multi-select the filter needs a selection of, without
- * which it is inactive: not counted, not written to the URL. The Work select's
- * dependency on the participants (disabled, set back to "all") and SYNC
- * following the URL only while its statuses are loaded stay in app.js.
+ * checkbox); `fromUrl` turns the URL parameter (a string, null when absent)
+ * into a value, undefined for the default; `toUrl` turns a value away from the
+ * default into the parameter (the value itself without one); `requires` names
+ * the multi-select the filter needs a selection of: without one the filter is
+ * at its default and its control disabled (applyFilterRequirements), not
+ * counted, not written to the URL. SYNC following the URL only while its
+ * statuses are loaded stays in app.js.
  */
 export const singleValueFilters = [
     {
         key: 'work', elementId: 'workSelect', urlParam: 'work', defaultValue: 'all', property: 'value', requires: 'participants',
-        fromUrl: value => ['reviews', 'issues', 'ready', 'reviewers', 'assignees'].includes(value) ? value : 'all'
+        // The options of the select besides "all" (filter-registry.test.mjs checks them against index.html)
+        fromUrl: value => ['reviews', 'issues', 'ready', 'reviewers', 'assignees'].includes(value) ? value : undefined
     },
     {
         key: 'hideDrafts', elementId: 'hideDraftsCheckbox', urlParam: 'drafts', defaultValue: false, property: 'checked',
-        fromUrl: value => value === 'hide', toUrl: () => 'hide'
+        fromUrl: value => value === 'hide' ? true : undefined, toUrl: value => value ? 'hide' : null
     },
     {
         key: 'sync', elementId: 'syncSelect', urlParam: 'sync', defaultValue: 'Show all', property: 'value',
-        fromUrl: value => value || 'Show all'
+        fromUrl: value => value || undefined
     }
 ];
 
@@ -72,6 +74,26 @@ export function defaultFilters() {
 export function singleValueFilterActive({ key, defaultValue, requires }, filters) {
     if ((filters[key] ?? defaultValue) === defaultValue) return false;
     return !requires || (filters[requires] || []).length > 0;
+}
+
+/**
+ * Sets each filter that requires a selection back to its default while that
+ * selection is empty, and disables its control then; the control shows the
+ * value. Runs after every change of the filters (the Work select follows the
+ * participants, and a work=ready without a participant in the URL is dropped).
+ * @param {object} filters - in the shape of defaultFilters(), written
+ * @param {(id: string) => (object|null)} getElement - document.getElementById, or a fake
+ */
+export function applyFilterRequirements(filters, getElement) {
+    for (const { key, elementId, defaultValue, property, requires } of singleValueFilters) {
+        if (!requires) continue;
+        const unmet = (filters[requires] || []).length === 0;
+        if (unmet) filters[key] = defaultValue;
+        const element = getElement(elementId);
+        if (!element) continue;
+        element.disabled = unmet;
+        element[property] = filters[key];
+    }
 }
 
 /**

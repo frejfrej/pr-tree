@@ -36,8 +36,9 @@ test caught it: app.js is not loaded by the tests.
 
 ## 3. Kept as they were
 
-- Work depends on the participants: `updateWorkSelect` disables it and sets
-  it back to "all" while none is selected (app.js, after the generic write).
+- Work depends on the participants: disabled and set back to "all" while
+  none is selected, now by `applyFilterRequirements` from the `requires` of
+  the row (it was `updateWorkSelect` in app.js).
 - SYNC follows the URL only while statuses are loaded and the value is one
   of its options (app.js, before the generic write; CLAUDE.md pitfall 8).
 - URL order: `q`, the multi-selects, then the single-value filters in
@@ -50,6 +51,22 @@ test caught it: app.js is not loaded by the tests.
 - **One list of every filter, multi-selects included, with a `kind`**: the
   multi-selects have option lists and index sets the single-value controls
   have none of; two lists keep each loop simple.
-- **The Work/participants dependency and the SYNC restore rule in the
-  registry** (callbacks per row): they read app state (loaded statuses,
-  the options of a select); kept in app.js next to that state.
+- **The SYNC restore rule in the registry** (a callback per row): it reads
+  app state (loaded statuses, the options of the select); kept in app.js
+  next to that state.
+
+## 5. After the /code-review of #145
+
+- `fromUrl` returns undefined for an absent or unknown value and
+  `filtersFromUrl` falls back to `defaultValue`: one copy of each default
+  per row; app.js reads the SYNC default from `defaultFilters()`.
+- `requires` drives the control as well (`applyFilterRequirements`,
+  replacing `updateWorkSelect`), so the badge, the URL and the disabled
+  control follow one statement of the dependency.
+- Hide drafts `toUrl` states the encoding (`value ? 'hide' : null`).
+- Tests: the URL round trip goes through `URLSearchParams` (a parameter is
+  a string), the index.html check finds the element by id whatever the
+  attribute order, and the Work values are checked against the options of
+  the select.
+- Left: the `'Show all'` of app-sync.js, the value of the options it
+  builds for the SYNC select, the select's own markup.

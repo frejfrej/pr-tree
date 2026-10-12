@@ -22,7 +22,7 @@ export function filtersFromUrl(search) {
     const params = new URLSearchParams(search);
     const filters = defaultFilters();
     filters.text = params.get('q') || '';
-    for (const { key, urlParam, fromUrl } of singleValueFilters) filters[key] = fromUrl(params.get(urlParam));
+    for (const { key, urlParam, fromUrl, defaultValue } of singleValueFilters) filters[key] = fromUrl(params.get(urlParam)) ?? defaultValue;
     for (const { key, urlParam } of multiSelectFilters) filters[key] = params.getAll(urlParam);
     return filters;
 }
