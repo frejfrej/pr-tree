@@ -3,7 +3,8 @@
  * the statuses of its linked issues and the state of its reviews. The render
  * (app-render.js) and the filter index (app-filter.js) both call it, so the
  * band painted and the band the attention rule reads are one computation;
- * the same goes for its reviewers, its draft state and its SYNC key. Pure: no DOM.
+ * the same goes for its reviewers, its draft state, its open tasks and its
+ * SYNC key. Pure: no DOM.
  */
 
 // The Atlassian agent reviews pull requests too: never a reviewer to count,
@@ -20,6 +21,17 @@ export function otherReviewers(pullRequest) {
 /** A draft: its author wants no review yet (the badge, the attention rule, Hide drafts) */
 export function isDraft(pullRequest) {
     return pullRequest.draft === true;
+}
+
+/**
+ * The open tasks of a pull request (Bitbucket's task_count): the requests its
+ * reviewers left, and any to-do its author added, all waiting for the author
+ * (the badge, the attention rule); 0 when the count is missing or not a
+ * positive integer
+ */
+export function openTaskCount(pullRequest) {
+    const taskCount = pullRequest.task_count;
+    return Number.isInteger(taskCount) && taskCount > 0 ? taskCount : 0;
 }
 
 /**

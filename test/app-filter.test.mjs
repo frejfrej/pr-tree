@@ -8,9 +8,9 @@ const bob = { uuid: 'bob-uuid', display_name: 'Bob' };
 const rovoDev = { uuid: 'rovo-uuid', display_name: 'Rovo Dev' };
 
 // An index entry as buildFilterIndex makes it: the assignees of the linked
-// issues, the reviewers who have not approved, and the status band
-function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false, draft = false } = {}) {
-    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview, draft };
+// issues, the reviewers who have not approved, the status band and the open tasks
+function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false, statusAllApproved = false, draft = false, openTasks = 0 } = {}) {
+    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview, statusAllApproved, draft, openTasks };
 }
 
 const inReview = { statusInReview: true };
@@ -47,8 +47,25 @@ test('assignee attention when a selected participant owns an issue of an in-prog
     assert.deepEqual(attention, { assignee: true, reviewer: false, any: true });
 });
 
-test('assignee attention only applies to PRs in progress', () => {
+test('assignee attention only applies to PRs in progress, or in review with open tasks', () => {
     assert.equal(computeAttention(entry({ assignees: ['Jane'], ...inReview }), ['Jane']).assignee, false);
+    assert.equal(computeAttention(entry({ assignees: ['Jane'] }), ['Jane']).assignee, false); // no band, no task
+});
+
+test('open tasks wait for the assignee in review, approved or not, draft or not, and leave the reviewers alone (#138)', () => {
+    // In review: the assignee has the tasks to resolve, the pending reviewer still has a review to do
+    assert.deepEqual(computeAttention(entry({ assignees: ['Jane'], pendingReviewers: ['Bob'], ...inReview, openTasks: 2 }), ['Jane']),
+        { assignee: true, reviewer: false, any: true });
+    assert.deepEqual(computeAttention(entry({ assignees: ['Jane'], pendingReviewers: ['Bob'], ...inReview, openTasks: 2 }), ['Bob']),
+        { assignee: false, reviewer: true, any: true });
+    // Every reviewer approved: the tasks still wait; a draft in review too
+    assert.equal(computeAttention(entry({ assignees: ['Jane'], statusAllApproved: true, openTasks: 1 }), ['Jane']).assignee, true);
+    assert.equal(computeAttention(entry({ assignees: ['Jane'], ...inReview, draft: true, openTasks: 1 }), ['Jane']).assignee, true);
+    // Resolved, or no band: the tasks are left over, nothing waits
+    assert.equal(computeAttention(entry({ assignees: ['Jane'], openTasks: 1 }), ['Jane']).any, false);
+    // Only for a selected assignee
+    assert.equal(computeAttention(entry({ assignees: ['Jane'], ...inReview, openTasks: 1 }), ['Bob']).any, false);
+    assert.equal(computeAttention(entry({ ...inReview, openTasks: 1 }), ['Jane']).any, false);
 });
 
 test('no attention without a selected participant', () => {
@@ -121,6 +138,8 @@ test('buildFilterIndex links issues, assignees, reviewers, sprints and fix versi
     assert.equal(entry.statusInReview, true); // PROJ-1 and PROJ-2 are in review, Jane has not approved
     assert.equal(entry.statusInProgress, false);
     assert.equal(entry.syncKey, 'repo/undefined..undefined'); // no commits in the sample: never a status
+    assert.equal(entry.openTasks, 0); // no task_count in the sample
+    assert.equal(entry.statusAllApproved, false);
     const bare = pullRequestsByKey.get('repo/11');
     assert.equal(bare.linkedIssues.length, 0);
     assert.equal(bare.assignees.size, 0);
@@ -132,6 +151,7 @@ test('buildFilterIndex: a pull request in review approved by every reviewer is n
     const allApproved = { ...sampleApiResult, pullRequests: [{ ...sampleApiResult.pullRequests[0], participants: [{ user: author, approved: false }, { user: jane, approved: true }, { user: bob, approved: true }] }] };
     const entry = buildFilterIndex(allApproved).pullRequestsByKey.get('repo/10');
     assert.equal(entry.statusInReview, false); // the band is status-in-review-all-approved: nobody waits
+    assert.equal(entry.statusAllApproved, true);
     assert.equal(computeAttention(entry, ['Jane']).reviewer, false);
 });
 
@@ -275,6 +295,22 @@ test('evaluatePullRequest Ready for reviewers keeps reviewer attention only, Rea
     assert.equal(evaluate('reviewers', progressing), false); // assignee attention does not satisfy Ready for reviewers
     assert.equal(evaluate('assignees', progressing), true);
     assert.equal(evaluate('assignees', reviewed), false); // in review: no assignee attention
+});
+
+test('a pull request in review with open tasks: indexed with their count, kept by Ready for assignees and Ready for participants (#138)', () => {
+    const withTasks = status => {
+        const result = { ...sampleApiResult, pullRequests: sampleApiResult.pullRequests.map(pullRequest => ({ ...pullRequest, task_count: 2 })) };
+        const details = result.jiraIssuesDetails.map(issue => ({ ...issue, fields: { ...issue.fields, status: { name: status } } }));
+        return buildFilterIndex({ ...result, jiraIssuesDetails: details }).pullRequestsByKey.get('repo/10');
+    };
+    const reviewed = withTasks('In Review');
+    assert.equal(reviewed.openTasks, 2);
+    const evaluate = (work, participants, entry = reviewed) => evaluatePullRequest(entry, { ...noFilter, participants, work });
+    assert.deepEqual(evaluate('assignees', ['Jane']), { visible: true, attention: { assignee: true, reviewer: true, any: true } }); // Jane is assignee and pending reviewer
+    assert.equal(evaluate('ready', ['Jane']).visible, true);
+    assert.equal(evaluate('assignees', ['Jane'], withTasks('Resolved')).visible, false); // left-over tasks
+    assert.equal(evaluate('assignees', ['Bob']).visible, false); // Bob reviews it, no issue of his
+    assert.equal(evaluate('reviewers', ['Bob']).visible, false); // and he approved
 });
 
 test('a draft: indexed as one, out of Ready for reviewers but in All reviews, hidden by Hide drafts with or without participants (#119)', () => {

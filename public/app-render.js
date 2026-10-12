@@ -32,7 +32,7 @@
  * unit-tested with node:test.
  */
 
-import { isDraft, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
+import { isDraft, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
 
@@ -325,7 +325,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                                 <i class="fas fa-code-branch" aria-hidden="true"></i>${pullRequest.commitsAhead === 100 ? 'at least ': ''}+${pullRequest.commitsAhead}
                             </span>`
                             : ''}
-                        ${renderTaskBadge(pullRequest.task_count)}
+                        ${renderTaskBadge(openTaskCount(pullRequest))}
                     </div>
                     ${alertsHtml}
                 </div>
@@ -338,10 +338,10 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     return html;
 }
 
-// The open tasks of a pull request (Bitbucket's task_count), nothing without
-// one; the icon names what the number counts
+// The open tasks of a pull request (openTaskCount), nothing without one; the
+// icon names what the number counts
 function renderTaskBadge(taskCount) {
-    if (!Number.isInteger(taskCount) || taskCount <= 0) return '';
+    if (!(taskCount > 0)) return '';
     return `<span class="commit-badge task-badge" title="${taskCount} open task${taskCount !== 1 ? 's' : ''}">
                                 <i class="fas fa-tasks" role="img" aria-label="open tasks"></i>${taskCount}
                             </span>`;
