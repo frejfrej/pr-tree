@@ -1,5 +1,5 @@
 import { updateCounterDisplay } from './counter-utils.js';
-import { multiSelectFilters } from './filter-registry.js';
+import { multiSelectFilters, singleValueFilters, singleValueFilterActive } from './filter-registry.js';
 import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft, openTaskCount } from './pull-request-status.js';
 import { pullRequestKey } from './pull-request-key.mjs';
 
@@ -31,16 +31,13 @@ export function initializeFilter(apiResult) {
 
 /**
  * Counts the filters that are not at their default value.
- * A multi-select with several values counts once.
+ * A multi-select with several values counts once; Work counts only with participants selected.
  */
 export function countActiveFilters(filters) {
-    const { text = '', participants = [], work = 'all', hideDrafts = false, sync } = filters;
     return [
-        parseTextQuery(text).length > 0,
+        parseTextQuery(filters.text).length > 0,
         ...multiSelectFilters.map(({ key }) => (filters[key] || []).length > 0),
-        participants.length > 0 && work !== 'all',
-        hideDrafts === true,
-        sync !== 'Show all'
+        ...singleValueFilters.map(filter => singleValueFilterActive(filter, filters))
     ].filter(Boolean).length;
 }
 

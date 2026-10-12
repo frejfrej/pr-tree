@@ -6,7 +6,7 @@ import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggle
 import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
-import { multiSelectFilters, defaultFilters } from './filter-registry.js';
+import { multiSelectFilters, defaultFilters, singleValueFilters, applyFilterRequirements, readSingleValueControls, writeSingleValueControls } from './filter-registry.js';
 import { readProjectResponse, pauseEndAfter, pausedStateText, failedDuringPauseText, showPauseIndicator } from './atlassian-pause.js';
 import { apiFetch, pageIsStale, pageUpdatedStateText, initializePageUpdatedButton } from './page-updated.js';
 
@@ -65,10 +65,12 @@ function applyFilters() {
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
 
+// The filter controls are looked up by id (filter-registry.js)
+const elementById = id => document.getElementById(id);
+
 // Puts every filter control back to its default without applying anything:
-// the search box, the multi-selects, the Work select ("All work"; its disabled
-// state follows the participants in readFilterControls), the Hide drafts box
-// and the SYNC select
+// the search box, the multi-selects and the single-value controls (the Work
+// select's disabled state follows the participants in readFilterControls)
 function resetFilterControls() {
     const textFilter = document.getElementById('textFilter');
     if (textFilter) textFilter.value = '';
@@ -76,12 +78,7 @@ function resetFilterControls() {
         const multiSelect = getMultiSelect(elementId);
         if (multiSelect) multiSelect.clearAll(false);
     }
-    const workSelect = document.getElementById('workSelect');
-    if (workSelect) workSelect.value = 'all';
-    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
-    if (hideDraftsCheckbox) hideDraftsCheckbox.checked = false;
-    const syncSelect = document.getElementById('syncSelect');
-    if (syncSelect) syncSelect.value = 'Show all';
+    writeSingleValueControls(defaultFilters(), elementById);
 }
 
 // Empties the option lists of the multi-selects, and their selections
@@ -182,11 +179,8 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
 
     const syncSelect = document.getElementById('syncSelect');
     const syncOffered = syncSelect && Array.from(syncSelect.options).some(option => option.value === restored.sync);
-    restored.sync = (syncStatusesLoaded() && syncOffered) ? restored.sync : 'Show all';
-    if (syncSelect) syncSelect.value = restored.sync;
-
-    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
-    if (hideDraftsCheckbox) hideDraftsCheckbox.checked = restored.hideDrafts;
+    if (!syncStatusesLoaded() || !syncOffered) restored.sync = defaultFilters().sync;
+    writeSingleValueControls(restored, elementById);
 
     const textFilter = document.getElementById('textFilter');
     const typing = textFilter && document.activeElement === textFilter;
@@ -197,32 +191,15 @@ function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
     }
 
     filters = restored;
-    updateWorkSelect();
+    applyFilterRequirements(filters, elementById);
     updateTextFilterClearButton();
 }
 
-function initializeWorkFilter() {
-    const workSelect = document.getElementById('workSelect');
-    if (workSelect) workSelect.addEventListener('change', handleFilterChange);
-    updateWorkSelect();
+function initializeSingleValueFilters() {
+    for (const { elementId } of singleValueFilters) document.getElementById(elementId)?.addEventListener('change', handleFilterChange);
+    applyFilterRequirements(filters, elementById);
 }
 
-function initializeHideDraftsFilter() {
-    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
-    if (hideDraftsCheckbox) hideDraftsCheckbox.addEventListener('change', handleFilterChange);
-}
-
-// The Work select depends on the participants: while none is selected the
-// state is back to "All work" (so a work=ready without a participant in
-// the URL is dropped) and the select is disabled; otherwise it shows the state
-function updateWorkSelect() {
-    if (filters.participants.length === 0) filters.work = 'all';
-    const workSelect = document.getElementById('workSelect');
-    if (workSelect) {
-        workSelect.disabled = filters.participants.length === 0;
-        workSelect.value = filters.work;
-    }
-}
 
 async function loadProjects() {
     try {
@@ -424,15 +401,9 @@ function readFilterControls() {
         const multiSelect = getMultiSelect(elementId);
         read[key] = multiSelect ? multiSelect.getSelectedValues() : [];
     }
-    // The Work and SYNC values come from regular select elements
-    const workSelect = document.getElementById('workSelect');
-    const syncSelect = document.getElementById('syncSelect');
-    read.work = workSelect ? workSelect.value : 'all';
-    read.sync = syncSelect ? syncSelect.value : 'Show all';
-    const hideDraftsCheckbox = document.getElementById('hideDraftsCheckbox');
-    read.hideDrafts = hideDraftsCheckbox ? hideDraftsCheckbox.checked : false;
+    readSingleValueControls(read, elementById);
     filters = read;
-    updateWorkSelect();
+    applyFilterRequirements(filters, elementById);
     updateTextFilterClearButton();
 }
 
@@ -454,7 +425,7 @@ function handleTextFilterInput() {
 // while statuses are loaded (a first load may have failed), and the filters
 // run again so a selected SYNC filter uses the new statuses
 function handleSyncLoadEnd() {
-    if (!syncStatusesLoaded()) filters.sync = 'Show all';
+    if (!syncStatusesLoaded()) filters.sync = defaultFilters().sync;
     applyFilters();
     // A 429 of the SYNC load pauses every Atlassian request: the banner shows it now, not at the next check
     const syncPause = syncPauseEnd();
@@ -726,12 +697,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('pointerdown', event => {
         lastPointerInTree = event.target instanceof Element && Boolean(event.target.closest('.main-pane'));
     }, true);
-    initializeWorkFilter();
-    initializeHideDraftsFilter();
+    initializeSingleValueFilters();
     initializeSyncControls({
         getProject: () => currentProject,
         getSyncFilter: () => filters.sync,
-        onFilterChange: handleFilterChange,
         onLoadEnd: handleSyncLoadEnd
     });
     window.addEventListener('popstate', handlePopState);

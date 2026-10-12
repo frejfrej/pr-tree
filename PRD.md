@@ -401,7 +401,7 @@ The application integrates with a Jira workflow where:
    - SYNC status loading and controls in app-sync.js
    - URL parameters in app-url.js, banner, sidebar, theme, help and shortcuts in app-shell.js, the multi-select component in multi-select.js
    - Filtering logic in app-filter.js (index built per data load, single pass over the tree, nothing read back from the rendered tree)
-   - Filter registry in filter-registry.js (the multi-selects: state key, element, URL parameter), the status band of a pull request in pull-request-status.js
+   - Filter registry in filter-registry.js (the multi-selects and the single-value filters: state key, element, URL parameter, default), the status band of a pull request in pull-request-status.js
    - Tree toggles and the pane's click handler in tree-toggle.js, the tree keys in tree-keyboard.js
    - Counter display in counter-utils.js
 
