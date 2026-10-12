@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { otherReviewers, statusClass, syncKey, isDraft } from '../public/pull-request-status.js';
+import { otherReviewers, statusClass, syncKey, isDraft, openTaskCount } from '../public/pull-request-status.js';
 
 const author = { uuid: 'author-uuid', display_name: 'Author' };
 const jane = { uuid: 'jane-uuid', display_name: 'Jane' };
@@ -42,4 +42,9 @@ test('statusClass: no linked issue and no issue list are no band', () => {
 test('isDraft is true for draft: true only', () => {
     assert.equal(isDraft({ draft: true }), true);
     for (const draft of [false, undefined, null, 'true', 1]) assert.equal(isDraft({ draft }), false, String(draft));
+});
+
+test('openTaskCount is task_count when a positive integer, 0 otherwise', () => {
+    assert.equal(openTaskCount({ task_count: 3 }), 3);
+    for (const taskCount of [0, -1, 1.5, null, undefined, '2']) assert.equal(openTaskCount({ task_count: taskCount }), 0, String(taskCount));
 });

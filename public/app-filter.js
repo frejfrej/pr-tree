@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters } from './filter-registry.js';
-import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft, openTaskCount } from './pull-request-status.js';
 import { pullRequestKey } from './pull-request-key.mjs';
 
 // The multi-selects compared with the set of the index entry named like the
@@ -152,21 +152,24 @@ function splitIssueKey(key) {
  * Decides whether a pull request waits for the selected participants. Pure:
  * everything it needs is in the index entry and the arguments.
  *
- * - assignee: the PR is in progress and a linked issue is assigned to a selected participant
+ * - assignee: a linked issue is assigned to a selected participant, and the PR
+ *   is in progress or has open tasks (its reviewers' requests wait for the
+ *   assignee, usually its author, whatever the band and draft or not; #138)
  * - reviewer: the PR is in review, is not a draft (its author wants no review
- *   yet), and a selected participant reviews it (never the author) and has not approved
+ *   yet), and a selected participant reviews it (never the author) and has not
+ *   approved; open tasks change nothing (they may be another reviewer's)
  *
  * The title of a PR with attention is highlighted; with participants selected,
  * the Work filter keeps the PRs with reviewer attention ("Ready for
  * reviewers"), assignee attention ("Ready for assignees") or either ("Ready for
  * participants"); "All work", "All reviews" and "All issues" keep every PR of
  * the participants, whether it waits for them or not.
- * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean, draft?: boolean }} entry - an entry of buildFilterIndex().pullRequestsByKey
+ * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean, draft?: boolean, openTasks?: number }} entry - an entry of buildFilterIndex().pullRequestsByKey
  * @param {string[]} participants - the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
-export function computeAttention({ assignees, pendingReviewers, statusInProgress, statusInReview, draft }, participants) {
-    const assignee = statusInProgress === true && participants.some(name => assignees.has(name));
+export function computeAttention({ assignees, pendingReviewers, statusInProgress, statusInReview, draft, openTasks = 0 }, participants) {
+    const assignee = (statusInProgress === true || openTasks > 0) && participants.some(name => assignees.has(name));
     const reviewer = statusInReview === true && draft !== true && participants.some(name => pendingReviewers.has(name));
     return { assignee, reviewer, any: assignee || reviewer };
 }
@@ -251,6 +254,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             statusInReview: band === 'status-in-review',
             // A draft waits for no reviewer (computeAttention) and "Hide drafts" hides it
             draft: isDraft(pullRequest),
+            // Open tasks wait for the assignee (computeAttention), the count the badge shows
+            openTasks: openTaskCount(pullRequest),
             // The key of this pull request in a SYNC statuses response, the one
             // the render writes on its badge (pull-request-status.js)
             syncKey: syncKey(pullRequest),

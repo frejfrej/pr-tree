@@ -186,7 +186,7 @@ The application integrates with a Jira workflow where:
 - F4.10: Filter by text: title, source branch name and linked issue keys must contain every word typed
 - F4.11: Filter by epic (the epic above the linked issues, through the parent story for sub-tasks)
 - F4.12: Filter by story (the linked issue, or the parent of a linked sub-task)
-- F4.13: "Ready for assignees" shows only In Progress pull requests with a linked issue assigned to a selected participant; "Ready for participants" keeps the pull requests needing either attention
+- F4.13: "Ready for assignees" shows only the pull requests with a linked issue assigned to a selected participant that are In Progress or have open tasks (the reviewers' requests wait for the assignee, usually the author); "Ready for participants" keeps the pull requests needing either attention
 - F4.14: Hide the repositories and branches left without a matching pull request; show a message when no pull request matches
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
 - F4.16: "Hide drafts" hides the draft pull requests, with or without participants selected
@@ -823,7 +823,7 @@ The following are explicitly **not** part of current requirements:
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
 - **Participant**: a person appearing as the assignee of a linked Jira issue or as a reviewer of a pull request
 - **Ready for Reviewers**: PR with associated issue in "In Review" status that a selected participant has not approved yet
-- **Ready for Assignees**: PR with associated issue in "In Progress" status assigned to a selected participant
+- **Ready for Assignees**: PR with an associated issue assigned to a selected participant, the issue "In Progress" or the PR with open tasks
 - **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch

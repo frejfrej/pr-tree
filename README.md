@@ -37,7 +37,7 @@
 * Provides a participants filter
     * Lists the assignees of the linked Jira issues and of the orphaned issues, and the reviewers of the pull requests
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
-    * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved (a draft waits for no reviewer), In Progress pull requests with a linked issue assigned to them
+    * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved (a draft waits for no reviewer), In Progress pull requests and pull requests with open tasks, with a linked issue assigned to them
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
 * "Hide drafts" hides the draft pull requests
 * Provides a fix version filter
@@ -97,6 +97,7 @@
 
 ## Changelog:
 * Version 3.1.0
+    * A pull request with open tasks waits for the assignee of its linked issues: with them selected, it is highlighted, counted in the tab title and kept by "Ready for assignees" and "Ready for participants", whatever the status of the issue (in review, every reviewer approved, resolved) and draft or not; before, only an In Progress pull request waited for its assignee. Its reviewers who have not approved still see it as waiting for them (#138)
     * The folded repositories, branches and stacked pull requests survive a reload: the browser keeps them per project (localStorage), so a reloaded or reopened tab, and a switch to another project and back, show the tree folded as it was left; "Collapse all" and "Expand all" are kept like any fold. A merged pull request leaves the record at the next refresh; a repository or a branch stays folded while it has no pull request. The selected row, when a fold hides it, gives way to the folded pull request or branch that holds it, and the page no longer selects a first pull request out of sight; the address is unchanged (#142)
     * Keyboard navigation of the tree: ↓ / `j` and ↑ / `k` move between the rows shown, the branch headers included, → and ← unfold and fold the selected branch or pull request or go to its first pull request and to its parent, `o` opens the selected pull request in Bitbucket, `i` its first Jira issue, Enter or Space fold or unfold its stacked pull requests, `x` goes back to the root of its stack and folds it; a filtered-out pull request shown for a matching one below it is a row too, and the Jira issues without a pull request come last. The focused row keeps the focus when an automatic refresh repaints the tree (#118)
     * One row is selected (a bar on its left edge) whenever the tree shows one, and the address keeps it (`selected=`): a reload, a shared link, Back and Forward select it again and scroll to it; when it is gone or filtered out, the first pull request is selected and the address keeps the one chosen. A refresh never changes the address
