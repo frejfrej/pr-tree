@@ -15,3 +15,8 @@ Spec: `docs/superpowers/specs/2026-10-12-collapse-state-design.md`.
 5. `npm test`; fixture server, SECOLLAB: fold a repository, a branch, a stack (click, `←`, `x`,
    Enter), reload; Collapse all, reload; Expand all, reload (entry removed); switch project and
    back; a stale key in the entry is pruned at the load; commit, push, pull request.
+
+After the /code-review (spec sections 3 and 4): the fold notice (`onFoldChange`) in place of the
+three call sites, the store merging the keys the tree cannot fold, the prune of pull requests
+only, `rowInSightOf` and the selection in sight (`public/tree-keyboard.js`), a test of
+`public/local-storage.js`.

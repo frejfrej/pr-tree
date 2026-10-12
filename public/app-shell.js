@@ -383,15 +383,9 @@ export function setToolbarVisible(visible) {
     }
 }
 
-function initializeToolbar(onCollapseChange) {
-    document.getElementById('collapseAllButton').addEventListener('click', () => {
-        collapseAll();
-        onCollapseChange();
-    });
-    document.getElementById('expandAllButton').addEventListener('click', () => {
-        expandAll();
-        onCollapseChange();
-    });
+function initializeToolbar() {
+    document.getElementById('collapseAllButton').addEventListener('click', collapseAll);
+    document.getElementById('expandAllButton').addEventListener('click', expandAll);
 }
 
 // -------------------------------------------------------------------- init
@@ -400,14 +394,13 @@ function initializeToolbar(onCollapseChange) {
  * @param {object} handlers
  * @param {() => void} handlers.onClearFilters - the sidebar's "Clear filters"
  * @param {(event: KeyboardEvent) => boolean} [handlers.onTreeKey] - a key the shell leaves to the tree; true when taken
- * @param {() => void} [handlers.onCollapseChange] - after "Collapse all" or "Expand all"
  */
-export function initializeAppShell({ onClearFilters, onTreeKey = () => false, onCollapseChange = () => {} }) {
+export function initializeAppShell({ onClearFilters, onTreeKey = () => false }) {
     treeKeyHandler = onTreeKey;
     initializeSidebar();
     initializeTheme();
     initializeHelpModal();
-    initializeToolbar(onCollapseChange);
+    initializeToolbar();
     document.getElementById('clearFiltersButton').addEventListener('click', onClearFilters);
     document.addEventListener('keydown', handleKeydown, true);
     fetchAndDisplayVersion();

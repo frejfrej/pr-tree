@@ -2,7 +2,7 @@ import { initializeFilter, filterBranches, countActiveFilters } from './app-filt
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
-import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates } from './tree-toggle.js';
+import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates, onFoldChange } from './tree-toggle.js';
 import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
@@ -506,9 +506,9 @@ function formatRefreshTime(isoString) {
     return `Last refreshed: ${date.toLocaleString(undefined, options)}`;
 }
 
-// The collapse state of the tree shown, kept for the next page load (#142).
-// Only over the project's tree: during its load the pane shows a message, and
-// storing that would wipe the folds the load is about to restore
+// The collapse state of the tree shown, kept for the next page load (#142),
+// after the user folds or unfolds. Only over the project's tree: during its
+// load the pane shows a message, and storing that would unfold its stored folds
 function saveCollapseState() {
     if (currentProject && currentApiResult) storeToggleStates(currentProject);
 }
@@ -706,13 +706,7 @@ function initializeMultiSelects() {
 document.addEventListener('DOMContentLoaded', function() {
     initializeAppShell({
         onClearFilters: clearAllFilters,
-        // A key taken may have folded (←, →, x, Enter, Space): the entry is written only when it changed
-        onTreeKey: event => {
-            const taken = handleTreeKey(event, { shownRows: treeRows, selectedRow, select: selectRow, arrowsFromPage: lastPointerInTree });
-            if (taken) saveCollapseState();
-            return taken;
-        },
-        onCollapseChange: saveCollapseState
+        onTreeKey: event => handleTreeKey(event, { shownRows: treeRows, selectedRow, select: selectRow, arrowsFromPage: lastPointerInTree })
     });
     initializePageUpdatedButton();
     initializeMultiSelects();
@@ -721,9 +715,9 @@ document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
     initializePopovers();
     const treePane = document.getElementById('pull-requests');
-    treePane.addEventListener('click', event => {
-        if (handleTreeClick(event)) saveCollapseState();
-    });
+    treePane.addEventListener('click', handleTreeClick);
+    // Every fold of the user's, by a click, a key or Collapse all, is kept for the next page load
+    onFoldChange(saveCollapseState);
     // A click in a row, or Tab into one, selects it (a row is focusable)
     treePane.addEventListener('focusin', event => {
         const row = rowOf(event.target);
