@@ -916,10 +916,14 @@ select:disabled {
     transition: box-shadow 0.3s ease;
 }
 
-.pull-request,
-.orphaned-issue {
+.pull-request {
     /* A row focused from the keyboard scrolls clear of the sticky repository and branch headers */
     scroll-margin-top: calc(var(--repo-header-height) + var(--branch-header-height) + 8px);
+}
+
+/* The orphaned issues section has no branch header */
+.orphaned-issue {
+    scroll-margin-top: calc(var(--repo-header-height) + 8px);
 }
 
 .pull-request:hover,

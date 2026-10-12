@@ -623,7 +623,11 @@ function initializeMultiSelects() {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
-    initializeAppShell({ onClearFilters: clearAllFilters, onTreeKey: event => handleTreeKey(event, treeRows) });
+    const mainPane = document.querySelector('.main-pane');
+    initializeAppShell({
+        onClearFilters: clearAllFilters,
+        onTreeKey: event => handleTreeKey(event, treeRows, { viewTop: () => mainPane.getBoundingClientRect().top })
+    });
     initializePageUpdatedButton();
     initializeMultiSelects();
     initializeTextFilter();

@@ -25,18 +25,22 @@ slow.
 | `x` | Focus the root pull request of the focused row's stack and collapse it |
 
 Same guards as `F` and `/`: nothing while typing (`isTypingTarget`), while
-a modifier is held, while the help is open or while a multi-select is open;
-the lowercase keys only, so Shift combinations stay free.
+Ctrl, Alt or Meta is held, while the help is open or while a multi-select is
+open, plus while the drawer covers the tree (narrow layout); nothing with
+Shift either, so Shift+Space still scrolls up.
 
 - **Rows**: the `.pull-request` rows and, *Decided*, the `.orphaned-issue`
   rows after them (they are rows of the page like the others; `o` and `i`
   both open their issue, Enter and `x` do nothing on them).
 - **The row of a key** is the one holding the focus: the row itself, or a
   link or button inside it (`closest`). `j` / `k` without one focus the
-  first row shown. At either end they stay put.
-- **Enter / Space** act only when the row itself has the focus: on a link
-  or a button inside it they keep their own meaning. A row without stacked
-  pull requests does nothing, but Space still does not scroll the page.
+  first row in view (its top at or below the top of the main pane), so the
+  reader keeps their place. At either end they stay put.
+- **Enter / Space** act only when the row itself has the focus and shows
+  the focus ring (`:focus-visible`): a click focuses a row too, and Space
+  must still scroll the page after it. On a link or a button inside the
+  row, on a row with nothing stacked, or on an orphaned issue, they keep
+  their own meaning. A held key folds once (`event.repeat`).
 - **`x`**, *Decided* reading of "collapse to the root": from anywhere in a
   stack, one key back to its root, folded, so `j` goes on to the next stack.
   A root without stacked pull requests is only focused.
@@ -57,9 +61,9 @@ Collapsing runs no filter pass, so it is read when a key is pressed:
 `isCollapsedAway(row)` in tree-toggle.js (it owns how a collapse is
 represented) is true inside a collapsed repository or root branch, or a
 `.children` container hidden by a collapsed pull request. `j` / `k` scan
-the list from the current row's place for the next row not collapsed away;
-the current row may itself be collapsed away ("Collapse all" while it had
-the focus): its place in the list still says where to go on.
+the list from the current row's place for the next row not collapsed away.
+A row hidden by a collapse loses the focus in the browser (focus fixup), so
+the next `j` starts from the first row in view.
 
 ## 4. Focus
 
@@ -70,10 +74,12 @@ the focus): its place in the list still says where to go on.
   a key shows it. `scroll-margin-top` covers the sticky repository and
   branch headers, so a row scrolled to is not hidden under them; the scroll
   is `scrollIntoView({ block: 'nearest' })` after `focus({ preventScroll })`.
-- **Across a re-render** (periodic refresh, filter change re-rendering the
-  options): if the focus was in the tree pane, the row it was in is focused
-  again by its key after the render, without scrolling; a row gone or
-  hidden leaves the focus where the browser put it.
+- **Across a re-render** (periodic refresh): if the focus was on a row or on
+  one of its links and buttons, the same row, or the same control of it (by
+  its place among the row's links and buttons), is focused again after the
+  render, without scrolling; a row gone or hidden leaves the focus where the
+  browser put it. A focused repository or branch toggle is still lost, as
+  before.
 
 ## 5. Modules
 
@@ -92,3 +98,17 @@ the focus): its place in the list still says where to go on.
   pitfall 6, and a layout read per row per key.
 - **Arrow keys**: the page scrolls with them; `j` / `k` take nothing away.
 - **Rows in the Tab order** (all of them, or roving): see section 4.
+
+## 7. After the /code-review of #140
+
+- A click focused a row (it is focusable) and Space then folded it instead
+  of scrolling: Enter and Space need the focus ring, a row with something
+  to fold, no Shift, and fold once for a held key.
+- `j` / `k` without a focused row start at the first row in view instead of
+  the top of the tree; nothing while the narrow layout's drawer is open.
+- The focus comes back on the same link or button of a row after a
+  re-render, not on the row.
+- The rows of the last pass are known stale all at once (a message replaced
+  the tree), checked on the first row instead of filtering them per key.
+- The orphaned issues' scroll margin leaves out the branch header they do
+  not have.

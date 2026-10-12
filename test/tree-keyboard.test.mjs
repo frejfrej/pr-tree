@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRow, rootRowOf, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
+import { nextRow, firstRowInView, rootRowOf, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
 import { setPullRequestCollapsed, setRootBranchCollapsed } from '../public/tree-toggle.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
@@ -48,6 +48,24 @@ test('nextRow steps over the rows not reachable, stays put at either end, and st
     assert.equal(nextRow([], null, 1, all), null);
 });
 
+test('firstRowInView: the first reachable row starting at or below the top of the view, the last reachable one when all start above', () => {
+    const rows = [10, -40, 120, 300].map(top => ({ top, getBoundingClientRect: () => ({ top }) }));
+    const all = () => true;
+    assert.equal(firstRowInView(rows, all, 0), rows[0]);
+    assert.equal(firstRowInView(rows, all, 100), rows[2]);
+    assert.equal(firstRowInView(rows, row => row !== rows[2], 100), rows[3]);
+    assert.equal(firstRowInView(rows, row => row !== rows[3], 400), rows[2]);
+    assert.equal(firstRowInView([], all, 0), null);
+});
+
+test('j or k without a focused row start at the first row in view, not at the top of the tree', () => {
+    const { rows, shown, outside, document } = sampleTree();
+    [rows.one, rows.two, rows.three, rows.four, rows.orphan].forEach((row, index) => { row.rect = { top: index * 100 - 150, bottom: index * 100 - 50 }; });
+    handleTreeKey(key('j', outside), shown, { viewTop: () => 40 });
+    handleTreeKey(key('k', outside), shown, { viewTop: () => 140 });
+    assert.deepEqual(focused(document), [rows.three, rows.four]);
+});
+
 test('rootRowOf climbs the stack to its root pull request; an orphaned issue has none', () => {
     const { rows } = sampleTree();
     assert.equal(rootRowOf(rows.three), rows.one);
@@ -80,26 +98,42 @@ test('j and k skip what a collapse hides, from a row hidden by "Collapse all" to
     setRootBranchCollapsed(rootBranch, true);
     handleTreeKey(key('j', rows.two), shown);
     assert.deepEqual(focused(document), [rows.four, rows.orphan]);
-    // A message replaced the tree: the rows of the last pass are gone (the branch is still collapsed)
+    // A message replaced the tree: the rows of the last pass are gone, all at once
     document.events.length = 0;
-    handleTreeKey(key('j', node()), [pullRequest('detached'), ...shown]);
-    assert.deepEqual(focused(document), [rows.orphan]);
+    assert.equal(handleTreeKey(key('j', node()), [pullRequest('detached'), pullRequest('detached too')]), true);
+    assert.deepEqual(document.events, []);
 });
 
-test('Enter and Space on the row itself fold or unfold its stacked pull requests; on a link or a button inside it they are left alone', () => {
+test('Enter and Space on the row itself, showing the focus ring, fold or unfold its stacked pull requests, once for a held key', () => {
     const { rows, shown } = sampleTree();
+    rows.one.focus();
     assert.equal(handleTreeKey(key('Enter', rows.one), shown), true);
     assert.ok(rows.one.classList.contains('collapsed'));
     assert.equal(rows.one.nextElementSibling.hidden, true);
     assert.equal(handleTreeKey(key(' ', rows.one), shown), true);
     assert.ok(!rows.one.classList.contains('collapsed'));
-    assert.equal(handleTreeKey(key('Enter', rows.one.querySelector('.pull-request-link')), shown), false);
-    assert.equal(handleTreeKey(key(' ', rows.one.querySelector('.toggle-button')), shown), false);
+    assert.equal(handleTreeKey({ key: 'Enter', target: rows.one, repeat: true }, shown), true);
     assert.ok(!rows.one.classList.contains('collapsed'));
-    // Nothing stacked: nothing to fold, but Space does not scroll the page either
-    assert.equal(handleTreeKey(key(' ', rows.four), shown), true);
-    assert.ok(!rows.four.classList.contains('collapsed'));
-    assert.equal(handleTreeKey(key('Enter', rows.orphan), shown), true);
+});
+
+test('Enter and Space keep their own meaning on a link or a button of a row, on a row focused by a click, on a row with nothing to fold, and with Shift', () => {
+    const { rows, shown, document } = sampleTree();
+    const link = rows.one.querySelector('.pull-request-link');
+    link.focus();
+    assert.equal(handleTreeKey(key('Enter', link), shown), false);
+    assert.equal(handleTreeKey(key(' ', rows.one.querySelector('.toggle-button')), shown), false);
+    // A click focuses the row without the focus ring: Space scrolls the page
+    document.keyboard = false;
+    rows.one.focus();
+    assert.equal(handleTreeKey(key(' ', rows.one), shown), false);
+    document.keyboard = true;
+    assert.equal(handleTreeKey({ key: ' ', target: rows.one, shiftKey: true }, shown), false);
+    assert.equal(handleTreeKey({ key: 'Enter', target: rows.one, shiftKey: true }, shown), false);
+    assert.ok(!rows.one.classList.contains('collapsed'));
+    rows.four.focus();
+    assert.equal(handleTreeKey(key(' ', rows.four), shown), false);
+    rows.orphan.focus();
+    assert.equal(handleTreeKey(key('Enter', rows.orphan), shown), false);
     assert.equal(handleTreeKey(key('Enter', node()), shown), false);
 });
 
@@ -135,22 +169,25 @@ test('o clicks the row\'s own link (the issue of an orphaned issue), i its first
     assert.equal(clicked().length, 4);
 });
 
-test('the row holding the focus is focused again, without scrolling, among the rows of the next pass, when it is still in sight', () => {
+test('the row or the control of a row holding the focus is focused again, without scrolling, among the rows of the next pass, when it is still in sight', () => {
     const before = sampleTree();
-    assert.equal(captureFocusedRow(before.pane, before.rows.two.querySelector('.pull-request-link')), 'repo-one/2');
-    assert.equal(captureFocusedRow(before.pane, before.rows.orphan), 'issue:PROJ-9');
+    const linkFocus = captureFocusedRow(before.pane, before.rows.two.querySelector('.pull-request-link'));
+    const rowFocus = captureFocusedRow(before.pane, before.rows.orphan);
+    assert.deepEqual(linkFocus, { key: 'repo-one/2', control: 1 }); // after the toggle button
+    assert.deepEqual(rowFocus, { key: 'issue:PROJ-9', control: -1 });
     assert.equal(captureFocusedRow(before.pane, before.outside), null);
+    assert.equal(captureFocusedRow(before.pane, before.pane), null);
     assert.equal(captureFocusedRow(before.pane, null), null);
 
     const after = sampleTree();
-    restoreFocusedRow('repo-one/2', after.shown);
-    restoreFocusedRow('issue:PROJ-9', after.shown);
-    assert.deepEqual(after.document.events, [['focus', after.rows.two, { preventScroll: true }], ['focus', after.rows.orphan, { preventScroll: true }]]);
+    restoreFocusedRow(linkFocus, after.shown);
+    restoreFocusedRow(rowFocus, after.shown);
+    assert.deepEqual(after.document.events, [['focus', after.rows.two.querySelector('.pull-request-link'), { preventScroll: true }], ['focus', after.rows.orphan, { preventScroll: true }]]);
     // Gone, collapsed away, or nothing captured: the focus stays where the browser put it
     after.document.events.length = 0;
-    restoreFocusedRow('repo-one/404', after.shown);
+    restoreFocusedRow({ key: 'repo-one/404', control: -1 }, after.shown);
     restoreFocusedRow(null, after.shown);
     setPullRequestCollapsed(after.rows.one, true);
-    restoreFocusedRow('repo-one/2', after.shown);
+    restoreFocusedRow(linkFocus, after.shown);
     assert.deepEqual(after.document.events, []);
 });

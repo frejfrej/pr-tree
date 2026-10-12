@@ -1,10 +1,12 @@
 // A small element tree for the tests that walk the rendered tree (the filter
 // pass, the tree keys): class, tag and `[hidden]` selectors, `:not(.class)`, `:scope`,
-// the descendant and `>` combinators, selector lists; focus, click and scroll
-// are recorded on the document. node --test loads it with the tests; it holds none.
+// `:focus-visible` (the focused element while the document's `keyboard` is
+// true), the descendant and `>` combinators, selector lists; focus, click and
+// scroll are recorded on the document; `rect` is what getBoundingClientRect returns. node --test loads it with the tests; it holds none.
 
 function parseCompound(text) {
     if (text === ':scope') return { scope: true };
+    if (text === ':focus-visible') return { focusVisible: true };
     const match = /^([a-z]+)?((?:\.[\w-]+)*)((?::not\(\.[\w-]+\))*)(\[hidden\])?$/.exec(text);
     if (!match) throw new Error(`fake-dom: unsupported selector ${text}`);
     return {
@@ -32,8 +34,9 @@ function parseSelector(selector) {
     return steps;
 }
 
-function matchesCompound(element, { scope, tag, classes, notClasses, hidden }, scopeElement) {
+function matchesCompound(element, { scope, focusVisible, tag, classes, notClasses, hidden }, scopeElement) {
     if (scope) return element === scopeElement;
+    if (focusVisible) return element.ownerDocument?.activeElement === element && element.ownerDocument.keyboard;
     return (!tag || element.tag === tag) &&
         classes.every(name => element.classList.contains(name)) &&
         notClasses.every(name => !element.classList.contains(name)) &&
@@ -67,6 +70,8 @@ export function node({ tag = 'div', classes = [], dataset = {}, hidden = false }
         parentElement: null,
         dataset: { ...dataset },
         style: { display: '' },
+        rect: { top: 0, bottom: 0 },
+        getBoundingClientRect() { return this.rect; },
         hidden,
         document: null,
         classList: {
@@ -115,10 +120,11 @@ export function node({ tag = 'div', classes = [], dataset = {}, hidden = false }
     return element;
 }
 
-/** A document over `root`: querySelector(All), activeElement, and `events`, the focus, scroll and click calls in order */
+/** A document over `root`: querySelector(All), activeElement, `keyboard` (the focus modality), and `events`, the focus, scroll and click calls in order */
 export function fakeDocument(root) {
     const document = {
         activeElement: null,
+        keyboard: true,
         events: [],
         querySelectorAll: selector => [root, ...descendants(root)].filter(candidate => candidate.matches(selector)),
         querySelector: selector => document.querySelectorAll(selector)[0] ?? null

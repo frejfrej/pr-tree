@@ -10,7 +10,7 @@
     * Repository and branch headers stick to the top of the tree while scrolling
     * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
     * Every toggle is a button: Tab reaches it, Enter or Space folds or unfolds, and its state is announced
-    * Keyboard navigation of the tree: `j` and `k` move to the next and previous row shown (the pull requests, then the Jira issues without a pull request), skipping what is filtered out or folded; `o` opens the row in Bitbucket (an issue in Jira), `i` its first Jira issue, in a new tab; Enter or Space on the row folds or unfolds its stacked pull requests; `x` goes back to the root pull request of the stack and folds it. The keys do nothing while typing in a box or with a filter list open
+    * Keyboard navigation of the tree: `j` and `k` move to the next and previous row shown (the pull requests, then the Jira issues without a pull request), skipping what is filtered out or folded, starting from the first row in view; `o` opens the row in Bitbucket (an issue in Jira), `i` its first Jira issue, in a new tab; Enter or Space on the row folds or unfolds its stacked pull requests; `x` goes back to the root pull request of the stack and folds it. The keys do nothing while typing in a box or with a filter list open
     * The tab title shows the selected project and, when participants are selected, the number of pull requests and orphaned issues waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector

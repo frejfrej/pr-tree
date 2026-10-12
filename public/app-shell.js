@@ -81,9 +81,14 @@ function toggleSidebar() {
     setSidebarHidden(!isSidebarHidden());
 }
 
+// The sidebar shown as a drawer over the tree (narrow layout)
+function isDrawerOpen() {
+    return !wideLayout.matches && !isSidebarHidden();
+}
+
 /** Closes the sidebar when it is shown as a drawer (narrow layout). No-op otherwise. */
 export function closeSidebarDrawer() {
-    if (!wideLayout.matches && !isSidebarHidden()) {
+    if (isDrawerOpen()) {
         setSidebarHidden(true, { persist: false });
     }
 }
@@ -300,7 +305,8 @@ function isForOpenMultiSelect(target) {
 // Registered in the capture phase: a key for an open multi-select reaches it
 // still open, and the component handles Escape and the arrows itself, so the
 // shell stays out of its way; the help dialog closes itself on Escape. A key
-// the shell does not use goes to the tree, under the same guards.
+// the shell does not use goes to the tree, under the same guards, unless the
+// drawer covers the tree.
 function handleKeydown(event) {
     if (isForOpenMultiSelect(event.target)) {
         return;
@@ -331,7 +337,7 @@ function handleKeydown(event) {
     } else if (event.key === '/') {
         event.preventDefault();
         focusTextFilter();
-    } else if (treeKeyHandler(event)) {
+    } else if (!isDrawerOpen() && treeKeyHandler(event)) {
         event.preventDefault();
     }
 }
