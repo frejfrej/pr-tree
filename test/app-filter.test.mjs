@@ -620,7 +620,7 @@ import { filterBranches } from '../public/app-filter.js';
 import { defaultFilters } from '../public/filter-registry.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
-test('filterBranches lists the rows it leaves displayed in document order: a parent kept for a visible descendant before it, the orphaned issues last (#118)', () => {
+test('filterBranches lists the rows it leaves displayed in document order: each branch header first, a parent kept for a visible descendant before it, the orphaned issues last (#118)', () => {
     const pr = (id, title, branch, destination) => ({
         id, title, source: { branch: { name: branch }, repository: { name: 'repo' } },
         destination: { branch: { name: destination }, repository: { name: 'repo' } }, author, participants: [{ user: author, approved: false }]
@@ -634,17 +634,20 @@ test('filterBranches lists the rows it leaves displayed in document order: a par
     const row = id => node({ classes: ['pull-request'], dataset: { id: `repo/${id}` } });
     const [one, two, three, four] = [1, 2, 3, 4].map(row);
     const [eight, nine] = ['PROJ-8', 'PROJ-9'].map(issueKey => node({ classes: ['orphaned-issue'], dataset: { issueKey } }));
+    const header = node({ classes: ['root-branch-header'] });
     const previousDocument = globalThis.document;
     globalThis.document = fakeDocument(node({},
-        node({ classes: ['repository'] }, node({ classes: ['root-branch'] }, node({ classes: ['root-branch-content'] },
+        node({ classes: ['repository'] }, node({ classes: ['root-branch'] }, header, node({ classes: ['root-branch-content'] },
             one, node({ classes: ['children'] }, two, node({ classes: ['children'] }, three)), four))),
         node({ classes: ['repository', 'orphaned-issues'] }, eight, nine)));
     try {
         const all = filterBranches(defaultFilters());
-        assert.deepEqual(all.shownRows, [one, two, three, four, eight, nine]);
+        assert.deepEqual(all.shownRows, [header, one, two, three, four, eight, nine]);
         // PR 2 is filtered out but stays displayed for PR 3; PR 4 and PROJ-8 are hidden
         const alpha = filterBranches({ ...defaultFilters(), text: 'alpha' });
-        assert.deepEqual(alpha.shownRows, [one, two, three, nine]);
+        assert.deepEqual(alpha.shownRows, [header, one, two, three, nine]);
+        // A branch left without a pull request shown takes its header along
+        assert.deepEqual(filterBranches({ ...defaultFilters(), text: 'gamma' }).shownRows, [eight]);
         assert.ok(two.classList.contains('filtered'));
         assert.equal(four.style.display, 'none');
         assert.equal(alpha.attentionCount, 0);

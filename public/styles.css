@@ -926,10 +926,16 @@ select:disabled {
     scroll-margin-top: calc(var(--repo-header-height) + 8px);
 }
 
+/* A root-branch header focused from the keyboard: below the sticky repository header */
+.root-branch-header {
+    scroll-margin-top: var(--repo-header-height);
+}
+
 /* The row the tree keys act on: a bar on its left edge, apart from the focus
    ring (the outline), which only the row holding the keyboard focus shows. A
    pseudo-element, not a shadow: the hover transition of the shadow would fade
-   it in at each move */
+   it in at each move. A sticky header is positioned: the bar sits in it too */
+.root-branch-header.selected::before,
 .pull-request.selected::before,
 .orphaned-issue.selected::before {
     content: '';

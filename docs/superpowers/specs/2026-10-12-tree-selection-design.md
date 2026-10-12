@@ -121,3 +121,26 @@ the guards allow.
   again through `focusin` (an early return, no search). Without the first,
   a move would select nothing where no focus event fires (a window without
   the system focus).
+
+## 7. Root-branch headers (asked after the /code-review)
+
+The user: "I should be able to select branch headers to collapse them too".
+
+- **The headers are rows**: `.root-branch-header` gets `tabindex="-1"`, the
+  filter pass lists each header shown before its branch's pull requests
+  (reserving its slot, like a parent pull request), and the key of a header
+  is its root-branch key, `repository:branch` (`selected=` too).
+- **Same tree, same code**: a header is followed by the container of what it
+  folds (`.root-branch-content`), as a pull request by its `.children`; the
+  root pull requests live in that container. So `firstShownChild`,
+  `parentRowOf` (a root pull request's parent is its header) and the
+  folding (`setRootBranchCollapsed` on the header's branch) need no special
+  case beyond which container and which collapse to use.
+- **Keys on a header**: `→` unfolds the branch, then selects its first
+  pull request; `←` folds it (folded, nothing: *Decided*, the repository
+  headers are not rows); `o` opens the branch in Bitbucket; Enter and
+  Space fold it from the focus ring; `i` and `x` do nothing.
+- `isCollapsedAway` skips the header's own branch: a header stays in sight
+  while its branch is folded.
+- *Decided*: the fallback stays the first pull request (the user's words at
+  the start), not the first header above it.

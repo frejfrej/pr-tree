@@ -47,7 +47,7 @@ public/filter-registry.js      The five multi-select filters (key, element, URL 
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
 public/pull-request-key.mjs    Keys naming the repository: pull request "repository/id", root branch "repository:branch" (.mjs: the server imports it)
 public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders
-public/tree-keyboard.js        The tree keys (arrows, j, k, o, i, Enter, Space, x) over the rows of the last filter pass, the selected row, focus kept across re-renders
+public/tree-keyboard.js        The tree keys (arrows, j, k, o, i, Enter, Space, x) over the rows of the last filter pass (branch headers included), the selected row, focus kept across re-renders
 public/multi-select.js Multi-select dropdown component (builds its own markup)
 public/counter-utils.js        filtered/total counter display
 public/escape-html.js  The one HTML escape of the page (tree, orphaned issues, filter options)

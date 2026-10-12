@@ -123,8 +123,8 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.5: Show associated Jira issues with status badges
 - F2.6: Indicate when PR has conflicts with parent branch
 - F2.7: Mark draft pull requests with a "Draft" badge and show the number of open tasks of a pull request
-- F2.8: Walk the tree from the keyboard: ↓ / `j` and ↑ / `k` select the next and previous row shown (pull requests, then orphaned issues), → unfolds the selected row's stack or selects its first stacked pull request, ← folds it or selects its parent, `o` opens the selected row, `i` its first Jira issue, Enter or Space fold or unfold the focused row's stack, `x` goes back to the root of the stack and folds it; ignored while typing, in an open filter list or with the help open
-- F2.9: One row is selected whenever a row is shown, the one the URL names (`selected`) when it is shown, the first row otherwise; a selection by the user (a key, a click, Tab) replaces the URL entry, a refresh or a filter change never writes it; a load and Back/Forward scroll the selected row into view
+- F2.8: Walk the tree from the keyboard: ↓ / `j` and ↑ / `k` select the next and previous row shown (each root-branch header, the pull requests under it, then orphaned issues), → unfolds the selected branch or stack or selects its first pull request, ← folds it or selects its parent (a root pull request's branch header), `o` opens the selected row, `i` its first Jira issue, Enter or Space fold or unfold the focused row's stack, `x` goes back to the root of the stack and folds it; ignored while typing, in an open filter list or with the help open
+- F2.9: One row is selected whenever a row is shown, the one the URL names (`selected`) when it is shown, the first pull request otherwise; a selection by the user (a key, a click, Tab) replaces the URL entry, a refresh or a filter change never writes it; a load and Back/Forward scroll the selected row into view
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time

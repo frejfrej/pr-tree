@@ -13,7 +13,12 @@
  * the focus ring: a click focuses a row too (it is focusable), and Space
  * must still scroll the page after it.
  *
- * The rows are the `.pull-request` rows, then the `.orphaned-issue` rows. The
+ * The rows are the root-branch headers (`.root-branch-header`, folding
+ * their branch, `o` opening the branch), the `.pull-request` rows under each,
+ * then the `.orphaned-issue` rows. A header and a pull request are built
+ * alike: the container of what they fold follows them (`.root-branch-content`,
+ * `.children`), so the stack, the parent and the first child are found the
+ * same way for both. The
  * rows displayed come from the last filter pass (filterBranches), never from
  * the styles; what a collapse hides is read when a key is pressed
  * (isCollapsedAway, tree-toggle.js), since collapsing runs no filter pass.
@@ -31,9 +36,24 @@
  * node:test.
  */
 
-import { isCollapsedAway, setPullRequestCollapsed } from './tree-toggle.js';
+import { isCollapsedAway, setPullRequestCollapsed, setRootBranchCollapsed } from './tree-toggle.js';
 
-const rowSelector = '.pull-request, .orphaned-issue';
+const rowSelector = '.root-branch-header, .pull-request, .orphaned-issue';
+
+const isBranchHeader = row => row.classList.contains('root-branch-header');
+
+// Whether the row's branch or stack is folded, and folding it: a header folds its root branch
+function isFolded(row) {
+    return (isBranchHeader(row) ? row.parentElement : row).classList.contains('collapsed');
+}
+
+function setFolded(row, folded) {
+    if (isBranchHeader(row)) {
+        setRootBranchCollapsed(row.parentElement, folded);
+    } else {
+        setPullRequestCollapsed(row, folded);
+    }
+}
 
 /** The row an element is in (the row itself, or a link or a button of it); null elsewhere */
 export function rowOf(target) {
@@ -42,21 +62,25 @@ export function rowOf(target) {
 
 /**
  * The key of a row, as the `selected` URL parameter carries it: the
- * pull-request key of the render's data-id (pull-request-key.mjs), the issue
- * key of an orphaned issue (a Jira key holds no `/`, a pull-request key does)
+ * pull-request key of the render's data-id (`repository/id`), the issue key
+ * of an orphaned issue, the root-branch key of a header (`repository:branch`)
+ * (pull-request-key.mjs). A Jira key holds neither `/` nor `:`, git forbids
+ * `:` in a branch name: the three never meet.
  */
 export function rowKey(row) {
-    return row.dataset.id ?? row.dataset.issueKey;
+    return row.dataset.id ?? row.dataset.issueKey ?? row.parentElement?.dataset.rootBranchKey;
 }
 
 /**
  * Selects, among the rows of a filter pass, the row of `wantedKey`, or the
- * first row when none is (no key, a row gone or filtered out), and clears
- * `previous`. A row folded away stays selected.
+ * first pull request (the first row without one) when none is (no key, a row
+ * gone or filtered out), and clears `previous`. A row folded away stays
+ * selected.
  * @returns {Element | null} the row selected; null without a row shown
  */
 export function paintSelectedRow(shownRows, wantedKey, previous) {
-    const row = (wantedKey && shownRows.find(candidate => rowKey(candidate) === wantedKey)) || shownRows[0] || null;
+    const row = (wantedKey && shownRows.find(candidate => rowKey(candidate) === wantedKey)) ||
+        shownRows.find(candidate => candidate.classList.contains('pull-request')) || shownRows[0] || null;
     if (previous && previous !== row) {
         previous.classList.toggle('selected', false);
         previous.removeAttribute('aria-current');
@@ -71,15 +95,21 @@ export function paintSelectedRow(shownRows, wantedKey, previous) {
 // The links and buttons of a row, in document order: a row holds no other row (stacked pull requests are its siblings)
 const rowControls = row => [...row.querySelectorAll('a, button')];
 
+// The container of what a row folds: a pull request's stack, a header's branch
+function foldedContainerOf(row) {
+    const container = row.nextElementSibling;
+    return container?.classList.contains('children') || container?.classList.contains('root-branch-content') ? container : null;
+}
+
 /**
- * The first stacked pull request of a row that the pass shows (folded away or
- * not), null when the row stacks none or the filters hide them all. The
- * stack is the `.children` container after the row, and the pass lists the
- * rows in document order: the row after it, if it is in that container.
+ * The first pull request a row folds (its stack, or a header's branch) that
+ * the pass shows, folded away or not; null when the row folds none or the
+ * filters hide them all. The pass lists the rows in document order: the row
+ * after it, if it is in that container.
  */
 export function firstShownChild(row, shownRows) {
-    const container = row.nextElementSibling;
-    if (!container?.classList.contains('children')) return null;
+    const container = foldedContainerOf(row);
+    if (!container) return null;
     const next = shownRows[shownRows.indexOf(row) + 1];
     return next && container.contains(next) ? next : null;
 }
@@ -105,17 +135,20 @@ export function nextRow(rows, current, step, isReachable) {
 }
 
 /**
- * The pull request a row is stacked on; null for a root pull request and an
- * orphaned issue. A stacked pull request lives in the `.children` container
- * that follows its parent.
+ * The row a row is under: the pull request it is stacked on, the header of
+ * its branch for a root pull request; null for a header and an orphaned
+ * issue. A row lives in the container that follows its parent.
  */
 export function parentRowOf(row) {
     const container = row.parentElement;
-    return container?.classList.contains('children') ? container.previousElementSibling : null;
+    return container?.classList.contains('children') || container?.classList.contains('root-branch-content')
+        ? container.previousElementSibling
+        : null;
 }
 
-/** The root pull request of the stack a row is in, the row itself for a root; null for an orphaned issue */
+/** The root pull request of the stack a row is in, the row itself for a root; null for a header and an orphaned issue */
 export function rootRowOf(row) {
+    if (!row.classList.contains('pull-request')) return null;
     let current = row;
     while (current && !current.classList.contains('pull-request-root')) current = parentRowOf(current);
     return current;
@@ -174,8 +207,8 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
         case 'ArrowRight': {
             const child = rowInSight && firstShownChild(rowInSight, shownRows);
             if (!child) return false;
-            if (rowInSight.classList.contains('collapsed')) {
-                setPullRequestCollapsed(rowInSight, false);
+            if (isFolded(rowInSight)) {
+                setFolded(rowInSight, false);
             } else {
                 moveTo(child);
             }
@@ -183,8 +216,8 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
         }
         case 'ArrowLeft': {
             if (!rowInSight) return false;
-            if (firstShownChild(rowInSight, shownRows) && !rowInSight.classList.contains('collapsed')) {
-                setPullRequestCollapsed(rowInSight, true);
+            if (firstShownChild(rowInSight, shownRows) && !isFolded(rowInSight)) {
+                setFolded(rowInSight, true);
                 return true;
             }
             const parent = parentRowOf(rowInSight);
@@ -193,7 +226,7 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
             return true;
         }
         case 'o':
-            return openLink(rowInSight, '.pull-request-header > a');
+            return openLink(rowInSight, '.pull-request-header > a, .root-branch-link');
         case 'i':
             return openLink(rowInSight, '.jira-issue-link');
         case 'x': {
@@ -208,7 +241,7 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
             // On a link or a button inside the row, on a row focused by a click, or with nothing to fold, the key keeps its own meaning
             if (!focusedRow || event.target !== focusedRow || !focusedRow.matches(':focus-visible') || !firstShownChild(focusedRow, shownRows)) return false;
             // A held key folds once
-            if (!event.repeat) setPullRequestCollapsed(focusedRow, !focusedRow.classList.contains('collapsed'));
+            if (!event.repeat) setFolded(focusedRow, !isFolded(focusedRow));
             return true;
         default:
             return false;

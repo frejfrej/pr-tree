@@ -407,11 +407,12 @@ export function evaluateOrphanedIssue(entry, filters) {
  * counted. Everything a decision needs comes from the index and the loaded
  * SYNC statuses, nothing from what the tree shows. The rows left displayed
  * are listed in document order for the keyboard navigation (tree-keyboard.js),
- * a filtered-out pull request kept for a visible descendant included.
+ * a filtered-out pull request kept for a visible descendant included, and
+ * each root-branch header shown before the pull requests of its branch.
  * @param {object} filters - { text, participants, work, hideDrafts, sprints, fixVersions, epics, stories, sync }
  * @param {Record<string, object> | null} [syncStatuses] - the statuses of the last SYNC load by "repo/destHash..sourceHash", null while none is loaded
  * @returns {{ attentionCount: number, shownRows: Element[] }} how many pull requests and orphaned
- *   issues are left shown and need attention, and the `.pull-request` and `.orphaned-issue` rows displayed
+ *   issues are left shown and need attention, and the `.root-branch-header`, `.pull-request` and `.orphaned-issue` rows displayed
  */
 export function filterBranches(filters, syncStatuses = null) {
     const pass = {
@@ -428,8 +429,12 @@ export function filterBranches(filters, syncStatuses = null) {
         let repositoryTotal = 0;
         let repositoryVisible = 0;
         for (const rootBranch of repository.querySelectorAll('.root-branch')) {
+            // The header is a row of the keyboard navigation, listed before the branch's pull requests while it is shown
+            const header = rootBranch.querySelector(':scope > .root-branch-header');
+            const headerSlot = header ? pass.shownRows.push(null) - 1 : -1;
             const content = rootBranch.querySelector('.root-branch-content');
             const counts = content ? filterChildren(content, pass) : { total: 0, visible: 0 };
+            if (header && counts.visible > 0) pass.shownRows[headerSlot] = header;
             repositoryTotal += counts.total;
             repositoryVisible += counts.visible;
 

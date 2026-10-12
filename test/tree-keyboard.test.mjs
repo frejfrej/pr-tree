@@ -10,9 +10,11 @@ function pullRequest(id, { root = false, issue = true } = {}) {
         ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }))] : []));
 }
 
-// repo-one/1 stacks 2, which stacks 3; repo-one/4 stacks nothing and links no issue; then one orphaned issue
+// The header of branch main; repo-one/1 stacks 2, which stacks 3; repo-one/4 stacks nothing and links no issue; then one orphaned issue
 function sampleTree() {
     const rows = {
+        branch: node({ classes: ['root-branch-header'] },
+            node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'h3' }, node({ tag: 'a', classes: ['root-branch-link'] }))),
         one: pullRequest('repo-one/1', { root: true }),
         two: pullRequest('repo-one/2'),
         three: pullRequest('repo-one/3'),
@@ -20,7 +22,7 @@ function sampleTree() {
         orphan: node({ classes: ['orphaned-issue'], dataset: { issueKey: 'PROJ-9' } },
             node({ classes: ['pull-request-header'] }, node({ tag: 'a', classes: ['jira-issue-link'] })))
     };
-    const rootBranch = node({ classes: ['root-branch'] }, node({ classes: ['root-branch-content'] },
+    const rootBranch = node({ classes: ['root-branch'], dataset: { rootBranchKey: 'repo-one:main' } }, rows.branch, node({ classes: ['root-branch-content'] },
         rows.one,
         node({ classes: ['children'] }, rows.two, node({ classes: ['children'] }, rows.three)),
         rows.four));
@@ -30,7 +32,7 @@ function sampleTree() {
     const outside = node({ tag: 'button' });
     const body = node({ tag: 'body' }, pane, outside);
     const document = fakeDocument(body);
-    const shown = [rows.one, rows.two, rows.three, rows.four, rows.orphan];
+    const shown = [rows.branch, rows.one, rows.two, rows.three, rows.four, rows.orphan];
     // What app.js passes: the rows of the pass, the row selected, and the rows the keys select
     const selected = [];
     const context = (selectedRow = null) => ({ shownRows: shown, selectedRow, select: row => selected.push(row) });
@@ -56,6 +58,7 @@ test('nextRow steps over the rows not reachable, stays put at either end, and st
 test('firstShownChild: the first stacked pull request the pass shows, folded away or not; none when the filters hide them all', () => {
     const { rows, shown } = sampleTree();
     assert.equal(firstShownChild(rows.one, shown), rows.two);
+    assert.equal(firstShownChild(rows.branch, shown), rows.one);
     setPullRequestCollapsed(rows.one, true);
     assert.equal(firstShownChild(rows.one, shown), rows.two);
     assert.equal(firstShownChild(rows.two, shown.filter(row => row !== rows.three)), null);
@@ -71,24 +74,27 @@ test('isPageTarget: the page itself, not an element of it', () => {
     assert.equal(isPageTarget(null), false);
 });
 
-test('parentRowOf and rootRowOf climb the stack; a root and an orphaned issue have no parent, an orphaned issue no root', () => {
+test('parentRowOf and rootRowOf climb the stack, to the branch header for a root; a header and an orphaned issue have no parent nor root', () => {
     const { rows } = sampleTree();
     assert.equal(parentRowOf(rows.three), rows.two);
     assert.equal(parentRowOf(rows.two), rows.one);
-    assert.equal(parentRowOf(rows.one), null);
+    assert.equal(parentRowOf(rows.one), rows.branch);
+    assert.equal(parentRowOf(rows.branch), null);
     assert.equal(parentRowOf(rows.orphan), null);
+    assert.equal(rootRowOf(rows.branch), null);
     assert.equal(rootRowOf(rows.three), rows.one);
     assert.equal(rootRowOf(rows.one), rows.one);
     assert.equal(rootRowOf(rows.orphan), null);
 });
 
-test('rowKey: the pull-request key of a pull request, the issue key of an orphaned issue', () => {
+test('rowKey: the pull-request key of a pull request, the issue key of an orphaned issue, the root-branch key of a header', () => {
     const { rows } = sampleTree();
     assert.equal(rowKey(rows.two), 'repo-one/2');
     assert.equal(rowKey(rows.orphan), 'PROJ-9');
+    assert.equal(rowKey(rows.branch), 'repo-one:main');
 });
 
-test('paintSelectedRow selects the row wanted when the pass shows it, the first row otherwise, and clears the previous one', () => {
+test('paintSelectedRow selects the row wanted when the pass shows it, the first pull request otherwise, and clears the previous one', () => {
     const { rows, shown } = sampleTree();
     assert.equal(paintSelectedRow(shown, 'repo-one/3', null), rows.three);
     assert.ok(rows.three.classList.contains('selected'));
@@ -98,7 +104,9 @@ test('paintSelectedRow selects the row wanted when the pass shows it, the first 
     assert.equal(rows.three.getAttribute('aria-current'), null);
     // Gone, or hidden by a filter (not in the pass), or nothing wanted: the first row
     assert.equal(paintSelectedRow(shown, 'repo-one/404', rows.orphan), rows.one);
-    assert.equal(paintSelectedRow(shown.slice(1), 'repo-one/1', rows.one), rows.two);
+    assert.equal(paintSelectedRow(shown.filter(row => row !== rows.one), 'repo-one/1', rows.one), rows.two);
+    assert.equal(paintSelectedRow(shown, 'repo-one:main', rows.two), rows.branch);
+    assert.equal(paintSelectedRow([rows.orphan], null, rows.branch), rows.orphan); // no pull request: the first row
     assert.equal(paintSelectedRow(shown, null, rows.two), rows.one);
     assert.equal(paintSelectedRow([], 'repo-one/1', rows.one), null);
     assert.ok(!rows.one.classList.contains('selected'));
@@ -121,9 +129,11 @@ test('↓ and ↑ (j and k) select, focus and scroll to the next and previous ro
     assert.deepEqual(document.events, []);
     assert.equal(handleTreeKey(key('j', outside), context(rows.three)), true);
     assert.deepEqual(focused(document), [rows.four]);
-    // At either end: nothing moves, the key is still taken
+    // ↑ from the first pull request of a branch: its header. At either end: nothing moves, the key is still taken
+    handleTreeKey(key('ArrowUp', rows.one), context());
+    assert.deepEqual(focused(document), [rows.four, rows.branch]);
     document.events.length = 0;
-    assert.equal(handleTreeKey(key('ArrowUp', rows.one), context()), true);
+    assert.equal(handleTreeKey(key('ArrowUp', rows.branch), context()), true);
     assert.equal(handleTreeKey(key('ArrowDown', rows.orphan), context()), true);
     assert.deepEqual(document.events, []);
 });
@@ -132,8 +142,9 @@ test('↓ or ↑ without a row to start from select the first row in sight; with
     const { rows, rootBranch, body, document, context } = sampleTree();
     handleTreeKey(key('ArrowDown', body), context());
     setRootBranchCollapsed(rootBranch, true);
+    rootBranch.parentElement.parentElement.classList.add('collapsed'); // the repository: its header goes too
     handleTreeKey(key('k', body), context());
-    assert.deepEqual(focused(document), [rows.one, rows.orphan]);
+    assert.deepEqual(focused(document), [rows.branch, rows.orphan]);
     // A message replaced the tree (its rows are gone, all at once), or no row is shown
     document.events.length = 0;
     assert.equal(handleTreeKey(key('ArrowDown', body), { shownRows: [pullRequest('detached'), pullRequest('detached too')] }), false);
@@ -170,7 +181,7 @@ test('→ unfolds the row\'s stack, then selects its first stacked pull request 
     assert.equal(handleTreeKey(key('ArrowRight', body), context()), false);
 });
 
-test('← folds the row\'s stack, then selects its parent; on a row with nothing stacked, the parent; nothing on a root folded or an orphaned issue', () => {
+test('← folds the row\'s stack, then selects its parent; on a row with nothing stacked, the parent; a root goes to its branch header; nothing on an orphaned issue', () => {
     const { rows, outside, body, document, selected, context } = sampleTree();
     assert.equal(handleTreeKey(key('ArrowLeft', rows.two), context()), true);
     assert.ok(rows.two.classList.contains('collapsed'));
@@ -186,10 +197,35 @@ test('← folds the row\'s stack, then selects its parent; on a row with nothing
     assert.ok(!rows.two.classList.contains('collapsed'));
     assert.deepEqual(focused(document), [rows.one, rows.two, rows.one]);
     setPullRequestCollapsed(rows.one, true);
-    assert.equal(handleTreeKey(key('ArrowLeft', rows.one), context()), false);
-    assert.equal(handleTreeKey(key('ArrowLeft', rows.four), context()), false);
+    assert.equal(handleTreeKey(key('ArrowLeft', rows.one), context()), true);
+    assert.equal(focused(document).at(-1), rows.branch);
+    assert.equal(handleTreeKey(key('ArrowLeft', rows.four), context()), true);
+    assert.equal(focused(document).at(-1), rows.branch);
     assert.equal(handleTreeKey(key('ArrowLeft', rows.orphan), context()), false);
     assert.equal(handleTreeKey(key('ArrowLeft', body), context()), false);
+});
+
+test('a root-branch header: → unfolds the branch then selects its first pull request, ← folds it, o opens the branch, Enter and Space fold it; x and i do nothing', () => {
+    const { rows, rootBranch, body, document, selected, context } = sampleTree();
+    assert.equal(handleTreeKey(key('ArrowLeft', body), context(rows.branch)), true);
+    assert.ok(rootBranch.classList.contains('collapsed'));
+    // The header stays in sight with its branch folded; ← again has nowhere to go
+    assert.equal(handleTreeKey(key('ArrowLeft', body), context(rows.branch)), false);
+    assert.equal(handleTreeKey(key('ArrowDown', body), context(rows.branch)), true);
+    assert.deepEqual(focused(document), [rows.orphan]); // the branch's pull requests are folded away
+    assert.equal(handleTreeKey(key('ArrowRight', body), context(rows.branch)), true);
+    assert.ok(!rootBranch.classList.contains('collapsed'));
+    assert.equal(handleTreeKey(key('ArrowRight', body), context(rows.branch)), true);
+    assert.deepEqual(selected, [rows.orphan, rows.one]);
+    assert.equal(handleTreeKey(key('o', body), context(rows.branch)), true);
+    assert.deepEqual(document.events.filter(([kind]) => kind === 'click').map(([, element]) => element), [rows.branch.querySelector('.root-branch-link')]);
+    assert.equal(handleTreeKey(key('i', body), context(rows.branch)), false);
+    assert.equal(handleTreeKey(key('x', body), context(rows.branch)), false);
+    rows.branch.focus();
+    assert.equal(handleTreeKey(key('Enter', rows.branch), context()), true);
+    assert.ok(rootBranch.classList.contains('collapsed'));
+    assert.equal(handleTreeKey(key(' ', rows.branch), context()), true);
+    assert.ok(!rootBranch.classList.contains('collapsed'));
 });
 
 test('a selected row folded out of sight takes ↓ and ↑ only', () => {

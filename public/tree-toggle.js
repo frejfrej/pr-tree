@@ -90,13 +90,15 @@ export function handleTreeClick(event) {
 }
 
 /**
- * Whether a row (a pull request or an orphaned issue) is out of sight behind a
- * collapse: inside a collapsed repository or root branch, or inside the
- * stacked pull requests of a collapsed pull request (their container hidden).
- * A collapsed row itself is in sight: only what it stacks is not.
+ * Whether a row (a root-branch header, a pull request or an orphaned issue) is
+ * out of sight behind a collapse: inside a collapsed repository or root
+ * branch, or inside the stacked pull requests of a collapsed pull request
+ * (their container hidden). A collapsed row itself is in sight: only what it
+ * stacks is not; a header stays in sight when its own branch is collapsed.
  */
 export function isCollapsedAway(row) {
-    return Boolean(row.closest('.repository.collapsed, .root-branch.collapsed, .children[hidden]'));
+    const from = row.classList.contains('root-branch-header') ? row.parentElement.parentElement : row;
+    return Boolean(from?.closest('.repository.collapsed, .root-branch.collapsed, .children[hidden]'));
 }
 
 function setAllCollapsed(collapsed) {
