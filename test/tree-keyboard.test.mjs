@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey, paintSelectedRow, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
+import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey, paintSelectedRow, markSelectedRow, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
 import { setPullRequestCollapsed, setRootBranchCollapsed } from '../public/tree-toggle.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
@@ -107,6 +107,18 @@ test('paintSelectedRow selects the row wanted when the pass shows it, the first 
     assert.equal(paintSelectedRow(shown.filter(row => row !== rows.one), 'repo-one/1', rows.one), rows.two);
     assert.equal(paintSelectedRow(shown, 'repo-one:main', rows.two), rows.branch);
     assert.equal(paintSelectedRow([rows.orphan], null, rows.branch), rows.orphan); // no pull request: the first row
+    // A pull request shown only for one stacked on it is not the one the filters kept
+    rows.one.classList.add('filtered');
+    assert.equal(paintSelectedRow(shown, null, rows.orphan), rows.two);
+    rows.two.classList.add('filtered');
+    rows.three.classList.add('filtered');
+    rows.four.classList.add('filtered');
+    assert.equal(paintSelectedRow(shown, null, rows.two), rows.one);
+    // A row marked directly, as a click or a key selects it
+    assert.equal(markSelectedRow(rows.four, rows.one), rows.four);
+    assert.ok(rows.four.classList.contains('selected') && !rows.one.classList.contains('selected'));
+    assert.equal(markSelectedRow(null, rows.four), null);
+    assert.ok(!rows.four.classList.contains('selected'));
     assert.equal(paintSelectedRow(shown, null, rows.two), rows.one);
     assert.equal(paintSelectedRow([], 'repo-one/1', rows.one), null);
     assert.ok(!rows.one.classList.contains('selected'));
@@ -123,6 +135,11 @@ test('↓ and ↑ (j and k) select, focus and scroll to the next and previous ro
     handleTreeKey(key('ArrowDown', body), context(rows.three));
     assert.deepEqual(focused(document), [rows.two, rows.three, rows.two, rows.one, rows.four]);
     assert.deepEqual(selected, [rows.two, rows.three, rows.two, rows.one, rows.four]);
+    // After a click in the sidebar or the banner, the arrows from the page scroll there
+    document.events.length = 0;
+    assert.equal(handleTreeKey(key('ArrowDown', body), { ...context(rows.three), arrowsFromPage: false }), false);
+    assert.equal(handleTreeKey(key('ArrowDown', rows.three), { ...context(), arrowsFromPage: false }), true); // from a row they still move
+    assert.deepEqual(focused(document), [rows.four]);
     // On a control of the sidebar the arrows are its own (ArrowDown opens a filter list); the letters are not
     document.events.length = 0;
     for (const arrow of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) assert.equal(handleTreeKey(key(arrow, outside), context(rows.three)), false);

@@ -27,8 +27,9 @@
  * Alt or Meta, the help, an open multi-select, the open drawer), so nothing
  * here checks them; Shift is left alone here (Shift+Space scrolls up). The
  * arrows act only from a row or from the page itself (the focus on no
- * control): on a control of the sidebar they are its own (ArrowDown opens a
- * filter list).
+ * control) after a click in the tree's pane: on a control of the sidebar
+ * they are its own (ArrowDown opens a filter list), and after a click in the
+ * sidebar or the banner they scroll it.
  * Which row is wanted, and the URL, belong to app.js: a selection by a key
  * goes through the `select` it passes.
  *
@@ -72,15 +73,22 @@ export function rowKey(row) {
 }
 
 /**
- * Selects, among the rows of a filter pass, the row of `wantedKey`, or the
- * first pull request (the first row without one) when none is (no key, a row
- * gone or filtered out), and clears `previous`. A row folded away stays
- * selected.
+ * Selects, among the rows of a filter pass, the row of `wantedKey`, or when
+ * none is (no key, a row gone or filtered out) the first pull request the
+ * filters keep (not one shown only for a pull request stacked on it), the
+ * first row without one; clears `previous`. A row folded away stays selected.
  * @returns {Element | null} the row selected; null without a row shown
  */
 export function paintSelectedRow(shownRows, wantedKey, previous) {
+    const isPullRequest = candidate => candidate.classList.contains('pull-request');
     const row = (wantedKey && shownRows.find(candidate => rowKey(candidate) === wantedKey)) ||
-        shownRows.find(candidate => candidate.classList.contains('pull-request')) || shownRows[0] || null;
+        shownRows.find(candidate => isPullRequest(candidate) && !candidate.classList.contains('filtered')) ||
+        shownRows.find(isPullRequest) || shownRows[0] || null;
+    return markSelectedRow(row, previous);
+}
+
+/** Marks `row` selected (none when null) and clears `previous`; returns `row` */
+export function markSelectedRow(row, previous) {
     if (previous && previous !== row) {
         previous.classList.toggle('selected', false);
         previous.removeAttribute('aria-current');
@@ -179,12 +187,14 @@ const arrowKeys = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'];
  * @param {Element[]} context.shownRows - the rows of the last filter pass
  * @param {Element | null} [context.selectedRow] - the row selected (paintSelectedRow)
  * @param {(row: Element) => void} [context.select] - selects a row the keys move to
+ * @param {boolean} [context.arrowsFromPage] - whether the arrows act with the focus on the page
+ *   itself: not after a click in the sidebar or the banner, where they scroll
  * @returns {boolean} whether the key was taken (the caller then prevents its default)
  */
-export function handleTreeKey(event, { shownRows, selectedRow = null, select = () => {} }) {
+export function handleTreeKey(event, { shownRows, selectedRow = null, select = () => {}, arrowsFromPage = true }) {
     if (event.shiftKey) return false;
     const focusedRow = rowOf(event.target);
-    if (arrowKeys.includes(event.key) && !focusedRow && !isPageTarget(event.target)) return false;
+    if (arrowKeys.includes(event.key) && !focusedRow && !(arrowsFromPage && isPageTarget(event.target))) return false;
     const row = focusedRow ?? (selectedRow?.isConnected ? selectedRow : null);
     // What the keys but ↓ / ↑ act on: a row in sight
     const rowInSight = row && isReachable(row) ? row : null;

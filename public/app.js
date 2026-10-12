@@ -3,7 +3,7 @@ import { renderRepositories, renderOrphanedIssues, initializePopovers } from './
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
-import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
+import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
@@ -44,6 +44,11 @@ let wantedRowKey = null;
 let selectedRow = null;
 // The URL write of a selection waits for the keys to rest (see selectRow)
 let selectionWriteTimer = null;
+// While a re-render gives the focus back, the focus selects nothing: a refresh never writes the URL
+let restoringFocus = false;
+// Whether the last click was in the tree's pane: the arrows then move the selection
+// with the focus on the page itself; after a click in the sidebar or the banner they scroll it
+let lastPointerInTree = true;
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
@@ -100,13 +105,13 @@ function clearAllFilters() {
 // A selection by the user: a key, a click in a row, Tab into a row. The URL
 // entry is replaced (no entry per row, like typing in the search box), once
 // the keys rest: a held arrow would spend the browser's budget of URL updates.
-// A refresh never gets here: the focus it gives back is on the row already
-// selected (applyFilters keeps it so), so a refresh never writes the URL (#61)
+// A refresh never gets here: the focus it gives back selects nothing
+// (restoringFocus), so a refresh never writes the URL (#61)
 function selectRow(row) {
     const key = rowKey(row);
     if (key === wantedRowKey && row === selectedRow) return;
     wantedRowKey = key;
-    selectedRow = paintSelectedRow(treeRows, wantedRowKey, selectedRow);
+    selectedRow = markSelectedRow(row, selectedRow);
     clearTimeout(selectionWriteTimer);
     selectionWriteTimer = setTimeout(writeSelection, 250);
 }
@@ -367,10 +372,11 @@ function handlePopState() {
         selectProject(projectName, { fromUrl: true });
         return;
     }
-    // Nothing rendered (loading, or the last load failed): the next render restores from the URL
+    // The row wanted is the entry's, rendered or not: the next render selects it and writes it back
+    wantedRowKey = selectedFromUrl(window.location.search);
+    // Nothing rendered (loading, or the last load failed): the next render restores the filters from the URL
     if (!currentApiResult) return;
     const selectedBefore = selectedRow;
-    wantedRowKey = selectedFromUrl(window.location.search);
     restoreFiltersFromUrl({ preferTypedText: false });
     applyFilters();
     catchUpUrl();
@@ -546,7 +552,14 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     restoreFiltersFromUrl({ preferTypedText });
     applyFilters();
     // The focus is given back to the selected row only: a refresh must not select another (selectRow would write the URL)
-    if (selectedRow && focusedRow?.key === rowKey(selectedRow)) restoreFocusedRow(focusedRow, treeRows);
+    if (selectedRow && focusedRow?.key === rowKey(selectedRow)) {
+        restoringFocus = true;
+        try {
+            restoreFocusedRow(focusedRow, treeRows);
+        } finally {
+            restoringFocus = false;
+        }
+    }
     setToolbarVisible(true);
 
     // Update the last refresh time
@@ -684,7 +697,7 @@ function initializeMultiSelects() {
 document.addEventListener('DOMContentLoaded', function() {
     initializeAppShell({
         onClearFilters: clearAllFilters,
-        onTreeKey: event => handleTreeKey(event, { shownRows: treeRows, selectedRow, select: selectRow })
+        onTreeKey: event => handleTreeKey(event, { shownRows: treeRows, selectedRow, select: selectRow, arrowsFromPage: lastPointerInTree })
     });
     initializePageUpdatedButton();
     initializeMultiSelects();
@@ -697,8 +710,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // A click in a row, or Tab into one, selects it (a row is focusable)
     treePane.addEventListener('focusin', event => {
         const row = rowOf(event.target);
-        if (row) selectRow(row);
+        if (row && !restoringFocus) selectRow(row);
     });
+    document.addEventListener('pointerdown', event => {
+        lastPointerInTree = event.target instanceof Element && Boolean(event.target.closest('.main-pane'));
+    }, true);
     initializeWorkFilter();
     initializeHideDraftsFilter();
     initializeSyncControls({

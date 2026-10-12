@@ -144,3 +144,24 @@ The user: "I should be able to select branch headers to collapse them too".
   while its branch is folded.
 - *Decided*: the fallback stays the first pull request (the user's words at
   the start), not the first header above it.
+
+## 8. After the second /code-review of #141
+
+- **Back/Forward reads `selected` before anything else**, rendered or not: a
+  Back during a load left the row of the entry left wanted, and the load's
+  URL catch-up wrote it into the entry reached.
+- **The focus a re-render gives back selects nothing** (`restoringFocus`
+  around `restoreFocusedRow`): after Back to an entry without `selected`,
+  the default row kept the focus, and a refresh's focus restore selected it
+  and wrote the URL.
+- **The arrows from the page itself need a last click in the tree's pane**:
+  after a click in the sidebar or the banner they scroll there, as before.
+- **`selectRow` marks the row it is given** (`markSelectedRow`), no key
+  search, no possible mismatch.
+- **The default is the first pull request the filters keep**, not one shown
+  only for a pull request stacked on it.
+- `isCollapsedAway` does not throw on a detached header.
+- Kept: `j` / `k` start from the selected row even when it is scrolled away,
+  as a selection does in a file explorer (the first review had the
+  first-row-in-view start removed as unreachable); `isPageTarget` stays in
+  tree-keyboard.js, which imports nothing from the shell.

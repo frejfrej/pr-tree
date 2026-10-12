@@ -171,6 +171,7 @@ test('isCollapsedAway: a row inside a collapsed repository, root branch or pull 
     repository.classList.add('collapsed');
     assert.equal(isCollapsedAway(parent), true);
     assert.equal(isCollapsedAway(header), true);
+    assert.equal(isCollapsedAway(node({ classes: ['root-branch-header'] })), false); // detached by a re-render: no throw
     assert.equal(isCollapsedAway(orphan), false);
     orphanedIssues.classList.add('collapsed');
     assert.equal(isCollapsedAway(orphan), true);

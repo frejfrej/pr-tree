@@ -97,7 +97,7 @@ export function handleTreeClick(event) {
  * stacks is not; a header stays in sight when its own branch is collapsed.
  */
 export function isCollapsedAway(row) {
-    const from = row.classList.contains('root-branch-header') ? row.parentElement.parentElement : row;
+    const from = row.classList.contains('root-branch-header') ? row.parentElement?.parentElement : row;
     return Boolean(from?.closest('.repository.collapsed, .root-branch.collapsed, .children[hidden]'));
 }
 
