@@ -199,6 +199,13 @@ function integer(random, min, max) {
     return min + Math.floor(random() * (max - min + 1));
 }
 
+// Most pull requests have no open task: one draw, like integer(), so the
+// rest of the generated data is unchanged
+function openTaskCount(random) {
+    const draw = random();
+    return draw < 0.75 ? 0 : draw < 0.88 ? 1 : draw < 0.95 ? 2 : 3;
+}
+
 function hex(random, length) {
     let out = '';
     while (out.length < length) {
@@ -557,7 +564,7 @@ export function generateRepository(repoName, { scale = 1, chainDepth = deepChain
             created_on: isoDaysAgo(createdDaysAgo),
             updated_on: isoDaysAgo(updatedDaysAgo),
             comment_count: integer(random, 0, 14),
-            task_count: integer(random, 0, 3),
+            task_count: openTaskCount(random),
             close_source_branch: true,
             source: {
                 branch: { name: sourceBranch },

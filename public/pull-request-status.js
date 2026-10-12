@@ -25,8 +25,9 @@ export function isDraft(pullRequest) {
 
 /**
  * The open tasks of a pull request (Bitbucket's task_count): the requests its
- * reviewers left, which wait for its assignee (the badge, the attention rule);
- * 0 when the count is missing or not a positive integer
+ * reviewers left, and any to-do its author added, all waiting for the author
+ * (the badge, the attention rule); 0 when the count is missing or not a
+ * positive integer
  */
 export function openTaskCount(pullRequest) {
     const taskCount = pullRequest.task_count;

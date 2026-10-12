@@ -17,7 +17,7 @@ not highlighted, counted in the tab title, nor kept by a "Ready" value.
 - **Who is waited for**: the assignee of the linked issues, usually the
   author. No new kind of person: assignee attention becomes "a linked issue
   is assigned to a selected participant, and the pull request is in
-  progress **or has open tasks**". So "Ready for assignees" and "Ready for
+  progress **or in review with open tasks**". So "Ready for assignees" and "Ready for
   participants" keep it, and "All work" and "All issues" already did.
 - **Reviewer attention stays**: open tasks change nothing for the
   reviewers. The tasks may be another reviewer's, and one who has not
@@ -31,14 +31,15 @@ not highlighted, counted in the tab title, nor kept by a "Ready" value.
   when a positive integer, 0 otherwise. The task badge (app-render.js) and
   the index entry (`openTasks`, app-filter.js) both call it, like
   `isDraft`, so the badge shown and the attention filtered on agree.
-- `computeAttention`: `assignee = (statusInProgress || openTasks > 0) &&
-  a selected participant is an assignee`.
-- *Decided*: open tasks give assignee attention **whatever the band**:
-  in review, every reviewer approved (Bitbucket can block a merge on open
-  tasks), resolved, or no band the rule reads; and for a draft as well
-  (#119 kept assignee attention on drafts: a draft is the assignee's own
-  work). A pull request without a linked issue has no assignee, so no
-  attention.
+- `computeAttention`: `assignee = (statusInProgress || (openTasks > 0 &&
+  (statusInReview || statusAllApproved))) && a selected participant is an
+  assignee`; the index entry carries `statusAllApproved` (the band
+  `status-in-review-all-approved`).
+- *Decided*: open tasks give assignee attention in the two in-review
+  bands, every reviewer approved or not (Bitbucket can block a merge on
+  open tasks), and for a draft as well (#119 kept assignee attention on
+  drafts: a draft is the assignee's own work). A pull request without a
+  linked issue has no assignee, so no attention.
 - The orphaned issues are not pull requests: unchanged.
 - No data change: `task_count` is already in the response and the hash.
 
@@ -51,3 +52,22 @@ not highlighted, counted in the tab title, nor kept by a "Ready" value.
   person who is usually the assignee anyway.
 - **Dropping reviewer attention while tasks are open**: hides a review
   still to do when the tasks are another reviewer's.
+
+## 5. After the /code-review of #144
+
+- *Decided with the user*: no attention for the open tasks of a resolved
+  pull request (every linked issue Resolved or Closed) nor of one without
+  a band: Jira says the work is done, the tasks are left over; a red title
+  and a tab-title count for them would say otherwise. The first version
+  gave attention whatever the band.
+- `task_count` counts every open task, the author's own to-dos included,
+  not only the reviewers' requests: all wait for the author, the rule
+  stands, the comments say so.
+- Fixtures: `task_count` drawn mostly 0 (75%, then 1, 2, 3), one draw like
+  before so the rest of the data is unchanged; uniform 0-3 gave three pull
+  requests in four open tasks, and "Ready for assignees" nearly matched
+  "All issues".
+- The task badge checks its count again (`!(taskCount > 0)`);
+  `computeAttention` has no default for `openTasks`, which the index always
+  sets.
+- Kept (the user's decision): the assignee, not the author, is waited for.

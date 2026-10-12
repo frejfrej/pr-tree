@@ -341,7 +341,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
 // The open tasks of a pull request (openTaskCount), nothing without one; the
 // icon names what the number counts
 function renderTaskBadge(taskCount) {
-    if (taskCount === 0) return '';
+    if (!(taskCount > 0)) return '';
     return `<span class="commit-badge task-badge" title="${taskCount} open task${taskCount !== 1 ? 's' : ''}">
                                 <i class="fas fa-tasks" role="img" aria-label="open tasks"></i>${taskCount}
                             </span>`;
