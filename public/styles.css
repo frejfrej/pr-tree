@@ -916,6 +916,12 @@ select:disabled {
     transition: box-shadow 0.3s ease;
 }
 
+.pull-request,
+.orphaned-issue {
+    /* A row focused from the keyboard scrolls clear of the sticky repository and branch headers */
+    scroll-margin-top: calc(var(--repo-header-height) + var(--branch-header-height) + 8px);
+}
+
 .pull-request:hover,
 .orphaned-issue:hover {
     box-shadow: 0 0 5px var(--shadow-color);

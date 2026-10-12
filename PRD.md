@@ -123,6 +123,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.5: Show associated Jira issues with status badges
 - F2.6: Indicate when PR has conflicts with parent branch
 - F2.7: Mark draft pull requests with a "Draft" badge and show the number of open tasks of a pull request
+- F2.8: Walk the tree from the keyboard: `j` / `k` move the focus between the rows shown (pull requests, then orphaned issues), `o` opens the focused row, `i` its first Jira issue, Enter or Space fold or unfold its stacked pull requests, `x` goes back to the root of the stack and folds it; ignored while typing, in an open filter list or with the help open
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time
@@ -399,7 +400,7 @@ The application integrates with a Jira workflow where:
    - URL parameters in app-url.js, banner, sidebar, theme, help and shortcuts in app-shell.js, the multi-select component in multi-select.js
    - Filtering logic in app-filter.js (index built per data load, single pass over the tree, nothing read back from the rendered tree)
    - Filter registry in filter-registry.js (the multi-selects: state key, element, URL parameter), the status band of a pull request in pull-request-status.js
-   - Tree toggles and the pane's click handler in tree-toggle.js
+   - Tree toggles and the pane's click handler in tree-toggle.js, the tree keys in tree-keyboard.js
    - Counter display in counter-utils.js
 
 4. **Fixtures** (fixtures/)

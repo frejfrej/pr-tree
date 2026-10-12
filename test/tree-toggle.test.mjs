@@ -144,3 +144,31 @@ test('the collapse of a repository survives a re-render by its name, the orphane
     assert.deepEqual(states.repositories, ['repo-b', 'Jira issues in review without a pull request']);
     assert.deepEqual(after.map(element => element.classList.contains('collapsed')), [false, true, true]);
 });
+
+import { isCollapsedAway } from '../public/tree-toggle.js';
+import { node } from './fake-dom.mjs';
+
+test('isCollapsedAway: a row inside a collapsed repository, root branch or pull request is out of sight; the collapsed row itself is not (#118)', () => {
+    const child = node({ classes: ['pull-request'] });
+    const parent = node({ classes: ['pull-request'] }, node({ classes: ['pull-request-header'] }));
+    const children = node({ classes: ['children'] }, child);
+    const rootBranch = node({ classes: ['root-branch'] }, node({ classes: ['root-branch-content'] }, parent, children));
+    const repository = node({ classes: ['repository'] }, node({ classes: ['repository-content'] }, rootBranch));
+    const orphan = node({ classes: ['orphaned-issue'] });
+    const orphanedIssues = node({ classes: ['repository', 'orphaned-issues'] }, node({ classes: ['repository-content'] }, orphan));
+    node({}, repository, orphanedIssues);
+
+    assert.equal(isCollapsedAway(child), false);
+    setPullRequestCollapsed(parent, true);
+    assert.equal(isCollapsedAway(child), true);
+    assert.equal(isCollapsedAway(parent), false);
+    setPullRequestCollapsed(parent, false);
+    rootBranch.classList.add('collapsed');
+    assert.equal(isCollapsedAway(parent), true);
+    rootBranch.classList.toggle('collapsed', false);
+    repository.classList.add('collapsed');
+    assert.equal(isCollapsedAway(parent), true);
+    assert.equal(isCollapsedAway(orphan), false);
+    orphanedIssues.classList.add('collapsed');
+    assert.equal(isCollapsedAway(orphan), true);
+});

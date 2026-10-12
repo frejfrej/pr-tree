@@ -17,6 +17,8 @@ export const THEME_STORAGE_KEY = 'prTree.theme';
 export const WIDE_LAYOUT_QUERY = '(min-width: 900px)';
 
 let wideLayout = null;
+// The keys of the tree (tree-keyboard.js through app.js), after the shell's own
+let treeKeyHandler = () => false;
 
 // ---------------------------------------------------------- document title
 
@@ -297,7 +299,8 @@ function isForOpenMultiSelect(target) {
 
 // Registered in the capture phase: a key for an open multi-select reaches it
 // still open, and the component handles Escape and the arrows itself, so the
-// shell stays out of its way; the help dialog closes itself on Escape.
+// shell stays out of its way; the help dialog closes itself on Escape. A key
+// the shell does not use goes to the tree, under the same guards.
 function handleKeydown(event) {
     if (isForOpenMultiSelect(event.target)) {
         return;
@@ -328,6 +331,8 @@ function handleKeydown(event) {
     } else if (event.key === '/') {
         event.preventDefault();
         focusTextFilter();
+    } else if (treeKeyHandler(event)) {
+        event.preventDefault();
     }
 }
 
@@ -404,7 +409,13 @@ function initializeToolbar() {
 
 // -------------------------------------------------------------------- init
 
-export function initializeAppShell({ onClearFilters }) {
+/**
+ * @param {object} handlers
+ * @param {() => void} handlers.onClearFilters - the sidebar's "Clear filters"
+ * @param {(event: KeyboardEvent) => boolean} [handlers.onTreeKey] - a key the shell leaves to the tree; true when taken
+ */
+export function initializeAppShell({ onClearFilters, onTreeKey = () => false }) {
+    treeKeyHandler = onTreeKey;
     initializeSidebar();
     initializeTheme();
     initializeHelpModal();

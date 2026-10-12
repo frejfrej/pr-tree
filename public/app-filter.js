@@ -405,17 +405,22 @@ export function evaluateOrphanedIssue(entry, filters) {
  * apart: its rows are evaluated by issue key, its counter refreshed, and it
  * is hidden while no row is left; the attention of its visible rows is
  * counted. Everything a decision needs comes from the index and the loaded
- * SYNC statuses, nothing from what the tree shows.
+ * SYNC statuses, nothing from what the tree shows. The rows left displayed
+ * are listed in document order for the keyboard navigation (tree-keyboard.js),
+ * a filtered-out pull request kept for a visible descendant included.
  * @param {object} filters - { text, participants, work, hideDrafts, sprints, fixVersions, epics, stories, sync }
  * @param {Record<string, object> | null} [syncStatuses] - the statuses of the last SYNC load by "repo/destHash..sourceHash", null while none is loaded
- * @returns {number} how many pull requests and orphaned issues are left shown and need attention
+ * @returns {{ attentionCount: number, shownRows: Element[] }} how many pull requests and orphaned
+ *   issues are left shown and need attention, and the `.pull-request` and `.orphaned-issue` rows displayed
  */
 export function filterBranches(filters, syncStatuses = null) {
     const pass = {
         filters,
         syncStatuses,
         index: filterIndex || buildFilterIndex({}),
-        shownAttention: 0
+        shownAttention: 0,
+        // A pull request is decided after its children: it fills the slot it reserved before them
+        shownRows: []
     };
 
     let shownRepositories = 0;
@@ -448,7 +453,7 @@ export function filterBranches(filters, syncStatuses = null) {
 
     filterOrphanedIssues(pass);
 
-    return pass.shownAttention;
+    return { attentionCount: pass.shownAttention, shownRows: pass.shownRows.filter(Boolean) };
 }
 
 // Filters the pull requests that are direct children of a container (a root
@@ -469,6 +474,7 @@ function filterChildren(container, pass) {
 }
 
 function filterPullRequest(pullRequestElement, pass) {
+    const slot = pass.shownRows.push(null) - 1;
     // Children first, so the visibility of a filtered-out parent can depend on them
     const childrenContainer = pullRequestElement.nextElementSibling;
     const hasChildren = childrenContainer && childrenContainer.classList.contains('children');
@@ -491,7 +497,9 @@ function filterPullRequest(pullRequestElement, pass) {
     // Update visibility state: a filtered-out pull request stays displayed
     // while one of its descendants is visible
     pullRequestElement.classList.toggle('filtered', !isVisible);
-    setDisplay(pullRequestElement, (!isVisible && children.visible === 0) ? 'none' : '');
+    const displayed = isVisible || children.visible > 0;
+    setDisplay(pullRequestElement, displayed ? '' : 'none');
+    if (displayed) pass.shownRows[slot] = pullRequestElement;
 
     // The child counter is refreshed only while it is shown (root pull
     // requests permanently, others while collapsed), like before
@@ -524,6 +532,7 @@ function filterOrphanedIssues(pass) {
         total++;
         if (isVisible) {
             visible++;
+            pass.shownRows.push(row);
             if (attention) pass.shownAttention++;
         }
     }

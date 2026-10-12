@@ -47,11 +47,12 @@ public/filter-registry.js      The five multi-select filters (key, element, URL 
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
 public/pull-request-key.mjs    Keys naming the repository: pull request "repository/id", root branch "repository:branch" (.mjs: the server imports it)
 public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders
+public/tree-keyboard.js        The tree keys (j, k, o, i, Enter, Space, x) over the rows of the last filter pass, focus kept across re-renders
 public/multi-select.js Multi-select dropdown component (builds its own markup)
 public/counter-utils.js        filtered/total counter display
 public/escape-html.js  The one HTML escape of the page (tree, orphaned issues, filter options)
 public/vendor/         Font Awesome (CSS, woff2 fonts) and Marked (ES module, imported when the help opens), as published on npm, with their licenses
-test/                  One *.test.mjs per module; server.test.mjs runs the fixture server
+test/                  One *.test.mjs per module; server.test.mjs runs the fixture server; fake-dom.mjs, a small element tree for the tests walking the rendered tree
 docs/superpowers/      Design record: one spec (specs/) and one plan (plans/) per change, dated
 README.md              User documentation and the changelog (served to the help modal)
 PRD.md                 Product requirements (F1-F9 features, F4.x filters, NFRs); kept up to date
