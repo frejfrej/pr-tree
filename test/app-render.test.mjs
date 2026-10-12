@@ -56,7 +56,7 @@ function renderSample() {
 
 // The classes of every pull request element, by data-id (repository/id): { 'repo-one/1': ['pull-request', 'status-in-progress', 'pull-request-root'], ... }
 function pullRequestClasses(html) {
-    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="([^"]*)">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
+    return Object.fromEntries(Array.from(html.matchAll(/<div class="(pull-request[^"]*)" data-id="([^"]*)" tabindex="-1">/g), match => [match[2], match[1].split(/\s+/).filter(Boolean)]));
 }
 
 test('findRootBranches keeps the destination branches that are no pull request source', () => {
@@ -97,6 +97,7 @@ test('renderRepositories renders one block per repository with its root branches
     // Root branch counters include the descendants: main has 1 + 1, develop 2
     assert.equal(count(html, 'title="2 total pull requests (including all descendants)"'), 2);
     assert.equal(count(html, 'class="pull-request '), 4);
+    assert.equal(count(html, 'tabindex="-1"'), 4); // every row focusable by the tree keys, outside the Tab order (#118)
     // The no-match message is rendered hidden after the repositories; the filter pass shows it
     assert.equal(count(html, '<div class="state-message tree-no-match" hidden>'), 1);
 });
@@ -197,7 +198,7 @@ test('renderRepositories marks a draft and counts its open tasks, nothing for a 
     const oneTask = { ...recent, task_count: 1 };
     const html = renderRepositories([draft, child, approved, oneTask], jiraIssuesMap, jiraIssuesDetails, 'site');
     assert.equal(count(html, 'class="draft-badge"'), 1);
-    assert.match(html, /data-id="repo-one\/1">[\s\S]*?<\/a>\s*<span class="draft-badge"[^>]*>Draft<\/span>[\s\S]*?data-id="repo-one\/2"/); // after the title of PR 1
+    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<span class="draft-badge"[^>]*>Draft<\/span>[\s\S]*?data-id="repo-one\/2"/); // after the title of PR 1
     assert.ok(html.includes('title="2 open tasks"'));
     assert.ok(html.includes('title="1 open task"'));
     assert.ok(html.includes('<i class="fas fa-tasks" role="img" aria-label="open tasks"></i>2'));
@@ -260,6 +261,7 @@ test('renderOrphanedIssues renders nothing without issues, otherwise a repositor
     assert.match(html, /<div class="repo-pr-counter" title="2 issues">\s*2\s*<\/div>/);
     // One row per issue, keyed for the filter pass, with the in-review border
     assert.equal(count(html, 'class="orphaned-issue status-in-review"'), 2);
+    assert.equal(count(html, 'tabindex="-1"'), 2); // focusable by the tree keys, outside the Tab order (#118)
     assert.ok(html.includes('data-issue-key="PROJ-9"') && html.includes('data-issue-key="PROJ-10"'));
     assert.equal(count(html, 'class="pull-request '), 0); // never a .pull-request: the tree pass must not see the rows
     assert.equal(count(html, 'class="pull-request"'), 0);

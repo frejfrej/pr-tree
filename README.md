@@ -10,6 +10,7 @@
     * Repository and branch headers stick to the top of the tree while scrolling
     * "Collapse all" and "Expand all" fold or unfold every repository, branch and pull request
     * Every toggle is a button: Tab reaches it, Enter or Space folds or unfolds, and its state is announced
+    * Keyboard navigation of the tree: `j` and `k` move to the next and previous row shown (the pull requests, then the Jira issues without a pull request), skipping what is filtered out or folded, starting from the first row in view; `o` opens the row in Bitbucket (an issue in Jira), `i` its first Jira issue, in a new tab; Enter or Space on the row folds or unfolds its stacked pull requests; `x` goes back to the root pull request of the stack and folds it. The keys do nothing while typing in a box or with a filter list open
     * The tab title shows the selected project and, when participants are selected, the number of pull requests and orphaned issues waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
@@ -94,6 +95,7 @@
 
 ## Changelog:
 * Version 3.1.0
+    * Keyboard navigation of the tree: `j` / `k` move between the rows shown, `o` opens the focused pull request in Bitbucket, `i` its first Jira issue, Enter or Space fold or unfold its stacked pull requests, `x` goes back to the root of its stack and folds it; a filtered-out pull request shown for a matching one below it is a row too, and the Jira issues without a pull request come last. The focused row keeps the focus when an automatic refresh repaints the tree (#118)
     * A dashboard tab left open while the server is upgraded no longer misreads the new answers: the banner shows a "Reload: dashboard updated" button (below 900px, its icon only), the tree already shown stays, and the tab sends no more checks nor SYNC loads until it is reloaded; a project chosen meanwhile says "reload the page to load" it. The reload keeps the project and the filters (the SYNC statuses need loading again). Every `/api` answer names the page the server serves in an `X-Page-Build` header, a hash of the `public/` folder. A tab opened before this version needs one manual reload (#125)
     * A draft pull request shows a "Draft" badge next to its title, and a pull request with open tasks an amber badge with their number. A draft waits for no reviewer: it is no longer highlighted for a selected reviewer, counted in the tab title for them, or kept by "Ready for reviewers" (its assignee still sees it when its issue is in progress; "All reviews" keeps it), and no longer warned about for having no reviewer. A "Hide drafts" box in the sidebar hides the drafts (URL `drafts=hide`) (#119)
     * The dashboard listens on the loopback addresses only (127.0.0.1 and ::1): on a shared or office network, other machines could read every project's pull requests and Jira issues, and start SYNC loads on your Bitbucket token. `PR_TREE_HOST=0.0.0.0 npm start` opens it to the network again (see "Network access") (#98)

@@ -613,3 +613,42 @@ test('initializeFilter builds the index of a data load and returns it', () => {
     assert.deepEqual(index, buildFilterIndex(sampleApiResult));
     assert.ok(index.pullRequestsByKey.size > 0);
 });
+
+// ---------------------------------------------------------------- tree pass
+
+import { filterBranches } from '../public/app-filter.js';
+import { defaultFilters } from '../public/filter-registry.js';
+import { node, fakeDocument } from './fake-dom.mjs';
+
+test('filterBranches lists the rows it leaves displayed in document order: a parent kept for a visible descendant before it, the orphaned issues last (#118)', () => {
+    const pr = (id, title, branch, destination) => ({
+        id, title, source: { branch: { name: branch }, repository: { name: 'repo' } },
+        destination: { branch: { name: destination }, repository: { name: 'repo' } }, author, participants: [{ user: author, approved: false }]
+    });
+    const issue = (key, summary) => ({ key, fields: { summary, status: { name: 'In Review' }, assignee: null, fixVersions: [] } });
+    initializeFilter({
+        pullRequests: [pr(1, 'alpha one', 'one', 'main'), pr(2, 'beta two', 'two', 'one'), pr(3, 'alpha three', 'three', 'two'), pr(4, 'beta four', 'four', 'main')],
+        jiraIssuesMap: {}, jiraIssuesDetails: [],
+        orphanedIssues: [issue('PROJ-8', 'gamma'), issue('PROJ-9', 'alpha issue')]
+    });
+    const row = id => node({ classes: ['pull-request'], dataset: { id: `repo/${id}` } });
+    const [one, two, three, four] = [1, 2, 3, 4].map(row);
+    const [eight, nine] = ['PROJ-8', 'PROJ-9'].map(issueKey => node({ classes: ['orphaned-issue'], dataset: { issueKey } }));
+    const previousDocument = globalThis.document;
+    globalThis.document = fakeDocument(node({},
+        node({ classes: ['repository'] }, node({ classes: ['root-branch'] }, node({ classes: ['root-branch-content'] },
+            one, node({ classes: ['children'] }, two, node({ classes: ['children'] }, three)), four))),
+        node({ classes: ['repository', 'orphaned-issues'] }, eight, nine)));
+    try {
+        const all = filterBranches(defaultFilters());
+        assert.deepEqual(all.shownRows, [one, two, three, four, eight, nine]);
+        // PR 2 is filtered out but stays displayed for PR 3; PR 4 and PROJ-8 are hidden
+        const alpha = filterBranches({ ...defaultFilters(), text: 'alpha' });
+        assert.deepEqual(alpha.shownRows, [one, two, three, nine]);
+        assert.ok(two.classList.contains('filtered'));
+        assert.equal(four.style.display, 'none');
+        assert.equal(alpha.attentionCount, 0);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});

@@ -3,6 +3,7 @@ import { renderRepositories, renderOrphanedIssues, initializePopovers } from './
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates } from './tree-toggle.js';
+import { handleTreeKey, captureFocusedRow, restoreFocusedRow } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps } from './app-url.js';
 import { multiSelectFilters, defaultFilters } from './filter-registry.js';
@@ -34,12 +35,15 @@ let projectLoading = false;
 // Whether the first render of the current project lets a focused search box win over the URL
 // (see restoreFiltersFromUrl); kept for a check that renders it when the load got no data
 let loadPrefersTypedText = true;
+// The rows the last filter pass left displayed, in document order: where j and k go (tree-keyboard.js)
+let treeRows = [];
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
 // and the attention count in the tab title.
 function applyFilters() {
-    const attentionCount = filterBranches(filters, loadedSyncStatuses());
+    const { attentionCount, shownRows } = filterBranches(filters, loadedSyncStatuses());
+    treeRows = shownRows;
     updateActiveFilterBadge(countActiveFilters(filters));
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
@@ -445,10 +449,12 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
 
     // Capture current toggle states before re-rendering
     const toggleStates = captureToggleStates();
+    const container = document.getElementById('pull-requests');
+    // The focus is lost with the rows it was in: the row is focused again after the pass
+    const focusedRow = captureFocusedRow(container, document.activeElement);
 
     currentApiResult = apiResult;
     const filterIndex = initializeFilter(currentApiResult);
-    const container = document.getElementById('pull-requests');
 
     // Create main content
     const mainContent = renderRepositories(
@@ -481,6 +487,7 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
     restoreFiltersFromUrl({ preferTypedText });
     applyFilters();
+    restoreFocusedRow(focusedRow, treeRows);
     setToolbarVisible(true);
 
     // Update the last refresh time
@@ -616,7 +623,11 @@ function initializeMultiSelects() {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
-    initializeAppShell({ onClearFilters: clearAllFilters });
+    const mainPane = document.querySelector('.main-pane');
+    initializeAppShell({
+        onClearFilters: clearAllFilters,
+        onTreeKey: event => handleTreeKey(event, treeRows, { viewTop: () => mainPane.getBoundingClientRect().top })
+    });
     initializePageUpdatedButton();
     initializeMultiSelects();
     initializeTextFilter();

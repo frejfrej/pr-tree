@@ -18,6 +18,8 @@
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
+ * Both kinds of rows are focusable but outside the Tab order (tabindex="-1"):
+ * the keys of tree-keyboard.js move the focus between them.
  * Every text from Bitbucket or Jira (titles, branch and repository names,
  * summaries, display names, priority names, URLs) goes through escapeHtml
  * before it is interpolated, whether into an attribute or between tags; the
@@ -285,7 +287,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     const renderedDescription = pullRequest.rendered.description.html || 'No description provided.';
 
     let html = `
-        <div class="pull-request ${bandClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${escapeHtml(key)}">
+        <div class="pull-request ${bandClass}${isRootPullRequest ? ' pull-request-root' : ''}" data-id="${escapeHtml(key)}" tabindex="-1">
             ${countersHtml}
             <div class="pull-request-content">
                 <div class="pull-request-main">
@@ -441,7 +443,7 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
         </div>
     ` : '';
     return `
-        <div class="orphaned-issue status-in-review" data-issue-key="${key}">
+        <div class="orphaned-issue status-in-review" data-issue-key="${key}" tabindex="-1">
             <div class="pull-request-content">
                 <div class="pull-request-header">
                     ${renderPriority(issue.fields.priority)}
