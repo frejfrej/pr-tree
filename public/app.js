@@ -42,6 +42,8 @@ let treeRows = [];
 // otherwise. Only a selection by the user changes the first (see selectRow)
 let wantedRowKey = null;
 let selectedRow = null;
+// The URL write of a selection waits for the keys to rest (see selectRow)
+let selectionWriteTimer = null;
 
 // Runs the filter pass and refreshes everything that depends on it: the
 // counters (inside filterBranches), the active-filter badge, the clear button
@@ -50,6 +52,10 @@ function applyFilters() {
     const { attentionCount, shownRows } = filterBranches(filters, loadedSyncStatuses());
     treeRows = shownRows;
     selectedRow = paintSelectedRow(treeRows, wantedRowKey, selectedRow);
+    // The selection moved without the user (Back, a filter): a row still holding the focus
+    // lets it go, so the keys and the focus a refresh gives back follow the selected row
+    const focusedRow = rowOf(document.activeElement);
+    if (focusedRow && focusedRow !== selectedRow) document.activeElement.blur();
     updateActiveFilterBadge(countActiveFilters(filters));
     updateDocumentTitle({ project: currentProject, attentionCount });
 }
@@ -92,19 +98,32 @@ function clearAllFilters() {
 }
 
 // A selection by the user: a key, a click in a row, Tab into a row. The URL
-// entry is replaced (no entry per row, like typing in the search box). A
-// refresh never gets here: the focus it gives back is on the row already
-// wanted, so a refresh never writes the URL (#61)
+// entry is replaced (no entry per row, like typing in the search box), once
+// the keys rest: a held arrow would spend the browser's budget of URL updates.
+// A refresh never gets here: the focus it gives back is on the row already
+// selected (applyFilters keeps it so), so a refresh never writes the URL (#61)
 function selectRow(row) {
     const key = rowKey(row);
     if (key === wantedRowKey && row === selectedRow) return;
     wantedRowKey = key;
     selectedRow = paintSelectedRow(treeRows, wantedRowKey, selectedRow);
+    clearTimeout(selectionWriteTimer);
+    selectionWriteTimer = setTimeout(writeSelection, 250);
+}
+
+function writeSelection() {
+    selectionWriteTimer = null;
     try {
         window.history.replaceState(window.history.state, '', urlWithSelection(new URL(window.location), wantedRowKey));
     } catch (error) {
         // Safari's update limit: the address bar catches up at the next write
     }
+}
+
+// A selection not written yet: a write of the URL takes it along, Back/Forward and a project switch drop it
+function cancelSelectionWrite() {
+    clearTimeout(selectionWriteTimer);
+    selectionWriteTimer = null;
 }
 
 // The selected row after a project load or Back/Forward: in the middle of the view
@@ -116,6 +135,7 @@ function scrollToSelectedRow() {
 // the URL. `replace` swaps the current history entry instead of pushing one:
 // while typing in the search box, and when the address bar catches up after a load.
 function updateUrlWithFilters({ replace = false, filters: written = filters } = {}) {
+    cancelSelectionWrite();
     const url = urlWithSelection(urlWithFilters(new URL(window.location), { project: currentProject, filters: written }), wantedRowKey);
 
     // Update URL without reloading the page. Safari throws past 100 updates
@@ -139,8 +159,7 @@ function restoreMultiSelect(id, values) {
     return multiSelect.getSelectedValues();
 }
 
-// Copies the filters the URL describes into the state and the controls, and
-// takes the row the URL wants selected (the next pass selects it). Runs
+// Copies the filters the URL describes into the state and the controls. Runs
 // after every render, once every option list is populated, and on Back and
 // Forward. Each multi-select keeps only the values its options offer, so a
 // stale name in a shared link or an ended sprint is dropped (and cannot leave
@@ -153,7 +172,6 @@ function restoreMultiSelect(id, values) {
 // whitespace, the same filter: a query typed during a page load keeps its
 // trailing space.
 function restoreFiltersFromUrl({ preferTypedText = true } = {}) {
-    wantedRowKey = selectedFromUrl(window.location.search);
     const restored = filtersFromUrl(window.location.search);
     for (const { key, elementId } of multiSelectFilters) restored[key] = restoreMultiSelect(elementId, restored[key]);
 
@@ -238,7 +256,9 @@ async function selectProject(projectName, { fromUrl = false } = {}) {
     const generation = ++loadGeneration;
     projectLoading = false;
     loadPrefersTypedText = !fromUrl;
-    // The row wanted belongs to the project: from the dropdown none is, the URL write drops it
+    // The row wanted belongs to the project: from the dropdown none is, the URL write drops it.
+    // A refresh does not read it: the state is the user's last selection
+    cancelSelectionWrite();
     wantedRowKey = fromUrl ? selectedFromUrl(window.location.search) : null;
     selectedRow = null;
     // Nothing is rendered for the project being switched to: a popstate meanwhile waits for the render
@@ -339,6 +359,8 @@ function takeAnswer(result) {
 // Nothing here pushes a history entry. Browsers no longer fire popstate on
 // page load.
 function handlePopState() {
+    // A selection not written yet belongs to the entry left
+    cancelSelectionWrite();
     const projectName = projectFromUrl(window.location.search, availableProjects);
     if (projectName !== currentProject) {
         document.getElementById('projectSelect').value = projectName || '';
@@ -348,6 +370,7 @@ function handlePopState() {
     // Nothing rendered (loading, or the last load failed): the next render restores from the URL
     if (!currentApiResult) return;
     const selectedBefore = selectedRow;
+    wantedRowKey = selectedFromUrl(window.location.search);
     restoreFiltersFromUrl({ preferTypedText: false });
     applyFilters();
     catchUpUrl();
@@ -522,7 +545,8 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
     restoreFiltersFromUrl({ preferTypedText });
     applyFilters();
-    restoreFocusedRow(focusedRow, treeRows);
+    // The focus is given back to the selected row only: a refresh must not select another (selectRow would write the URL)
+    if (selectedRow && focusedRow?.key === rowKey(selectedRow)) restoreFocusedRow(focusedRow, treeRows);
     setToolbarVisible(true);
 
     // Update the last refresh time
@@ -658,15 +682,9 @@ function initializeMultiSelects() {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', function() {
-    const mainPane = document.querySelector('.main-pane');
     initializeAppShell({
         onClearFilters: clearAllFilters,
-        onTreeKey: event => handleTreeKey(event, {
-            shownRows: treeRows,
-            selectedRow,
-            select: selectRow,
-            viewTop: () => mainPane.getBoundingClientRect().top
-        })
+        onTreeKey: event => handleTreeKey(event, { shownRows: treeRows, selectedRow, select: selectRow })
     });
     initializePageUpdatedButton();
     initializeMultiSelects();

@@ -2,11 +2,11 @@
  * Keyboard navigation of the tree and its selected row (#118). One row is
  * selected whenever a row is shown (class `selected`, `aria-current`): the
  * keys act on the row holding the focus, or holding the focused link or
- * button, else on the selected row. `↓` / `j` and `↑` / `k` select the next
- * or the previous row shown (from the first row in view when there is no
- * row to start from); `→` unfolds the row's stack, or selects its first
- * stacked pull request when unfolded; `←` folds it, or selects the parent
- * when folded or with nothing stacked; `o` opens the row's own link (the
+ * button, else on the selected row (app.js keeps the two the same row).
+ * `↓` / `j` and `↑` / `k` select the next or the previous row shown; `→`
+ * unfolds the row's stack, or selects its first stacked pull request when
+ * unfolded; `←` folds it, or selects the parent when folded or with nothing
+ * stacked shown; a selected row folded out of sight takes only `↓` / `↑`; `o` opens the row's own link (the
  * pull request in Bitbucket, an orphaned issue in Jira), `i` its first Jira
  * issue; `x` selects the root pull request of the stack and folds it. Enter
  * and Space on the row itself fold or unfold its stack, only while it shows
@@ -71,18 +71,23 @@ export function paintSelectedRow(shownRows, wantedKey, previous) {
 // The links and buttons of a row, in document order: a row holds no other row (stacked pull requests are its siblings)
 const rowControls = row => [...row.querySelectorAll('a, button')];
 
-// Whether the row has stacked pull requests to fold, as setPullRequestCollapsed finds them
-function hasStack(row) {
-    return Boolean(row.nextElementSibling?.classList.contains('children'));
+/**
+ * The first stacked pull request of a row that the pass shows (folded away or
+ * not), null when the row stacks none or the filters hide them all. The
+ * stack is the `.children` container after the row, and the pass lists the
+ * rows in document order: the row after it, if it is in that container.
+ */
+export function firstShownChild(row, shownRows) {
+    const container = row.nextElementSibling;
+    if (!container?.classList.contains('children')) return null;
+    const next = shownRows[shownRows.indexOf(row) + 1];
+    return next && container.contains(next) ? next : null;
 }
 
-/**
- * The first row `isReachable` accepts whose top is at or below `viewTop` (a
- * viewport coordinate); the last reachable one when every row starts above it.
- */
-export function firstRowInView(rows, isReachable, viewTop) {
-    return rows.find(row => isReachable(row) && row.getBoundingClientRect().top >= viewTop) ??
-        rows.findLast(isReachable) ?? null;
+/** The focus on no control: the page itself */
+export function isPageTarget(target) {
+    const document = target?.ownerDocument;
+    return Boolean(document) && (target === document.body || target === document.documentElement);
 }
 
 /**
@@ -134,11 +139,6 @@ const isReachable = row => !isCollapsedAway(row);
 
 const arrowKeys = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'];
 
-// The focus on no control: the page itself
-function isPageTarget(target) {
-    return target?.tagName === 'BODY' || target?.tagName === 'HTML';
-}
-
 /**
  * Handles a tree key.
  * @param {KeyboardEvent} event
@@ -146,14 +146,15 @@ function isPageTarget(target) {
  * @param {Element[]} context.shownRows - the rows of the last filter pass
  * @param {Element | null} [context.selectedRow] - the row selected (paintSelectedRow)
  * @param {(row: Element) => void} [context.select] - selects a row the keys move to
- * @param {() => number} [context.viewTop] - the top of the tree's scroll area (a viewport coordinate)
  * @returns {boolean} whether the key was taken (the caller then prevents its default)
  */
-export function handleTreeKey(event, { shownRows, selectedRow = null, select = () => {}, viewTop = () => 0 }) {
+export function handleTreeKey(event, { shownRows, selectedRow = null, select = () => {} }) {
     if (event.shiftKey) return false;
     const focusedRow = rowOf(event.target);
     if (arrowKeys.includes(event.key) && !focusedRow && !isPageTarget(event.target)) return false;
     const row = focusedRow ?? (selectedRow?.isConnected ? selectedRow : null);
+    // What the keys but ↓ / ↑ act on: a row in sight
+    const rowInSight = row && isReachable(row) ? row : null;
     const moveTo = next => {
         if (!next) return;
         select(next);
@@ -166,41 +167,37 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
         case 'k': {
             // No row shown, or a message replaced the tree since the last pass (its rows are gone, all at once)
             if (!shownRows[0]?.isConnected) return false;
-            const step = event.key === 'ArrowDown' || event.key === 'j' ? 1 : -1;
-            // No row to start from: start where the reader is
-            moveTo(row && shownRows.includes(row)
-                ? nextRow(shownRows, row, step, isReachable)
-                : firstRowInView(shownRows, isReachable, viewTop()));
+            // From the row's place in the pass, folded away or not; the first row without one
+            moveTo(nextRow(shownRows, row, event.key === 'ArrowDown' || event.key === 'j' ? 1 : -1, isReachable));
             return true;
         }
         case 'ArrowRight': {
-            if (!row || !hasStack(row)) return false;
-            if (row.classList.contains('collapsed')) {
-                setPullRequestCollapsed(row, false);
+            const child = rowInSight && firstShownChild(rowInSight, shownRows);
+            if (!child) return false;
+            if (rowInSight.classList.contains('collapsed')) {
+                setPullRequestCollapsed(rowInSight, false);
             } else {
-                // The first stacked pull request shown: the next row of the pass, if it is in the stack
-                const next = shownRows[shownRows.indexOf(row) + 1];
-                if (next && row.nextElementSibling.contains(next)) moveTo(next);
+                moveTo(child);
             }
             return true;
         }
         case 'ArrowLeft': {
-            if (!row) return false;
-            if (hasStack(row) && !row.classList.contains('collapsed')) {
-                setPullRequestCollapsed(row, true);
+            if (!rowInSight) return false;
+            if (firstShownChild(rowInSight, shownRows) && !rowInSight.classList.contains('collapsed')) {
+                setPullRequestCollapsed(rowInSight, true);
                 return true;
             }
-            const parent = parentRowOf(row);
+            const parent = parentRowOf(rowInSight);
             if (!parent) return false;
             moveTo(parent);
             return true;
         }
         case 'o':
-            return openLink(row, '.pull-request-header > a');
+            return openLink(rowInSight, '.pull-request-header > a');
         case 'i':
-            return openLink(row, '.jira-issue-link');
+            return openLink(rowInSight, '.jira-issue-link');
         case 'x': {
-            const root = row && rootRowOf(row);
+            const root = rowInSight && rootRowOf(rowInSight);
             if (!root) return false;
             moveTo(root);
             setPullRequestCollapsed(root, true);
@@ -209,7 +206,7 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
         case 'Enter':
         case ' ':
             // On a link or a button inside the row, on a row focused by a click, or with nothing to fold, the key keeps its own meaning
-            if (!focusedRow || event.target !== focusedRow || !focusedRow.matches(':focus-visible') || !hasStack(focusedRow)) return false;
+            if (!focusedRow || event.target !== focusedRow || !focusedRow.matches(':focus-visible') || !firstShownChild(focusedRow, shownRows)) return false;
             // A held key folds once
             if (!event.repeat) setPullRequestCollapsed(focusedRow, !focusedRow.classList.contains('collapsed'));
             return true;

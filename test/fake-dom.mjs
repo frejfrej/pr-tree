@@ -126,6 +126,8 @@ export function node({ tag = 'div', classes = [], dataset = {}, hidden = false }
 export function fakeDocument(root) {
     const document = {
         activeElement: null,
+        body: root,
+        documentElement: null,
         keyboard: true,
         events: [],
         querySelectorAll: selector => [root, ...descendants(root)].filter(candidate => candidate.matches(selector)),

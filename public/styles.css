@@ -926,11 +926,19 @@ select:disabled {
     scroll-margin-top: calc(var(--repo-header-height) + 8px);
 }
 
-/* The row the tree keys act on, outlined like the focus ring whether it has the focus or not */
-.pull-request.selected,
-.orphaned-issue.selected {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+/* The row the tree keys act on: a bar on its left edge, apart from the focus
+   ring (the outline), which only the row holding the keyboard focus shows. A
+   pseudo-element, not a shadow: the hover transition of the shadow would fade
+   it in at each move */
+.pull-request.selected::before,
+.orphaned-issue.selected::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 4px;
+    background-color: var(--primary-color);
 }
 
 .pull-request:hover,

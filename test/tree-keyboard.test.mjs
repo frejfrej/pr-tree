@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRow, firstRowInView, parentRowOf, rootRowOf, rowKey, paintSelectedRow, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
+import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey, paintSelectedRow, handleTreeKey, captureFocusedRow, restoreFocusedRow } from '../public/tree-keyboard.js';
 import { setPullRequestCollapsed, setRootBranchCollapsed } from '../public/tree-toggle.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
@@ -53,14 +53,22 @@ test('nextRow steps over the rows not reachable, stays put at either end, and st
     assert.equal(nextRow([], null, 1, all), null);
 });
 
-test('firstRowInView: the first reachable row starting at or below the top of the view, the last reachable one when all start above', () => {
-    const rows = [10, -40, 120, 300].map(top => ({ top, getBoundingClientRect: () => ({ top }) }));
-    const all = () => true;
-    assert.equal(firstRowInView(rows, all, 0), rows[0]);
-    assert.equal(firstRowInView(rows, all, 100), rows[2]);
-    assert.equal(firstRowInView(rows, row => row !== rows[2], 100), rows[3]);
-    assert.equal(firstRowInView(rows, row => row !== rows[3], 400), rows[2]);
-    assert.equal(firstRowInView([], all, 0), null);
+test('firstShownChild: the first stacked pull request the pass shows, folded away or not; none when the filters hide them all', () => {
+    const { rows, shown } = sampleTree();
+    assert.equal(firstShownChild(rows.one, shown), rows.two);
+    setPullRequestCollapsed(rows.one, true);
+    assert.equal(firstShownChild(rows.one, shown), rows.two);
+    assert.equal(firstShownChild(rows.two, shown.filter(row => row !== rows.three)), null);
+    assert.equal(firstShownChild(rows.three, shown), null);
+    assert.equal(firstShownChild(rows.orphan, shown), null);
+});
+
+test('isPageTarget: the page itself, not an element of it', () => {
+    const { rows, body, outside } = sampleTree();
+    assert.equal(isPageTarget(body), true);
+    assert.equal(isPageTarget(outside), false);
+    assert.equal(isPageTarget(rows.one), false);
+    assert.equal(isPageTarget(null), false);
 });
 
 test('parentRowOf and rootRowOf climb the stack; a root and an orphaned issue have no parent, an orphaned issue no root', () => {
@@ -120,12 +128,12 @@ test('↓ and ↑ (j and k) select, focus and scroll to the next and previous ro
     assert.deepEqual(document.events, []);
 });
 
-test('↓ or ↑ without a row to start from start at the first row in view; without a row shown they scroll the page', () => {
-    const { rows, outside, body, document, context } = sampleTree();
-    [rows.one, rows.two, rows.three, rows.four, rows.orphan].forEach((row, index) => { row.rect = { top: index * 100 - 150, bottom: index * 100 - 50 }; });
-    handleTreeKey(key('ArrowDown', body), { ...context(), viewTop: () => 40 });
-    handleTreeKey(key('k', outside), { ...context(), viewTop: () => 140 });
-    assert.deepEqual(focused(document), [rows.three, rows.four]);
+test('↓ or ↑ without a row to start from select the first row in sight; without a row shown they scroll the page', () => {
+    const { rows, rootBranch, body, document, context } = sampleTree();
+    handleTreeKey(key('ArrowDown', body), context());
+    setRootBranchCollapsed(rootBranch, true);
+    handleTreeKey(key('k', body), context());
+    assert.deepEqual(focused(document), [rows.one, rows.orphan]);
     // A message replaced the tree (its rows are gone, all at once), or no row is shown
     document.events.length = 0;
     assert.equal(handleTreeKey(key('ArrowDown', body), { shownRows: [pullRequest('detached'), pullRequest('detached too')] }), false);
@@ -153,10 +161,11 @@ test('→ unfolds the row\'s stack, then selects its first stacked pull request 
     assert.equal(handleTreeKey(key('ArrowRight', rows.one), context()), true);
     assert.deepEqual(focused(document), [rows.two]);
     assert.deepEqual(selected, [rows.two]);
-    // The stacked pull requests all filtered out: the next row of the pass is outside the stack, nothing moves
-    assert.equal(handleTreeKey(key('ArrowRight', rows.two), { ...context(), shownRows: shown.filter(row => row !== rows.three) }), true);
-    assert.deepEqual(focused(document), [rows.two]);
     assert.equal(handleTreeKey(key('ArrowRight', rows.three), context()), false);
+    // Nothing of the stack shown: nothing to unfold
+    setPullRequestCollapsed(rows.two, true);
+    assert.equal(handleTreeKey(key('ArrowRight', rows.two), { ...context(), shownRows: shown.filter(row => row !== rows.three) }), false);
+    assert.ok(rows.two.classList.contains('collapsed'));
     assert.equal(handleTreeKey(key('ArrowRight', rows.orphan), context()), false);
     assert.equal(handleTreeKey(key('ArrowRight', body), context()), false);
 });
@@ -168,14 +177,29 @@ test('← folds the row\'s stack, then selects its parent; on a row with nothing
     assert.deepEqual(focused(document), []);
     assert.equal(handleTreeKey(key('ArrowLeft', rows.two), context()), true);
     assert.deepEqual(focused(document), [rows.one]);
+    setPullRequestCollapsed(rows.two, false);
     assert.equal(handleTreeKey(key('ArrowLeft', body), context(rows.three)), true);
     assert.deepEqual(focused(document), [rows.one, rows.two]);
     assert.deepEqual(selected, [rows.one, rows.two]);
+    // Nothing of its stack shown: ← goes to the parent at once
+    assert.equal(handleTreeKey(key('ArrowLeft', rows.two), { ...context(), shownRows: [rows.one, rows.two, rows.four, rows.orphan] }), true);
+    assert.ok(!rows.two.classList.contains('collapsed'));
+    assert.deepEqual(focused(document), [rows.one, rows.two, rows.one]);
     setPullRequestCollapsed(rows.one, true);
     assert.equal(handleTreeKey(key('ArrowLeft', rows.one), context()), false);
     assert.equal(handleTreeKey(key('ArrowLeft', rows.four), context()), false);
     assert.equal(handleTreeKey(key('ArrowLeft', rows.orphan), context()), false);
     assert.equal(handleTreeKey(key('ArrowLeft', body), context()), false);
+});
+
+test('a selected row folded out of sight takes ↓ and ↑ only', () => {
+    const { rows, body, document, context } = sampleTree();
+    setPullRequestCollapsed(rows.one, true);
+    for (const name of ['ArrowRight', 'ArrowLeft', 'o', 'i', 'x']) assert.equal(handleTreeKey(key(name, body), context(rows.two)), false, name);
+    assert.ok(!rows.two.classList.contains('collapsed'));
+    assert.deepEqual(document.events, []);
+    assert.equal(handleTreeKey(key('ArrowDown', body), context(rows.two)), true);
+    assert.deepEqual(focused(document), [rows.four]);
 });
 
 test('Enter and Space on the row itself, showing the focus ring, fold or unfold its stacked pull requests, once for a held key', () => {

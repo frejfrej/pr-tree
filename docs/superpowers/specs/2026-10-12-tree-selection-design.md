@@ -38,9 +38,10 @@ the guards allow.
 ## 2. The selected row
 
 - **One row is selected** whenever a row is shown: class `selected` and
-  `aria-current="true"`, painted with the outline of the focus ring, so the
-  row the keys act on is always visible, the focus being on the row, inside
-  it, or elsewhere (the page itself after a click on the sidebar).
+  `aria-current="true"`, painted as a 4px primary bar on its left edge, so
+  the row the keys act on is always visible, the focus being on the row,
+  inside it, or elsewhere (the page itself after a click on the sidebar).
+  The focus ring (the outline) stays the focus's alone.
 - **The keys act on** the row holding the focus (the row, or a link or a
   button in it), else on the selected row.
 - **Selecting** is a user action: a key move, a click in a row, Tab into a
@@ -52,7 +53,8 @@ the guards allow.
   pass shows it, the first row shown otherwise: a reload whose row is gone,
   and a filter that hides it, select the first row, and clearing the filter
   selects the wanted row again. A row folded away stays selected (nothing
-  outlined); the next `↓` goes on from its place.
+  in sight): the next `↓` goes on from its place, and the other keys do
+  nothing on it.
 
 ## 3. The URL
 
@@ -88,3 +90,34 @@ the guards allow.
 - **Writing the fallback row to the URL**: the wanted row would be lost
   for good after a filter hid it (the #61 trap, for the selection).
 - **A history entry per selection**: Back would walk the rows one by one.
+
+## 6. After the /code-review of #141
+
+- **The focus follows the selection**: when the selection moves without the
+  user (Back/Forward, a filter, a fallback), a row still holding the focus
+  lets it go, and a re-render gives the focus back only to the selected row.
+  Before, Back left the focus on the row selected later; the keys acted on
+  it, and the next refresh focused it again, which selected it and wrote the
+  URL (against #61).
+- **The URL write waits 250 ms after the last selection**: a held arrow
+  spent the browser's budget of URL updates (Safari: 100 in 30 s), and the
+  filter writes after it failed too. A filter write takes the pending
+  selection along; Back/Forward and a project switch drop it.
+- **Only a page load and Back/Forward read `selected`**, not the render: a
+  refresh after a failed URL write moved the selection back to the URL's.
+- **A selected row folded out of sight** takes `↓` / `↑` only: `←`, `→`,
+  `o`, `i` and `x` acted on rows nobody could see.
+- **`←` / `→` look at the stacked pull requests shown**, not at the
+  container: a row whose whole stack the filters hide has nothing to fold,
+  and `←` goes to its parent at once. Enter and Space likewise.
+- **The selection is a bar, not the focus ring**: drawn like the ring, a
+  row selected by a click looked keyboard-focused while Space scrolled the
+  page. A `::before` bar, not an inset shadow: the rows' hover transition
+  of the shadow faded the bar in at each move.
+- **"The first row in view" is gone**: a row is always selected, so `j` /
+  `k` always start from it; the branch could not run.
+- `isPageTarget` is shared by app-shell.js and tree-keyboard.js.
+- Kept: a key move selects the row itself and the focus then selects it
+  again through `focusin` (an early return, no search). Without the first,
+  a move would select nothing where no focus event fires (a window without
+  the system focus).
