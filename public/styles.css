@@ -1027,6 +1027,14 @@ select:disabled {
     border-radius: 50%;
 }
 
+/* In place of a missing avatar: the same size, so the status icon keeps its corner */
+.avatar-placeholder {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: var(--neutral-strong);
+}
+
 .icon {
     position: absolute;
     right: -2px;

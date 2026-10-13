@@ -38,11 +38,14 @@ const gapParts = ['parents', 'sprints'];
  * @param {string} options.bbAuth - the Base64 credentials of the Bitbucket Authorization header
  * @param {string} options.jiraSiteName - the subdomain of atlassian.net
  * @param {string} options.jiraAuth - the Base64 credentials of the Jira Authorization header
+ * @param {{ approvers?: string, approvedBy?: string }} [options.approvalFields] - the ids of the Jira custom
+ *   fields naming the approvers of an issue and those who approved (they differ per site); without them
+ *   the orphaned issues have no approver
  * @param {{ access: (message: string) => void, error: (message: string) => void, performance: (message: string) => void }} options.log - the logs
  * @param {number} [options.maxConcurrentCommitRequests=10] - commit-count requests at once
  * @param {number} [options.timeoutMs=30000] - the timeout of one request: concurrent requests for a project share its build (cache.mjs), so a request that hangs would hold them all
  */
-export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jiraAuth, log, maxConcurrentCommitRequests = 10, timeoutMs = 30000 }) {
+export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jiraAuth, approvalFields = {}, log, maxConcurrentCommitRequests = 10, timeoutMs = 30000 }) {
     // The commit counts of the last build of each project, by project name then
     // by "repo/destHash..sourceHash": a count is fetched again only when a commit
     // of its pull request moved, whatever else changed in Bitbucket or Jira
@@ -83,16 +86,31 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         } while (nextPageToken);
     }
 
+    // The approvers of an orphaned issue and those who approved, under the
+    // names the page reads (fields.approvers, fields.approvedBy) instead of
+    // the site's custom field ids, always arrays of users: a single-user
+    // picker's user becomes a list of one, and what is not a user (an unset
+    // field's null, the text of a field configured by mistake) is dropped
+    const { approvers: approversField, approvedBy: approvedByField } = approvalFields;
+    const orphanedIssueFields = ['key', 'summary', 'status', 'priority', 'fixVersions', 'assignee', 'parent', 'issuetype', 'updated', approversField, approvedByField]
+        .filter(Boolean).join(',');
+    const users = value => (Array.isArray(value) ? value : [value]).filter(user => user !== null && typeof user === 'object');
+    function withApprovals(issue) {
+        const { [approversField]: approvers, [approvedByField]: approvedBy, ...fields } = issue.fields;
+        return { ...issue, fields: { ...fields, approvers: users(approvers), approvedBy: users(approvedBy) } };
+    }
+
     async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
         const existingIssuesSet = new Set(existingIssues);
         const orphanedIssues = [];
 
         try {
             // Every issue in review of the projects, minus those a pull request links,
-            // with the fields the filters need (fix versions, parent and type like the linked issues)
+            // with the fields the filters need (fix versions, parent and type like the
+            // linked issues, the approvers when their fields are configured)
             const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
-            for await (const page of searchIssuePages(jql, 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated')) {
-                orphanedIssues.push(...page.issues.filter(issue => !existingIssuesSet.has(issue.key)));
+            for await (const page of searchIssuePages(jql, orphanedIssueFields)) {
+                orphanedIssues.push(...page.issues.filter(issue => !existingIssuesSet.has(issue.key)).map(withApprovals));
             }
             log.access(`Found ${orphanedIssues.length} orphaned issues in review status`);
         } catch (error) {

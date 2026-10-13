@@ -96,7 +96,7 @@ test('countActiveFilters counts filters, not selected values', () => {
 
 // ------------------------------------------------------------------ index and evaluation
 
-import { buildFilterIndex, evaluatePullRequest, evaluateOrphanedIssue, initializeFilter } from '../public/app-filter.js';
+import { buildFilterIndex, evaluatePullRequest, evaluateOrphanedIssue, computeOrphanedIssueAttention, initializeFilter } from '../public/app-filter.js';
 import { multiSelectFilters } from '../public/filter-registry.js';
 
 const sampleApiResult = {
@@ -431,24 +431,91 @@ test('evaluateOrphanedIssue applies the text, sprint, fix version, epic and stor
     assert.equal(visible({ sprints: ['5241'], text: 'banner' }), false); // every filter must match
 });
 
-test('evaluateOrphanedIssue keeps an issue assigned to a selected participant, with attention, except under the review Work values', () => {
+test('evaluateOrphanedIssue keeps an issue without approvers for its assignee, with attention, except under the review Work values', () => {
     const { orphanedIssuesByKey } = buildFilterIndex(orphanedApiResult);
     const bobs = orphanedIssuesByKey.get('PROJ-21');
     const unassigned = orphanedIssuesByKey.get('PROJ-22');
-    assert.deepEqual(evaluateOrphanedIssue(bobs, noFilter), { visible: true, attention: false });
-    assert.deepEqual(evaluateOrphanedIssue(unassigned, noFilter), { visible: true, attention: false });
+    const none = { assignee: false, reviewer: false, any: false };
+    const asAssignee = { assignee: true, reviewer: false, any: true };
+    assert.deepEqual(evaluateOrphanedIssue(bobs, noFilter), { visible: true, attention: none });
+    assert.deepEqual(evaluateOrphanedIssue(unassigned, noFilter), { visible: true, attention: none });
     for (const work of ['all', 'issues', 'ready', 'assignees', 'unknown']) { // an unknown value behaves like "All work", as for pull requests
-        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: true, attention: true }, work);
-        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane', 'Bob'], work }), { visible: true, attention: true }, work);
-        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane'], work }), { visible: false, attention: false }, work);
-        assert.deepEqual(evaluateOrphanedIssue(unassigned, { ...noFilter, participants: ['Bob'], work }), { visible: false, attention: false }, work);
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: true, attention: asAssignee }, work);
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane', 'Bob'], work }), { visible: true, attention: asAssignee }, work);
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Jane'], work }), { visible: false, attention: none }, work);
+        assert.deepEqual(evaluateOrphanedIssue(unassigned, { ...noFilter, participants: ['Bob'], work }), { visible: false, attention: none }, work);
     }
-    // Nothing in the section is reviewed: the review values hide it (the attention is still what it is)
+    // Nobody reviews it: the review values hide it (the attention is still what it is)
     for (const work of ['reviews', 'reviewers']) {
-        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: false, attention: true }, work);
+        assert.deepEqual(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], work }), { visible: false, attention: asAssignee }, work);
     }
     // The other filters still apply with participants selected
     assert.equal(evaluateOrphanedIssue(bobs, { ...noFilter, participants: ['Bob'], text: 'banner' }).visible, false);
+});
+
+// Orphaned issues with Jira approvers (#146), as the server renames them:
+// PROJ-41 assigned to Bob, approvers Ann (pending) and Cleo (approved), and
+// Dan approved without being an approver; PROJ-42 assigned to Bob, its only
+// approver Ann approved; Rovo Dev is never a participant to offer
+const ann = { accountId: 'ann-id', displayName: 'Ann' };
+const cleo = { accountId: 'cleo-id', displayName: 'Cleo' };
+const dan = { accountId: 'dan-id', displayName: 'Dan' };
+const rovo = { accountId: 'rovo-id', displayName: 'Rovo Dev' };
+const approvalsApiResult = {
+    orphanedIssues: [
+        { key: 'PROJ-41', fields: { summary: 'Review the user guide', issuetype: { name: 'Task' }, assignee: { displayName: 'Bob' }, fixVersions: [], approvers: [ann, cleo, rovo], approvedBy: [cleo, dan] } },
+        { key: 'PROJ-42', fields: { summary: 'Review the Xray tests', issuetype: { name: 'Task' }, assignee: { displayName: 'Bob' }, fixVersions: [], approvers: [ann], approvedBy: [ann] } },
+        { key: 'PROJ-43', fields: { summary: 'From an older server', issuetype: { name: 'Task' }, assignee: null, fixVersions: [] } }
+    ]
+};
+
+test('buildFilterIndex indexes the approvers of an orphaned issue: reviewers, pending reviewers, participant options (#146)', () => {
+    const index = buildFilterIndex(approvalsApiResult);
+    const guide = index.orphanedIssuesByKey.get('PROJ-41');
+    assert.deepEqual([...guide.reviewers].sort(), ['Ann', 'Cleo', 'Dan']); // whoever approved reviewed it; never Rovo Dev
+    assert.deepEqual([...guide.pendingReviewers], ['Ann']); // the approvers who have not approved, by account id
+    const xray = index.orphanedIssuesByKey.get('PROJ-42');
+    assert.deepEqual([...xray.reviewers], ['Ann']);
+    assert.equal(xray.pendingReviewers.size, 0);
+    const older = index.orphanedIssuesByKey.get('PROJ-43'); // no approval fields at all
+    assert.deepEqual([older.reviewers.size, older.pendingReviewers.size], [0, 0]);
+    assert.equal(guide.searchText, 'proj-41 review the user guide'); // names are not searched, as for pull requests
+    assert.deepEqual(index.participants.map(option => option.value), ['Ann', 'Bob', 'Cleo', 'Dan']);
+});
+
+test('computeOrphanedIssueAttention: the pending approvers while there are some, the assignee once nobody is pending (#146)', () => {
+    const { orphanedIssuesByKey } = buildFilterIndex(approvalsApiResult);
+    const guide = orphanedIssuesByKey.get('PROJ-41');
+    const xray = orphanedIssuesByKey.get('PROJ-42');
+    assert.deepEqual(computeOrphanedIssueAttention(guide, ['Ann']), { assignee: false, reviewer: true, any: true });
+    assert.deepEqual(computeOrphanedIssueAttention(guide, ['Cleo']), { assignee: false, reviewer: false, any: false }); // approved
+    assert.deepEqual(computeOrphanedIssueAttention(guide, ['Bob']), { assignee: false, reviewer: false, any: false }); // Ann is pending
+    assert.deepEqual(computeOrphanedIssueAttention(guide, ['Bob', 'Ann']), { assignee: false, reviewer: true, any: true });
+    assert.deepEqual(computeOrphanedIssueAttention(xray, ['Bob']), { assignee: true, reviewer: false, any: true }); // all approved: back to the assignee
+    assert.deepEqual(computeOrphanedIssueAttention(xray, ['Ann']), { assignee: false, reviewer: false, any: false });
+    assert.deepEqual(computeOrphanedIssueAttention(guide, []), { assignee: false, reviewer: false, any: false });
+});
+
+test('evaluateOrphanedIssue keeps an issue for its approvers under each Work value like a pull request for its reviewers (#146)', () => {
+    const { orphanedIssuesByKey } = buildFilterIndex(approvalsApiResult);
+    const guide = orphanedIssuesByKey.get('PROJ-41');
+    const xray = orphanedIssuesByKey.get('PROJ-42');
+    const kept = (entry, participant) => Object.fromEntries(['all', 'reviews', 'issues', 'ready', 'reviewers', 'assignees', 'unknown']
+        .map(work => [work, evaluateOrphanedIssue(entry, { ...noFilter, participants: [participant], work }).visible]));
+    // Ann has not approved the guide: kept by every value but the assignee ones, with attention
+    assert.deepEqual(kept(guide, 'Ann'), { all: true, reviews: true, issues: false, ready: true, reviewers: true, assignees: false, unknown: true });
+    assert.equal(evaluateOrphanedIssue(guide, { ...noFilter, participants: ['Ann'] }).attention.any, true);
+    // Cleo and Dan approved it: their reviews, nothing waits for them
+    for (const name of ['Cleo', 'Dan']) {
+        assert.deepEqual(kept(guide, name), { all: true, reviews: true, issues: false, ready: false, reviewers: false, assignees: false, unknown: true }, name);
+    }
+    // Bob is its assignee, but it waits for Ann
+    assert.deepEqual(kept(guide, 'Bob'), { all: true, reviews: false, issues: true, ready: false, reviewers: false, assignees: false, unknown: true });
+    // Every approver approved the Xray review: it waits for Bob again
+    assert.deepEqual(kept(xray, 'Bob'), { all: true, reviews: false, issues: true, ready: true, reviewers: false, assignees: true, unknown: true });
+    assert.deepEqual(kept(xray, 'Ann'), { all: true, reviews: true, issues: false, ready: false, reviewers: false, assignees: false, unknown: true });
+    // Somebody else: hidden under every value
+    assert.ok(Object.values(kept(guide, 'Jane')).every(visible => !visible));
 });
 
 // ------------------------------------------------------------------ text filter
@@ -687,6 +754,30 @@ test('filterBranches lists the rows it leaves displayed in document order: each 
         assert.ok(two.classList.contains('filtered'));
         assert.equal(four.style.display, 'none');
         assert.equal(alpha.attentionCount, 0);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
+test('filterBranches highlights and counts an orphaned issue waiting for a selected approver, and its assignee once it is approved (#146)', () => {
+    const ann = { accountId: 'ann-id', displayName: 'Ann' };
+    const issue = (key, approvedBy) => ({ key, fields: { summary: key, status: { name: 'In Review' }, assignee: { displayName: 'Bob' }, fixVersions: [], approvers: [ann], approvedBy } });
+    initializeFilter({ orphanedIssues: [issue('PROJ-50', []), issue('PROJ-51', [ann])] });
+    const [pending, approved] = ['PROJ-50', 'PROJ-51'].map(issueKey => node({ classes: ['orphaned-issue'], dataset: { issueKey } }));
+    const previousDocument = globalThis.document;
+    globalThis.document = fakeDocument(node({}, node({ classes: ['repository', 'orphaned-issues'] }, pending, approved)));
+    try {
+        const forAnn = filterBranches({ ...defaultFilters(), participants: ['Ann'], work: 'ready' });
+        assert.deepEqual(forAnn.shownRows, [pending]);
+        assert.equal(forAnn.attentionCount, 1);
+        assert.ok(pending.classList.contains('needs-attention'));
+        const forBob = filterBranches({ ...defaultFilters(), participants: ['Bob'], work: 'ready' });
+        assert.deepEqual(forBob.shownRows, [approved]);
+        assert.equal(forBob.attentionCount, 1);
+        assert.ok(!pending.classList.contains('needs-attention') && approved.classList.contains('needs-attention'));
+        // "All work" keeps both for Bob; only the approved one waits for him
+        const allForBob = filterBranches({ ...defaultFilters(), participants: ['Bob'] });
+        assert.deepEqual([allForBob.shownRows, allForBob.attentionCount], [[pending, approved], 1]);
     } finally {
         globalThis.document = previousDocument;
     }

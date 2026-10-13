@@ -276,3 +276,18 @@ test('the orphaned issues of the SECOLLAB fixture carry the fields of the filter
     assert.ok(scaledSubTasks.length >= 6, `${scaledSubTasks.length} sub-tasks at scale 3`);
     for (const subTask of scaledSubTasks) assert.ok(subTask.fields.parent, `${subTask.key} is a sub-task without a parent`);
 });
+
+test('some orphaned issues of the SECOLLAB fixture have Jira approvers, never their assignee; some approved, some pending (#146)', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    for (const issue of data.orphanedIssues) {
+        const { approvers, approvedBy, assignee } = issue.fields;
+        assert.ok(Array.isArray(approvers) && Array.isArray(approvedBy), issue.key); // the server's names, always arrays
+        assert.ok(approvers.length <= 2 && approvers.every(user => user.accountId && user.displayName), issue.key);
+        assert.ok(approvedBy.every(user => approvers.includes(user)), `${issue.key}: whoever approved is an approver`);
+        assert.ok(!assignee || approvers.every(user => user.accountId !== assignee.accountId), `${issue.key}: the assignee does not approve`);
+    }
+    const withApprovers = data.orphanedIssues.filter(issue => issue.fields.approvers.length > 0);
+    assert.ok(withApprovers.length >= 3 && withApprovers.length < data.orphanedIssues.length, `${withApprovers.length} with approvers`);
+    assert.ok(withApprovers.some(issue => issue.fields.approvedBy.length === issue.fields.approvers.length), 'one approved by all');
+    assert.ok(withApprovers.some(issue => issue.fields.assignee && issue.fields.approvedBy.length < issue.fields.approvers.length), 'one assigned and pending');
+});

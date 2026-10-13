@@ -393,6 +393,17 @@ function createIssue(random, nextIssueNumber, project, { status, assignee, paren
     };
 }
 
+// The Jira approvers of an orphaned issue and those who approved (#146), as
+// the server renames them: about half of the issues have one or two approvers
+// from the team, never the assignee, each of whom approved one time in three
+function orphanedIssueApprovals(random, assignee) {
+    if (random() < 0.5) return { approvers: [], approvedBy: [] };
+    const candidates = team.map(person => person.jira).filter(user => user.accountId !== assignee?.accountId);
+    const first = pick(random, candidates);
+    const approvers = random() < 0.4 ? [first, pick(random, candidates.filter(user => user !== first))] : [first];
+    return { approvers, approvedBy: approvers.filter(() => random() < 0.35) };
+}
+
 // ------------------------------------------------------------ pull requests
 
 function renderedDescription(random, title, issueKeys) {
@@ -645,8 +656,11 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
     // update); one in five is a sub-task of a story created for it, in
     // progress (an in-review story without a pull request would be an
     // orphaned issue itself); the fixed date recedes, so in the browser
-    // nearly every orphaned issue shows the 14-day warning
+    // nearly every orphaned issue shows the 14-day warning; the approvers are
+    // drawn from a random stream of their own, so the rest of the data stays
+    // what it was before them
     const orphanedIssues = [];
+    const approvalsRandom = createRandom(`approvals-${projectName}-${scale}`);
     const orphanCount = Math.round((orphanedIssueCounts[projectName] ?? 0) * scale);
     for (let i = 0; i < orphanCount; i++) {
         const project = pick(random, projectConfig.jiraProjects);
@@ -673,7 +687,8 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
                 assignee: issue.fields.assignee,
                 issuetype: issue.fields.issuetype,
                 updated: jiraDaysAgo(integer(random, 0, 30)),
-                ...(issue.fields.parent ? { parent: issue.fields.parent } : {})
+                ...(issue.fields.parent ? { parent: issue.fields.parent } : {}),
+                ...orphanedIssueApprovals(approvalsRandom, issue.fields.assignee)
             }
         });
     }

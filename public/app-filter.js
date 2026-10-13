@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters, singleValueFilters, singleValueFilterActive } from './filter-registry.js';
-import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft, openTaskCount } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft, openTaskCount, issueApprovals } from './pull-request-status.js';
 import { pullRequestKey } from './pull-request-key.mjs';
 
 // The multi-selects compared with the set of the index entry named like the
@@ -173,6 +173,22 @@ export function computeAttention({ assignees, pendingReviewers, statusInProgress
     return { assignee, reviewer, any: assignee || reviewer };
 }
 
+/**
+ * Decides whether an orphaned issue (in review, no pull request) waits for the
+ * selected participants. Pure. Its Jira approvers review it (#146): while one
+ * has not approved, it waits for its pending approvers (reviewer attention),
+ * not for its assignee, like a pull request in review; with nobody pending (no
+ * approver, or all approved) it waits for its assignee, the one to move it on.
+ * @param {{ assignees: Set<string>, pendingReviewers: Set<string> }} entry - an entry of buildFilterIndex().orphanedIssuesByKey
+ * @param {string[]} participants - the selected participants
+ * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
+ */
+export function computeOrphanedIssueAttention({ assignees, pendingReviewers }, participants) {
+    const reviewer = participants.some(name => pendingReviewers.has(name));
+    const assignee = pendingReviewers.size === 0 && participants.some(name => assignees.has(name));
+    return { assignee, reviewer, any: assignee || reviewer };
+}
+
 // ------------------------------------------------------------------- index
 
 // The sprint options: sorted by name, valued by id
@@ -286,7 +302,9 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
     }
 
     // The orphaned issues: the issue itself is what the text filter searches
-    // and what the sets are built from; its assignee is its only person
+    // and what the sets are built from; its people are its assignee and its
+    // Jira approvers (#146): whoever approved and the approvers who have not
+    // review it, the latter are pending
     const orphanedIssuesByKey = new Map();
     for (const issue of orphanedIssues) {
         const epic = epicOf(issue, issuesByKey);
@@ -295,10 +313,16 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         if (story) stories.set(story.key, story);
         const assignee = issue.fields.assignee && issue.fields.assignee.displayName;
         if (assignee) participants.add(assignee);
+        // The approvals the row shows (pull-request-status.js)
+        const { approved, pending } = issueApprovals(issue);
+        const reviewers = new Set([...approved, ...pending].map(user => user.displayName));
+        for (const name of reviewers) participants.add(name);
         orphanedIssuesByKey.set(issue.key, {
             issue,
             searchText: [issue.key, issue.fields.summary].filter(Boolean).join(' ').toLowerCase(),
             assignees: new Set(assignee ? [assignee] : []),
+            reviewers,
+            pendingReviewers: new Set(pending.map(user => user.displayName)),
             sprints: new Set(sprintsByIssueKey.get(issue.key) || []),
             fixVersions: new Set((issue.fields.fixVersions || []).map(version => String(version.id))),
             epics: new Set(epic ? [epic.key] : []),
@@ -320,6 +344,23 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 }
 
 // -------------------------------------------------------------- evaluation
+
+// The participants filter, the same for a pull request and an orphaned issue:
+// without a selection, everybody's; with one, every entry a selected
+// participant reviews ("All reviews"), is assigned ("All issues") or either
+// ("All work", and an unknown value), or only those waiting for one of them as
+// a reviewer, as an assignee, or either ("Ready for participants")
+function matchesWork(entry, attention, participants, work) {
+    if (participants.length === 0) return true;
+    const reviews = () => participants.some(name => entry.reviewers.has(name));
+    const issues = () => participants.some(name => entry.assignees.has(name));
+    return work === 'reviewers' ? attention.reviewer :
+        work === 'assignees' ? attention.assignee :
+            work === 'ready' ? attention.any :
+                work === 'reviews' ? reviews() :
+                    work === 'issues' ? issues() :
+                        reviews() || issues();
+}
 
 // The filters an indexed pull request and an indexed orphaned issue share:
 // the text, and any selected value of each multi-select but the participants
@@ -345,20 +386,6 @@ export function evaluatePullRequest(entry, filters, syncStatus) {
     const { participants = [], work = 'all', hideDrafts = false, sync } = filters;
     const attention = computeAttention(entry, participants);
 
-    // Participants: without a selection, everybody's pull requests; with one, every
-    // pull request a selected participant reviews ("All reviews"), has a linked
-    // issue assigned to ("All issues") or either ("All work"), or only those
-    // waiting for one of them as a reviewer, as an assignee, or either ("Ready
-    // for participants")
-    const reviews = () => participants.some(name => entry.reviewers.has(name));
-    const issues = () => participants.some(name => entry.assignees.has(name));
-    const participantMatch = participants.length === 0 ||
-        (work === 'reviewers' ? attention.reviewer :
-            work === 'assignees' ? attention.assignee :
-                work === 'ready' ? attention.any :
-                    work === 'reviews' ? reviews() :
-                        work === 'issues' ? issues() :
-                            reviews() || issues());
     // What the badges show: SYNC for a result with conflicts, OK for one without,
     // neither ("unchecked") for no result or a failure
     const checked = Boolean(syncStatus) && !syncStatus.error;
@@ -368,34 +395,27 @@ export function evaluatePullRequest(entry, filters, syncStatus) {
         (sync === 'unchecked' && !checked);
 
     return {
-        visible: matchesIssueFilters(entry, filters) && participantMatch && !(hideDrafts && entry.draft) && syncMatch,
+        visible: matchesIssueFilters(entry, filters) && matchesWork(entry, attention, participants, work) && !(hideDrafts && entry.draft) && syncMatch,
         attention
     };
 }
 
-// The Work values that keep only what the participants review: nothing in
-// the orphaned issues section is reviewed, so they hide it; any other value
-// keeps an issue assigned to a selected participant, like "All work" does
-// for pull requests
-const reviewWorkValues = ['reviews', 'reviewers'];
-
 /**
  * Applies the filters to one indexed orphaned issue. Pure. The issue is in
- * review with no pull request: it waits for its assignee, so with
- * participants selected it is kept when assigned to one of them, under every
- * Work value but the review ones ("All reviews", "Ready for reviewers": nothing
- * here is reviewed); the SYNC and Hide drafts filters do not apply.
+ * review with no pull request: its Jira approvers review it and its assignee
+ * has it (#146), so with participants selected the Work values keep it as they
+ * keep a pull request, and it waits for its pending approvers, or for its
+ * assignee once nobody is pending (computeOrphanedIssueAttention); the SYNC
+ * and Hide drafts filters do not apply.
  * @param {object} entry - an entry of buildFilterIndex().orphanedIssuesByKey
  * @param {object} filters - { text, participants, work, hideDrafts, sprints, fixVersions, epics, stories, sync }
- * @returns {{ visible: boolean, attention: boolean }} attention: assigned to a selected participant
+ * @returns {{ visible: boolean, attention: { assignee, reviewer, any } }}
  */
 export function evaluateOrphanedIssue(entry, filters) {
     const { participants = [], work = 'all' } = filters;
-    const attention = participants.some(name => entry.assignees.has(name));
-    const participantMatch = participants.length === 0 ||
-        (attention && !reviewWorkValues.includes(work));
+    const attention = computeOrphanedIssueAttention(entry, participants);
     return {
-        visible: matchesIssueFilters(entry, filters) && participantMatch,
+        visible: matchesIssueFilters(entry, filters) && matchesWork(entry, attention, participants, work),
         attention
     };
 }
@@ -536,14 +556,14 @@ function filterOrphanedIssues(pass) {
         const entry = pass.index.orphanedIssuesByKey.get(row.dataset.issueKey);
         const { visible: isVisible, attention } = entry
             ? evaluateOrphanedIssue(entry, pass.filters)
-            : { visible: false, attention: false };
-        row.classList.toggle('needs-attention', attention);
+            : { visible: false, attention: { any: false } };
+        row.classList.toggle('needs-attention', attention.any);
         setDisplay(row, isVisible ? '' : 'none');
         total++;
         if (isVisible) {
             visible++;
             pass.shownRows.push(row);
-            if (attention) pass.shownAttention++;
+            if (attention.any) pass.shownAttention++;
         }
     }
     const counter = section.querySelector('.repo-pr-counter');

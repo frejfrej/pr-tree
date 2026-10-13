@@ -171,6 +171,7 @@ const projectData = createProjectData({
     bbAuth,
     jiraSiteName: config.jira.siteName,
     jiraAuth,
+    approvalFields: { approvers: config.jira.approversField, approvedBy: config.jira.approvedByField },
     log: {
         access: message => log(message, accessLogStream),
         error: message => log(message, errorLogStream),

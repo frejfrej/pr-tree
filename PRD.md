@@ -149,6 +149,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F3.6: Detect orphaned issues (In Review status without PRs)
 - F3.7: Support Jira workflow integration with "In Review" and "In Progress" statuses
 - F3.8: Fetch the parent of linked issues, and the summary, type and parent of parent issues, so that sub-tasks reach their story and epic
+- F3.9: Fetch the Jira approvers of the orphaned issues and who approved (two custom fields named in config.js, `approversField` and `approvedByField`), show them like the reviewers of a pull request, and keep an orphaned issue for its approvers: reviews without a pull request (documentation, Xray tests)
 
 **Workflow Context:**
 The application integrates with a Jira workflow where:
@@ -170,7 +171,7 @@ The application integrates with a Jira workflow where:
 **Description:** Multi-criteria filtering to focus on relevant PRs
 
 **Requirements:**
-- F4.1: Filter by participant: the assignees of the linked Jira issues and the reviewers of the pull requests, one multi-select
+- F4.1: Filter by participant: the assignees of the linked and orphaned Jira issues, the reviewers of the pull requests and the Jira approvers of the orphaned issues, one multi-select
 - F4.2: Filter by work, with participants selected: "All work" (the default) keeps every pull request they review or have a linked issue assigned to, "All reviews" and "All issues" one kind only; "Ready for participants" only the pull requests waiting for them as reviewers or as assignees, "Ready for reviewers" and "Ready for assignees" one kind only
 - F4.3: Filter by sprint (based on associated Jira issues)
 - F4.4: Filter by SYNC status (SYNC required / SYNC ok / Not checked), once the statuses are loaded
@@ -190,6 +191,7 @@ The application integrates with a Jira workflow where:
 - F4.14: Hide the repositories and branches left without a matching pull request; show a message when no pull request matches
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
 - F4.16: "Hide drafts" hides the draft pull requests, with or without participants selected
+- F4.17: The participant and work filters keep an orphaned issue as they keep a pull request, its Jira approvers being its reviewers (whoever approved included) and its assignee its assignee; it waits for its approvers who have not approved, and for its assignee once nobody is pending
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values
@@ -451,7 +453,7 @@ The application integrates with a Jira workflow where:
   jiraSiteName: "string",
   sprints: [/* Active sprint objects */],
   sprintIssues: {/* Sprint ID -> Issue Keys */},
-  orphanedIssues: [/* Issues without PRs */],
+  orphanedIssues: [/* Issues without PRs, fields.approvers and fields.approvedBy renamed from the configured custom fields */],
   dataHash: "MD5 hash"
 }
 ```
@@ -821,9 +823,9 @@ The following are explicitly **not** part of current requirements:
 - **In Review**: Jira issue status indicating code is ready for review
 - **In Progress**: Jira issue status indicating active development work
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
-- **Participant**: a person appearing as the assignee of a linked Jira issue or as a reviewer of a pull request
-- **Ready for Reviewers**: PR with associated issue in "In Review" status that a selected participant has not approved yet
-- **Ready for Assignees**: PR with an associated issue assigned to a selected participant, the issue "In Progress", or "In Review" with open tasks on the PR
+- **Participant**: a person appearing as the assignee of a linked or orphaned Jira issue, as a reviewer of a pull request, or as a Jira approver of an orphaned issue
+- **Ready for Reviewers**: PR with associated issue in "In Review" status that a selected participant has not approved yet, or orphaned issue a selected participant is a Jira approver of and has not approved yet
+- **Ready for Assignees**: PR with an associated issue assigned to a selected participant, the issue "In Progress", or "In Review" with open tasks on the PR; or orphaned issue assigned to a selected participant whose Jira approvers, if any, have all approved
 - **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch
