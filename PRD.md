@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD)
 ## Bitbucket Pull-Requests Tree
 
-**Version:** 3.1.1
+**Version:** 3.1.2
 **Last Updated:** 2026-10-13
 **Author:** François-Régis Jaunatre
 **Status:** Active Development
