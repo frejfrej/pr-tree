@@ -341,10 +341,10 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
 // The avatar of a person, or, without an avatar URL (a Jira user may have
 // none), a disc of the same size named like the image (never an empty
 // <img src="">): the name stays on the row, the status icon in its corner.
-// `title` is the tooltip of the disc, the name by default
-function renderAvatar(url, name, title = name) {
+// The tooltip is the caller's, on the container holding avatar and icon
+function renderAvatar(url, name) {
     if (url) return `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}">`;
-    return `<span class="avatar-placeholder" role="img" aria-label="${escapeHtml(name)}" title="${escapeHtml(title)}"></span>`;
+    return `<span class="avatar-placeholder" role="img" aria-label="${escapeHtml(name)}"></span>`;
 }
 
 // The open tasks of a pull request (openTaskCount), nothing without one; the
@@ -381,7 +381,7 @@ export function renderParticipant(participant, status) {
 
     const name = escapeHtml(participant.display_name);
     return `
-        <span class="image-container" data-author="${name}" data-review-status="${status}">
+        <span class="image-container" data-author="${name}" data-review-status="${status}" title="${name}">
             ${renderAvatar(participant.links?.avatar?.href, participant.display_name)}
             <i class="fas ${iconClass} icon" ${Object.hasOwn(participantStatusLabels, status) ? `role="img" aria-label="${participantStatusLabels[status]}"` : 'aria-hidden="true"'}></i>
         </span>
@@ -488,7 +488,7 @@ function renderAssignee(assignee) {
     const name = escapeHtml(assignee.displayName);
     return `
         <span class="image-container" data-author="${name}" title="Assignee: ${name}">
-            ${renderAvatar(jiraAvatar(assignee), assignee.displayName, `Assignee: ${assignee.displayName}`)}
+            ${renderAvatar(jiraAvatar(assignee), assignee.displayName)}
             <i class="fas fa-user icon" aria-hidden="true"></i>
         </span>
     `;

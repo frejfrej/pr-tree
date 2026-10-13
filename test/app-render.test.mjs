@@ -292,8 +292,7 @@ test('renderOrphanedIssues falls back to the 48x48 avatar and never marks an iss
     assert.equal(count(html, 'class="warnings"'), 0);
     assert.ok(html.includes('title="Last updated"></span>'));
     // Ann has a displayName but no avatar URL: a disc named like the image, never an empty <img src="">
-    assert.ok(html.includes('title="Assignee: Ann"'));
-    assert.ok(html.includes('<span class="avatar-placeholder" role="img" aria-label="Ann" title="Assignee: Ann"></span>'));
+    assert.match(html, /data-author="Ann" title="Assignee: Ann">\s*<span class="avatar-placeholder" role="img" aria-label="Ann"><\/span>/);
     assert.equal(count(html, '<img'), 1); // only Bob has an avatar url; no priority icons here either
     // An assignee without a displayName is treated as unassigned
     assert.equal(count(html, '<span class="orphaned-issue-unassigned">Unassigned</span>'), 1);
@@ -313,7 +312,7 @@ test('renderOrphanedIssues draws the Jira approvers like the reviewers of a pull
     assert.ok(html.includes('src="https://avatars/Ann-24.png"') && html.includes('src="https://avatars/cleo-48.png"'));
     assert.equal(count(html, '<img'), 2); // Dan has no avatar: never an empty <img src="">,
     // a disc of the same size that names him, so the status icon keeps its corner
-    assert.match(html, /data-author="Dan" data-review-status="approved">\s*<span class="avatar-placeholder" role="img" aria-label="Dan" title="Dan"><\/span>/);
+    assert.match(html, /data-author="Dan" data-review-status="approved" title="Dan">\s*<span class="avatar-placeholder" role="img" aria-label="Dan"><\/span>/);
     assert.equal(count(html, 'data-review-status='), 3); // the issue without approval fields shows none
 });
 
@@ -333,7 +332,7 @@ test('renderOrphanedIssues escapes the names and avatar URLs of the approvers', 
         { key: 'PROJ-43', fields: { summary: 'Docs', priority: null, assignee: null, approvers: [{ accountId: 'a', displayName: 'Ann <"&">', avatarUrls: { '24x24': 'https://avatars/ann.png?a="1"' } }], approvedBy: [] } }
     ], 'site', { now: Date.parse('2026-09-14T12:00:00.000Z') });
     assert.ok(!html.includes('Ann <'));
-    assert.ok(html.includes('data-author="Ann &lt;&quot;&amp;&quot;&gt;" data-review-status="toReview"'));
+    assert.ok(html.includes('data-author="Ann &lt;&quot;&amp;&quot;&gt;" data-review-status="toReview" title="Ann &lt;&quot;&amp;&quot;&gt;"'));
     assert.ok(html.includes('src="https://avatars/ann.png?a=&quot;1&quot;" alt="Ann &lt;&quot;&amp;&quot;&gt;"'));
 });
 
@@ -364,6 +363,16 @@ test('renderParticipant gives each status its icon, and an unknown status no ico
     } finally {
         log.mock.restore();
     }
+});
+
+test('renderParticipant names the person in the tooltip of the avatar and its status icon, with or without an avatar URL', () => {
+    // On the container, so hovering the corner icon names the person too; an <img> alt shows no tooltip
+    for (const status of ['author', 'approved', 'requestedChanges', 'toReview']) {
+        assert.match(renderParticipant(jane, status), /<span class="image-container" [^>]*title="Jane">\s*<img src="https:\/\/avatars\/jane.png" alt="Jane">/);
+    }
+    const html = renderParticipant({ display_name: 'Dan', links: {} }, 'toReview');
+    assert.match(html, /title="Dan">\s*<span class="avatar-placeholder" role="img" aria-label="Dan"><\/span>/);
+    assert.equal(count(html, 'title='), 1);
 });
 
 test('escapeHtml escapes the five HTML characters and turns null and undefined into an empty string', () => {
@@ -400,7 +409,7 @@ test('renderRepositories escapes every Bitbucket and Jira text it interpolates',
     assert.ok(html.includes('PROJ-7 (In &lt;Review&gt;)'));
     assert.ok(html.includes('alt="High &quot;priority&quot;" class="jira-priority-icon" title="High &quot;priority&quot;"'));
     assert.ok(html.includes('src="https://jira/high.svg?a=&quot;b&quot;"'));
-    assert.ok(html.includes('data-author="Eve &quot;&gt;&lt;img src=x onerror=alert(1)&gt;"'));
+    assert.ok(html.includes('data-author="Eve &quot;&gt;&lt;img src=x onerror=alert(1)&gt;" data-review-status="approved" title="Eve &quot;&gt;&lt;img src=x onerror=alert(1)&gt;"'));
     assert.ok(html.includes('alt="Eve &quot;&gt;&lt;img src=x onerror=alert(1)&gt;"'));
     assert.ok(html.includes('src="https://avatars/eve.png?a=1&amp;b=&quot;2&quot;"'));
     // The branch URL keeps its own encoding of the branch name, then is escaped like any attribute

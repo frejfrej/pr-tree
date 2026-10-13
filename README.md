@@ -97,6 +97,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.1.1
+    * Hovering the avatar of an author, a reviewer or a Jira approver, or its status icon, shows the person's name; before, only an assignee and a person without an avatar had a tooltip
 * Version 3.1.0
     * The Jira issues in review without a pull request show their approvers and are kept for them: with participants selected, an approver keeps the issue under "All work" and "All reviews" ("All reviews" and "Ready for reviewers" no longer hide the section), and an approver who has not approved sees it waiting for them (highlighted, counted in the tab title, kept by "Ready for reviewers" and "Ready for participants"); while an approver is pending, the issue no longer waits for its assignee, who gets it back once every approver approved. The approvers join the Participants list. Set `approversField` and `approvedByField` in `config.js` to the ids of the Jira fields (see Installation); without them nothing changes. Fixture mode: about half of the orphaned issues have approvers (#146)
     * A reviewer, an approver or an assignee without an avatar shows a grey disc of the same size, named for screen readers and in its tooltip, instead of a lone icon
