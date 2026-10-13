@@ -25,7 +25,7 @@
     * Reviews without a pull request (documentation, Xray tests) are kept for their approvers: the participant and work filters treat the approvers of an issue (and whoever approved it) as its reviewers and its assignee as its assignee, like for a pull request. The issue waits for its approvers who have not approved, and for its assignee once nobody is pending (no approver, or all approved): it is then highlighted and counted in the tab title for them. The approvers are read from the two Jira fields named in `config.js` (see Installation)
     * The section collapses like a repository ("Collapse all" and "Expand all" include it)
 * Provides initial warnings
-    * If the pull request was approved by everyone
+    * If the pull request was approved by everyone and has no open task (with open tasks it shows as in progress: the tasks are its assignee's work)
     * If the pull request is open but related issues are closed or in review
 * Provides a text filter
     * Keeps the pull requests whose title, source branch name or linked issue keys contain every word typed (case-insensitive)
@@ -97,6 +97,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.1.2
+    * An In Review pull request that every reviewer approved but with open tasks no longer shows as approved (green band): it shows as in progress (amber band), the assignee's work, as the participant filter already treated it; it turns green once the tasks are resolved
 * Version 3.1.1
     * Hovering the avatar of an author, a reviewer or a Jira approver, or its status icon, shows the person's name; before, only an assignee and a person without an avatar had a tooltip
 * Version 3.1.0

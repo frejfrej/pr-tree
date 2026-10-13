@@ -33,6 +33,15 @@ test('statusClass: in progress wins, then in review (all approved or not), then 
     assert.equal(statusClass(pullRequest([jane]), [{ fields: {} }]), ''); // an issue without a status
 });
 
+test('statusClass: approved by every reviewer with open tasks is the assignee\'s work, not approved', () => {
+    assert.equal(statusClass({ ...pullRequest([jane], true), task_count: 2 }, [issue('In Review')]), 'status-in-progress');
+    assert.equal(statusClass({ ...pullRequest([jane], true), task_count: 0 }, [issue('In Review')]), 'status-in-review-all-approved');
+    // Not every reviewer approved: still the reviewers' band, tasks or not
+    assert.equal(statusClass({ ...pullRequest([jane]), task_count: 2 }, [issue('In Review')]), 'status-in-review');
+    // Resolved: the tasks are left over
+    assert.equal(statusClass({ ...pullRequest([jane], true), task_count: 2 }, [issue('Resolved')]), 'status-resolved');
+});
+
 test('statusClass: no linked issue and no issue list are no band', () => {
     assert.equal(statusClass(pullRequest([jane]), []), '');
     assert.equal(statusClass(pullRequest([jane]), null), '');

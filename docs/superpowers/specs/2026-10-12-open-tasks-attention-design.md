@@ -71,3 +71,18 @@ not highlighted, counted in the tab title, nor kept by a "Ready" value.
   `computeAttention` has no default for `openTasks`, which the index always
   sets.
 - Kept (the user's decision): the assignee, not the author, is waited for.
+
+## 6. The band of an approved pull request with open tasks (3.1.2)
+
+- *The user's report, 2026-10-13*: a pull request every reviewer approved
+  but with open tasks still showed the green "all approved" band, while it
+  is the assignee's work.
+- `statusClass` gives it the in-progress band (amber) instead: the band says
+  whose move it is, like its attention already did. Green now means
+  approved with no open task.
+- The attention is unchanged: the in-progress band gives the assignee
+  attention the open tasks gave, and nobody is a pending reviewer. The
+  index entry loses `statusAllApproved`, which only this case read.
+- Unchanged: a pull request in review that not every reviewer approved
+  keeps the in-review band (blue) with open tasks, since its pending
+  reviewers still have a review to do (section 2).

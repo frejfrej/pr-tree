@@ -74,7 +74,10 @@ export function syncKey(pullRequest) {
  * there are reviewers and every one approved, status-in-review otherwise;
  * else status-resolved when it has linked issues and every one is resolved
  * or closed; an empty string otherwise: no linked issue, or a pull request
- * the issue map does not know (no list at all).
+ * the issue map does not know (no list at all). A pull request in review
+ * that every reviewer approved but with open tasks is not approved: the
+ * tasks are the assignee's work, so it takes the in-progress band, as its
+ * attention says (app-filter.js computeAttention).
  * @param {object} pullRequest - a Bitbucket pull request
  * @param {object[] | null | undefined} linkedIssues - the Jira issues it links, with their status
  * @returns {string}
@@ -86,7 +89,8 @@ export function statusClass(pullRequest, linkedIssues) {
     if (statuses.includes('In Review')) {
         const reviewers = otherReviewers(pullRequest);
         const allApproved = reviewers.length > 0 && reviewers.every(participant => participant.approved);
-        return allApproved ? 'status-in-review-all-approved' : 'status-in-review';
+        if (!allApproved) return 'status-in-review';
+        return openTaskCount(pullRequest) > 0 ? 'status-in-progress' : 'status-in-review-all-approved';
     }
     if (statuses.length > 0 && statuses.every(status => status === 'Resolved' || status === 'Closed')) return 'status-resolved';
     return '';
