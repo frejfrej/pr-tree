@@ -118,7 +118,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 **Requirements:**
 - F2.1: List all PRs ordered by most recently updated (descending)
 - F2.2: Display PR hierarchy showing branch relationships
-- F2.3: Show PR status (open, approved, conflicts, etc.)
+- F2.3: Show PR status (open, approved, conflicts, etc.); a pull request every reviewer approved shows as approved only without open tasks, as in progress otherwise (the tasks are its assignee's work)
 - F2.4: Display commit ahead/behind counts relative to destination branch
 - F2.5: Show associated Jira issues with status badges
 - F2.6: Indicate when PR has conflicts with parent branch

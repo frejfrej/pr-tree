@@ -138,6 +138,9 @@ test('renderRepositories derives the status class from the linked issues and the
     assert.deepEqual(classes['repo-one/2'], ['pull-request']);
     assert.deepEqual(classes['repo-two/3'], ['pull-request', 'status-in-review-all-approved', 'pull-request-root']);
     assert.deepEqual(classes['repo-two/4'], ['pull-request', 'pull-request-root']);
+    // Approved by every reviewer with open tasks: the assignee's band, not the approved one
+    const withTasks = pullRequestClasses(renderRepositories([{ ...approved, task_count: 1 }], jiraIssuesMap, jiraIssuesDetails, 'site'));
+    assert.deepEqual(withTasks['repo-two/3'], ['pull-request', 'status-in-progress', 'pull-request-root']);
 });
 
 test('renderRepositories: review states, resolved issues, the Rovo Dev exclusion, a slash in a root branch, a missing commit', () => {
