@@ -1,6 +1,6 @@
 import { updateCounterDisplay } from './counter-utils.js';
 import { multiSelectFilters, singleValueFilters, singleValueFilterActive } from './filter-registry.js';
-import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft, openTaskCount } from './pull-request-status.js';
+import { statusClass, otherReviewers, syncKey, atlassianAgent, isDraft, openTaskCount, issueApprovals } from './pull-request-status.js';
 import { pullRequestKey } from './pull-request-key.mjs';
 
 // The multi-selects compared with the set of the index entry named like the
@@ -303,8 +303,8 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
 
     // The orphaned issues: the issue itself is what the text filter searches
     // and what the sets are built from; its people are its assignee and its
-    // Jira approvers (#146): every approver and whoever approved reviews it,
-    // the approvers who have not approved are pending (by account id)
+    // Jira approvers (#146): whoever approved and the approvers who have not
+    // review it, the latter are pending
     const orphanedIssuesByKey = new Map();
     for (const issue of orphanedIssues) {
         const epic = epicOf(issue, issuesByKey);
@@ -313,19 +313,16 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
         if (story) stories.set(story.key, story);
         const assignee = issue.fields.assignee && issue.fields.assignee.displayName;
         if (assignee) participants.add(assignee);
-        const approvers = issue.fields.approvers || [];
-        const approvedBy = issue.fields.approvedBy || [];
-        const approved = new Set(approvedBy.map(user => user.accountId));
-        // Rovo Dev is never a reviewer to count, as on a pull request
-        const displayNames = users => users.map(user => user.displayName).filter(name => name && name !== atlassianAgent);
-        const reviewers = new Set(displayNames([...approvers, ...approvedBy]));
+        // The approvals the row shows (pull-request-status.js)
+        const { approved, pending } = issueApprovals(issue);
+        const reviewers = new Set([...approved, ...pending].map(user => user.displayName));
         for (const name of reviewers) participants.add(name);
         orphanedIssuesByKey.set(issue.key, {
             issue,
             searchText: [issue.key, issue.fields.summary].filter(Boolean).join(' ').toLowerCase(),
             assignees: new Set(assignee ? [assignee] : []),
             reviewers,
-            pendingReviewers: new Set(displayNames(approvers.filter(user => !approved.has(user.accountId)))),
+            pendingReviewers: new Set(pending.map(user => user.displayName)),
             sprints: new Set(sprintsByIssueKey.get(issue.key) || []),
             fixVersions: new Set((issue.fields.fixVersions || []).map(version => String(version.id))),
             epics: new Set(epic ? [epic.key] : []),

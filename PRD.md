@@ -147,9 +147,9 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F3.4: Show issue priority icons
 - F3.5: Provide direct links to Jira issues
 - F3.6: Detect orphaned issues (In Review status without PRs)
-- F3.9: Fetch the Jira approvers of the orphaned issues and who approved (two custom fields named in config.js, `approversField` and `approvedByField`), show them like the reviewers of a pull request, and keep an orphaned issue for its approvers: reviews without a pull request (documentation, Xray tests)
 - F3.7: Support Jira workflow integration with "In Review" and "In Progress" statuses
 - F3.8: Fetch the parent of linked issues, and the summary, type and parent of parent issues, so that sub-tasks reach their story and epic
+- F3.9: Fetch the Jira approvers of the orphaned issues and who approved (two custom fields named in config.js, `approversField` and `approvedByField`), show them like the reviewers of a pull request, and keep an orphaned issue for its approvers: reviews without a pull request (documentation, Xray tests)
 
 **Workflow Context:**
 The application integrates with a Jira workflow where:
@@ -824,8 +824,8 @@ The following are explicitly **not** part of current requirements:
 - **In Progress**: Jira issue status indicating active development work
 - **Orphaned Issue**: Jira issue marked "In Review" without associated PR
 - **Participant**: a person appearing as the assignee of a linked or orphaned Jira issue, as a reviewer of a pull request, or as a Jira approver of an orphaned issue
-- **Ready for Reviewers**: PR with associated issue in "In Review" status that a selected participant has not approved yet
-- **Ready for Assignees**: PR with an associated issue assigned to a selected participant, the issue "In Progress", or "In Review" with open tasks on the PR
+- **Ready for Reviewers**: PR with associated issue in "In Review" status that a selected participant has not approved yet, or orphaned issue a selected participant is a Jira approver of and has not approved yet
+- **Ready for Assignees**: PR with an associated issue assigned to a selected participant, the issue "In Progress", or "In Review" with open tasks on the PR; or orphaned issue assigned to a selected participant whose Jira approvers, if any, have all approved
 - **SYNC**: Indicator that PR branch has conflicts with its parent branch
 - **Commit Ahead**: Number of commits in PR branch not in destination
 - **Commit Behind**: Number of commits in destination not in PR branch

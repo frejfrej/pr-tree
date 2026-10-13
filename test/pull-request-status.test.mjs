@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { otherReviewers, statusClass, syncKey, isDraft, openTaskCount } from '../public/pull-request-status.js';
+import { otherReviewers, statusClass, syncKey, isDraft, openTaskCount, issueApprovals } from '../public/pull-request-status.js';
 
 const author = { uuid: 'author-uuid', display_name: 'Author' };
 const jane = { uuid: 'jane-uuid', display_name: 'Jane' };
@@ -47,4 +47,21 @@ test('isDraft is true for draft: true only', () => {
 test('openTaskCount is task_count when a positive integer, 0 otherwise', () => {
     assert.equal(openTaskCount({ task_count: 3 }), 3);
     for (const taskCount of [0, -1, 1.5, null, undefined, '2']) assert.equal(openTaskCount({ task_count: taskCount }), 0, String(taskCount));
+});
+
+test('issueApprovals: who approved an issue (approvers or not) and the approvers who have not, each once, without Rovo Dev or a nameless person (#146)', () => {
+    const user = (id, displayName) => ({ accountId: id, displayName });
+    const [ann, bob, cleo, dan] = [user('a', 'Ann'), user('b', 'Bob'), user('c', 'Cleo'), user('d', 'Dan')];
+    const approvals = fields => {
+        const { approved, pending } = issueApprovals({ fields });
+        return { approved: approved.map(u => u.displayName), pending: pending.map(u => u.displayName) };
+    };
+    assert.deepEqual(approvals({ approvers: [ann, bob, cleo], approvedBy: [dan, cleo] }), { approved: ['Dan', 'Cleo'], pending: ['Ann', 'Bob'] });
+    assert.deepEqual(approvals({ approvers: [ann, ann], approvedBy: [] }), { approved: [], pending: ['Ann'] }); // once each
+    assert.deepEqual(approvals({ approvers: [ann, user('r', 'Rovo Dev'), { accountId: 'x' }], approvedBy: [] }), { approved: [], pending: ['Ann'] });
+    // Approved under an entry without a name: still approved, under the name the approvers give
+    assert.deepEqual(approvals({ approvers: [ann], approvedBy: [{ accountId: 'a' }] }), { approved: ['Ann'], pending: [] });
+    // No approval fields (an older server) or null ones
+    assert.deepEqual(approvals({}), { approved: [], pending: [] });
+    assert.deepEqual(approvals({ approvers: null, approvedBy: null }), { approved: [], pending: [] });
 });

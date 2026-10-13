@@ -224,6 +224,23 @@ test('the approvers of the orphaned issues are requested through the configured 
     assert.notEqual((await buildProjectData('P', project)).dataHash, data.dataHash);
 });
 
+test('a configured field that is not a list of users still gives arrays of users: a single user is a list of one, anything else is dropped (#146)', async () => {
+    const ann = { accountId: 'ann-id', displayName: 'Ann' };
+    const single = issue('OTHER-2'), text = issue('OTHER-3');
+    single.fields.customfield_1 = ann; // a single-user picker
+    single.fields.customfield_2 = [ann, null, 'Bob'];
+    text.fields.customfield_1 = 'Ann and Bob'; // a text field named by mistake
+    text.fields.customfield_2 = { value: 'Yes' }; // a select field: an object, kept, and left out by the page for want of a name
+    const { buildProjectData } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [issue('PROJ-1')], inReview: [single, text]
+    }), { approvalFields: { approvers: 'customfield_1', approvedBy: 'customfield_2' } });
+    const data = await buildProjectData('P', project);
+    assert.deepEqual(data.orphanedIssues.map(orphan => [orphan.fields.approvers, orphan.fields.approvedBy]), [
+        [[ann], [ann]],
+        [[], [{ value: 'Yes' }]]
+    ]);
+});
+
 test('the parents of the orphaned issues are fetched with the parents of the linked issues, once, and their fix versions inherited', async () => {
     const linked = issue('PROJ-1', { type: 'Sub-task', parent: 'PROJ-100', fixVersions: [] });
     const orphans = [

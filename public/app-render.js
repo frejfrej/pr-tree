@@ -32,7 +32,7 @@
  * unit-tested with node:test.
  */
 
-import { atlassianAgent, isDraft, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
+import { isDraft, issueApprovals, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
 
@@ -338,6 +338,15 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
     return html;
 }
 
+// The avatar of a person, or, without an avatar URL (a Jira user may have
+// none), a disc of the same size named like the image (never an empty
+// <img src="">): the name stays on the row, the status icon in its corner.
+// `title` is the tooltip of the disc, the name by default
+function renderAvatar(url, name, title = name) {
+    if (url) return `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}">`;
+    return `<span class="avatar-placeholder" role="img" aria-label="${escapeHtml(name)}" title="${escapeHtml(title)}"></span>`;
+}
+
 // The open tasks of a pull request (openTaskCount), nothing without one; the
 // icon names what the number counts
 function renderTaskBadge(taskCount) {
@@ -371,11 +380,9 @@ export function renderParticipant(participant, status) {
     }
 
     const name = escapeHtml(participant.display_name);
-    // Without an avatar URL (a Jira user may have none) the icon alone, never an empty <img src="">
-    const avatar = participant.links?.avatar?.href;
     return `
         <span class="image-container" data-author="${name}" data-review-status="${status}">
-            ${avatar ? `<img src="${escapeHtml(avatar)}" alt="${name}">` : ''}
+            ${renderAvatar(participant.links?.avatar?.href, participant.display_name)}
             <i class="fas ${iconClass} icon" ${Object.hasOwn(participantStatusLabels, status) ? `role="img" aria-label="${participantStatusLabels[status]}"` : 'aria-hidden="true"'}></i>
         </span>
     `;
@@ -463,7 +470,7 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
                     <div class="participants">
                         ${renderAssignee(issue.fields.assignee)}
                         <span class="created-date" title="Last updated">${escapeHtml(updated.substring(0, 10))}</span>
-                        ${renderApprovers(issue.fields.approvers, issue.fields.approvedBy)}
+                        ${renderApprovers(issue)}
                     </div>
                     ${staleHtml}
                 </div>
@@ -478,33 +485,35 @@ function renderAssignee(assignee) {
     if (!assignee || !assignee.displayName) {
         return '<span class="orphaned-issue-unassigned">Unassigned</span>';
     }
-    const avatars = assignee.avatarUrls || {};
-    const avatar = avatars['24x24'] || avatars['48x48'];
     const name = escapeHtml(assignee.displayName);
     return `
         <span class="image-container" data-author="${name}" title="Assignee: ${name}">
-            ${avatar ? `<img src="${escapeHtml(avatar)}" alt="${name}">` : ''}
+            ${renderAvatar(jiraAvatar(assignee), assignee.displayName, `Assignee: ${assignee.displayName}`)}
             <i class="fas fa-user icon" aria-hidden="true"></i>
         </span>
     `;
 }
 
 // The Jira approvers of an issue (#146), drawn like the reviewers of a pull
-// request: those who approved first (Approved by, approvers or not), then the
-// approvers who have not; Rovo Dev and a user without a name are left out
-function renderApprovers(approvers = [], approvedBy = []) {
-    const approved = new Set(approvedBy.map(user => user.accountId));
-    const shown = user => user.displayName && user.displayName !== atlassianAgent;
+// request: those who approved first, then the others, as the filter index
+// counts them (issueApprovals)
+function renderApprovers(issue) {
+    const { approved, pending } = issueApprovals(issue);
     return [
-        ...approvedBy.filter(shown).map(user => renderParticipant(jiraUserAsParticipant(user), 'approved')),
-        ...approvers.filter(user => shown(user) && !approved.has(user.accountId)).map(user => renderParticipant(jiraUserAsParticipant(user), 'toReview'))
+        ...approved.map(user => renderParticipant(jiraUserAsParticipant(user), 'approved')),
+        ...pending.map(user => renderParticipant(jiraUserAsParticipant(user), 'toReview'))
     ].join('');
 }
 
-// A Jira user (displayName, avatarUrls by size) as the Bitbucket participant renderParticipant draws
-function jiraUserAsParticipant(user) {
+// The avatar URL of a Jira user (avatarUrls by size), undefined without one
+function jiraAvatar(user) {
     const avatars = user.avatarUrls || {};
-    return { display_name: user.displayName, links: { avatar: { href: avatars['24x24'] || avatars['48x48'] } } };
+    return avatars['24x24'] || avatars['48x48'];
+}
+
+// A Jira user as the Bitbucket participant renderParticipant draws
+function jiraUserAsParticipant(user) {
+    return { display_name: user.displayName, links: { avatar: { href: jiraAvatar(user) } } };
 }
 
 /**

@@ -4,7 +4,8 @@
  * (app-render.js) and the filter index (app-filter.js) both call it, so the
  * band painted and the band the attention rule reads are one computation;
  * the same goes for its reviewers, its draft state, its open tasks and its
- * SYNC key. Pure: no DOM.
+ * SYNC key, and for the Jira approvals of an issue in review without a pull
+ * request (#146). Pure: no DOM.
  */
 
 // The Atlassian agent reviews pull requests too: never a reviewer to count,
@@ -16,6 +17,30 @@ export function otherReviewers(pullRequest) {
     return pullRequest.participants.filter(participant =>
         participant.user.uuid !== pullRequest.author.uuid &&
         participant.user.display_name !== atlassianAgent);
+}
+
+/**
+ * The Jira approvals of an issue in review without a pull request (#146), the
+ * row and the filter index alike: the people who approved it (Approved by,
+ * listed as approvers or not) and the approvers who have not, each person once
+ * by account id (in Approved by order, then Approvers order), with the name
+ * either list gives; Rovo Dev and a person without a name are left out, as
+ * from the reviewers of a pull request.
+ * @param {object} issue - an orphaned issue, fields.approvers and fields.approvedBy as the server renames them
+ * @returns {{ approved: object[], pending: object[] }} Jira users
+ */
+export function issueApprovals(issue) {
+    const approvedBy = issue.fields.approvedBy || [];
+    const approvedIds = new Set(approvedBy.map(user => user.accountId));
+    const people = new Map();
+    for (const user of [...approvedBy, ...(issue.fields.approvers || [])]) {
+        if (!people.get(user.accountId)?.displayName) people.set(user.accountId, user);
+    }
+    const counted = [...people.values()].filter(user => user.displayName && user.displayName !== atlassianAgent);
+    return {
+        approved: counted.filter(user => approvedIds.has(user.accountId)),
+        pending: counted.filter(user => !approvedIds.has(user.accountId))
+    };
 }
 
 /** A draft: its author wants no review yet (the badge, the attention rule, Hide drafts) */

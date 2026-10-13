@@ -87,14 +87,17 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     }
 
     // The approvers of an orphaned issue and those who approved, under the
-    // names the page reads (fields.approvers, fields.approvedBy, always
-    // arrays) instead of the site's custom field ids
+    // names the page reads (fields.approvers, fields.approvedBy) instead of
+    // the site's custom field ids, always arrays of users: a single-user
+    // picker's user becomes a list of one, and what is not a user (an unset
+    // field's null, the text of a field configured by mistake) is dropped
     const { approvers: approversField, approvedBy: approvedByField } = approvalFields;
     const orphanedIssueFields = ['key', 'summary', 'status', 'priority', 'fixVersions', 'assignee', 'parent', 'issuetype', 'updated', approversField, approvedByField]
         .filter(Boolean).join(',');
+    const users = value => (Array.isArray(value) ? value : [value]).filter(user => user !== null && typeof user === 'object');
     function withApprovals(issue) {
         const { [approversField]: approvers, [approvedByField]: approvedBy, ...fields } = issue.fields;
-        return { ...issue, fields: { ...fields, approvers: approvers || [], approvedBy: approvedBy || [] } };
+        return { ...issue, fields: { ...fields, approvers: users(approvers), approvedBy: users(approvedBy) } };
     }
 
     async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {

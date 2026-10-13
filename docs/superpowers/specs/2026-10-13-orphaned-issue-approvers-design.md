@@ -75,7 +75,11 @@ reviewer of a pull request: the avatar with a check (approved) or a question
 mark (not reviewed yet), with the same screen-reader labels; Approved by
 names that are not approvers show as approved. A Jira user (`displayName`,
 `avatarUrls`) is drawn by the same code as a Bitbucket participant; a missing
-avatar draws the icon alone, never an empty `<img src="">`.
+avatar draws a disc of the same size named like the image, never an empty
+`<img src="">`. The row and the index read the approvals from one function,
+`issueApprovals` (pull-request-status.js), so the approvers shown and the
+approvers filtered on cannot diverge (added after the /code-review, with the
+server turning any value of a configured field into an array of users).
 
 ### Fixtures
 
