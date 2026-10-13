@@ -99,7 +99,7 @@
   <div class="filter-item">
     <span class="filter-label"><span id="participantSelectLabel">Participants</span>
       <i class="fas fa-info-circle info-icon"
-         title="Assignees of the linked issues and reviewers of the pull requests"></i>
+         title="Assignees of the linked issues and reviewers of the pull requests; assignees and Jira approvers of the issues in review without a pull request"></i>
     </span>
     <div class="multi-select" id="participantSelect"></div>
   </div>
@@ -107,7 +107,7 @@
   <div class="filter-item">
     <span class="filter-label"><label for="workSelect">Work</label>
       <i class="fas fa-info-circle info-icon"
-         title="All work: every pull request the selected participants review or have a linked issue assigned to. All reviews: every pull request they review. All issues: every pull request with a linked issue assigned to them. Ready for participants: those waiting for them. Ready for reviewers: in review, not a draft and not approved by them. Ready for assignees: with a linked issue assigned to them, in progress, or in review with open tasks."></i>
+         title="All work: every pull request the selected participants review or have a linked issue assigned to. All reviews: every pull request they review. All issues: every pull request with a linked issue assigned to them. Ready for participants: those waiting for them. Ready for reviewers: in review, not a draft and not approved by them. Ready for assignees: with a linked issue assigned to them, in progress, or in review with open tasks. An issue in review without a pull request is reviewed by its Jira approvers: it waits for those who have not approved, then for its assignee."></i>
     </span>
     <select id="workSelect" disabled>
       <option value="all">All work</option>

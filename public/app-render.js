@@ -32,7 +32,7 @@
  * unit-tested with node:test.
  */
 
-import { isDraft, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
+import { atlassianAgent, isDraft, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
 
@@ -371,9 +371,11 @@ export function renderParticipant(participant, status) {
     }
 
     const name = escapeHtml(participant.display_name);
+    // Without an avatar URL (a Jira user may have none) the icon alone, never an empty <img src="">
+    const avatar = participant.links?.avatar?.href;
     return `
         <span class="image-container" data-author="${name}" data-review-status="${status}">
-            <img src="${escapeHtml(participant.links.avatar.href)}" alt="${name}">
+            ${avatar ? `<img src="${escapeHtml(avatar)}" alt="${name}">` : ''}
             <i class="fas ${iconClass} icon" ${Object.hasOwn(participantStatusLabels, status) ? `role="img" aria-label="${participantStatusLabels[status]}"` : 'aria-hidden="true"'}></i>
         </span>
     `;
@@ -401,9 +403,10 @@ const dayMs = 24 * 60 * 60 * 1000;
  * The section of issues in review without a pull request, as a repository
  * block (same header, toggle and counter, so the tree's collapse code and the
  * filter pass treat it alike) with one row per issue: priority, key (with the
- * issue popover), summary, assignee, last update, and a warning when the
- * issue has not been updated for 14 days. Pure; an empty string without
- * issues. `now` (epoch ms) is what the staleness is measured from.
+ * issue popover), summary, assignee, last update, its Jira approvers with
+ * their review status, and a warning when the issue has not been updated for
+ * 14 days. Pure; an empty string without issues. `now` (epoch ms) is what the
+ * staleness is measured from.
  */
 export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } = {}) {
     if (!issues || issues.length === 0) {
@@ -427,7 +430,7 @@ export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } 
 }
 
 // One row of the section, shaped like a pull request: the header (priority,
-// key, summary), then the details (assignee, last update, the stale warning)
+// key, summary), then the details (assignee, last update, approvers, the stale warning)
 function renderOrphanedIssue(issue, jiraSiteName, now) {
     const key = escapeHtml(issue.key);
     const summary = escapeHtml(issue.fields.summary);
@@ -460,6 +463,7 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
                     <div class="participants">
                         ${renderAssignee(issue.fields.assignee)}
                         <span class="created-date" title="Last updated">${escapeHtml(updated.substring(0, 10))}</span>
+                        ${renderApprovers(issue.fields.approvers, issue.fields.approvedBy)}
                     </div>
                     ${staleHtml}
                 </div>
@@ -483,6 +487,24 @@ function renderAssignee(assignee) {
             <i class="fas fa-user icon" aria-hidden="true"></i>
         </span>
     `;
+}
+
+// The Jira approvers of an issue (#146), drawn like the reviewers of a pull
+// request: those who approved first (Approved by, approvers or not), then the
+// approvers who have not; Rovo Dev and a user without a name are left out
+function renderApprovers(approvers = [], approvedBy = []) {
+    const approved = new Set(approvedBy.map(user => user.accountId));
+    const shown = user => user.displayName && user.displayName !== atlassianAgent;
+    return [
+        ...approvedBy.filter(shown).map(user => renderParticipant(jiraUserAsParticipant(user), 'approved')),
+        ...approvers.filter(user => shown(user) && !approved.has(user.accountId)).map(user => renderParticipant(jiraUserAsParticipant(user), 'toReview'))
+    ].join('');
+}
+
+// A Jira user (displayName, avatarUrls by size) as the Bitbucket participant renderParticipant draws
+function jiraUserAsParticipant(user) {
+    const avatars = user.avatarUrls || {};
+    return { display_name: user.displayName, links: { avatar: { href: avatars['24x24'] || avatars['48x48'] } } };
 }
 
 /**

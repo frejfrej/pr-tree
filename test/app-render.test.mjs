@@ -298,6 +298,31 @@ test('renderOrphanedIssues falls back to the 48x48 avatar and never marks an iss
     assert.equal(count(html, '<span class="orphaned-issue-unassigned">Unassigned</span>'), 1);
 });
 
+test('renderOrphanedIssues draws the Jira approvers like the reviewers of a pull request: approved first, then pending (#146)', () => {
+    const user = (name, avatarUrls = { '24x24': `https://avatars/${name}-24.png` }) => ({ accountId: `${name}-id`, displayName: name, avatarUrls });
+    const [ann, cleo, dan] = [user('Ann'), user('Cleo', { '48x48': 'https://avatars/cleo-48.png' }), user('Dan', {})];
+    const html = renderOrphanedIssues([
+        { key: 'PROJ-41', fields: { summary: 'Docs', priority: null, assignee: null, approvers: [ann, cleo, user('Rovo Dev'), { accountId: 'x' }], approvedBy: [cleo, dan] } },
+        { key: 'PROJ-42', fields: { summary: 'From an older server', priority: null, assignee: null } }
+    ], 'site', { now: Date.parse('2026-09-14T12:00:00.000Z') });
+    const statuses = [...html.matchAll(/data-author="([^"]*)" data-review-status="([^"]*)"/g)].map(match => `${match[1]}:${match[2]}`);
+    // Cleo approved, Dan approved without being an approver, Ann has not; Rovo Dev and a nameless user are left out
+    assert.deepEqual(statuses, ['Cleo:approved', 'Dan:approved', 'Ann:toReview']);
+    assert.ok(html.includes('aria-label="approved"') && html.includes('aria-label="not reviewed yet"')); // named for screen readers
+    assert.ok(html.includes('src="https://avatars/Ann-24.png"') && html.includes('src="https://avatars/cleo-48.png"'));
+    assert.equal(count(html, '<img'), 2); // Dan has no avatar: the icon alone, never an empty <img src="">
+    assert.equal(count(html, 'data-review-status='), 3); // the issue without approval fields shows none
+});
+
+test('renderOrphanedIssues escapes the names and avatar URLs of the approvers', () => {
+    const html = renderOrphanedIssues([
+        { key: 'PROJ-43', fields: { summary: 'Docs', priority: null, assignee: null, approvers: [{ accountId: 'a', displayName: 'Ann <"&">', avatarUrls: { '24x24': 'https://avatars/ann.png?a="1"' } }], approvedBy: [] } }
+    ], 'site', { now: Date.parse('2026-09-14T12:00:00.000Z') });
+    assert.ok(!html.includes('Ann <'));
+    assert.ok(html.includes('data-author="Ann &lt;&quot;&amp;&quot;&gt;" data-review-status="toReview"'));
+    assert.ok(html.includes('src="https://avatars/ann.png?a=&quot;1&quot;" alt="Ann &lt;&quot;&amp;&quot;&gt;"'));
+});
+
 test('renderOrphanedIssues counts one issue in the singular', () => {
     const html = renderOrphanedIssues([
         { key: 'PROJ-14', fields: { summary: 'Fourteen', priority: null, assignee: null } }

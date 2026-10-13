@@ -10,6 +10,11 @@ module.exports = {
         siteName: 'xxx', // the subdomain of your Jira site: <siteName>.atlassian.net
         username: 'xxx', // the e-mail of your Atlassian account
         apiKey: 'xxx', // an API token without scopes, from the same page (a Bitbucket-scoped token is rejected by Jira)
+        // Optional: the custom fields naming the approvers of an issue and those who approved (user pickers), so that
+        // an issue in review without a pull request is kept for its approvers; the ids differ per site, find them in
+        // https://<siteName>.atlassian.net/rest/api/3/field (for instance 'customfield_11101' and 'customfield_11785')
+        // approversField: 'customfield_xxxxx',
+        // approvedByField: 'customfield_xxxxx',
     },
     projects: projects,
 };

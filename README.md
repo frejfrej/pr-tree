@@ -21,8 +21,8 @@
 * Displays the status of the pull requests alongside the status of related issues
 * Lists the Jira issues in review that no pull request links, in a section below the tree
     * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC and Hide drafts do not apply) and is hidden when nothing in it matches
-    * Each issue shows its priority, key (with the same popover as in the tree), summary, assignee and last update; an issue not updated for 14 days gets a warning
-    * With participants selected, an issue assigned to one of them is highlighted like a pull request waiting for them and counted in the tab title; "All reviews" and "Ready for reviewers" hide the section
+    * Each issue shows its priority, key (with the same popover as in the tree), summary, assignee, last update and Jira approvers (like the reviewers of a pull request: a check for those who approved, a question mark for the others); an issue not updated for 14 days gets a warning
+    * Reviews without a pull request (documentation, Xray tests) are kept for their approvers: the participant and work filters treat the approvers of an issue (and whoever approved it) as its reviewers and its assignee as its assignee, like for a pull request. The issue waits for its approvers who have not approved, and for its assignee once nobody is pending (no approver, or all approved): it is then highlighted and counted in the tab title for them. The approvers are read from the two Jira fields named in `config.js` (see Installation)
     * The section collapses like a repository ("Collapse all" and "Expand all" include it)
 * Provides initial warnings
     * If the pull request was approved by everyone
@@ -35,7 +35,7 @@
 * Provides a story filter
     * Keeps the pull requests delivering the selected issues: the linked issue itself, or the parent of a linked sub-task
 * Provides a participants filter
-    * Lists the assignees of the linked Jira issues and of the orphaned issues, and the reviewers of the pull requests
+    * Lists the assignees of the linked Jira issues and of the orphaned issues, the reviewers of the pull requests and the Jira approvers of the orphaned issues
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
     * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved (a draft waits for no reviewer), In Progress pull requests and In Review pull requests with open tasks, with a linked issue assigned to them
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
@@ -77,6 +77,7 @@
 * Clone this repository
 * Copy config.js.default to config.js
 * Fill in the configuration values in config.js: the comments say which Atlassian tokens to create and where
+* Optionally, name the Jira custom fields of the approvers of an issue and of those who approved (`approversField` and `approvedByField` in the `jira` block, user pickers, for instance `customfield_11101` and `customfield_11785`): the issues in review without a pull request are then kept for their approvers. The ids are listed by `https://<siteName>.atlassian.net/rest/api/3/field`
 * Update projects.js to include your own projects if needed, and remove those you might not need
 * Open a terminal (Node.js 20.11 or later and `npm` are assumed to be installed; the server uses the `fetch` built into Node)
 * Run `npm ci`
@@ -97,6 +98,7 @@
 
 ## Changelog:
 * Version 3.1.0
+    * The Jira issues in review without a pull request show their approvers and are kept for them: with participants selected, an approver keeps the issue under "All work" and "All reviews" ("All reviews" and "Ready for reviewers" no longer hide the section), and an approver who has not approved sees it waiting for them (highlighted, counted in the tab title, kept by "Ready for reviewers" and "Ready for participants"); while an approver is pending, the issue no longer waits for its assignee, who gets it back once every approver approved. The approvers join the Participants list. Set `approversField` and `approvedByField` in `config.js` to the ids of the Jira fields (see Installation); without them nothing changes. Fixture mode: about half of the orphaned issues have approvers (#146)
     * No behaviour change: Work, Hide drafts and SYNC are rows of the filter registry like the multi-selects, so their state, URL parameter, reset by "Clear filters", count in the badge and restore from the URL come from one place (#136)
     * An In Review pull request with open tasks waits for the assignee of its linked issues: with them selected, it is highlighted, counted in the tab title and kept by "Ready for assignees" and "Ready for participants", whether every reviewer approved or not, draft or not; before, only an In Progress pull request waited for its assignee. Its reviewers who have not approved still see it as waiting for them; the tasks left on a pull request whose issues are resolved wait for nobody (#138)
     * The folded repositories, branches and stacked pull requests survive a reload: the browser keeps them per project (localStorage), so a reloaded or reopened tab, and a switch to another project and back, show the tree folded as it was left; "Collapse all" and "Expand all" are kept like any fold. A merged pull request leaves the record at the next refresh; a repository or a branch stays folded while it has no pull request. The selected row, when a fold hides it, gives way to the folded pull request or branch that holds it, and the page no longer selects a first pull request out of sight; the address is unchanged (#142)

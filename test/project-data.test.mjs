@@ -190,7 +190,8 @@ test('the orphaned issues are the ones in review without a pull request, every p
         pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linked], inReview: [linked, ...orphans]
     }));
     const data = await buildProjectData('P', project);
-    assert.deepEqual(data.orphanedIssues, orphans); // both pages, in order, the linked one dropped, nothing added
+    // Both pages, in order, the linked one dropped; no approver without the approval fields configured
+    assert.deepEqual(data.orphanedIssues, orphans.map(orphan => ({ ...orphan, fields: { ...orphan.fields, approvers: [], approvedBy: [] } })));
     const urls = urlsMatching(requests, /In%20Review/);
     assert.deepEqual(urls.map(url => new URL(url).searchParams.get('nextPageToken')), [null, 'page-100']);
     for (const url of urls) {
@@ -199,6 +200,28 @@ test('the orphaned issues are the ones in review without a pull request, every p
         assert.equal(new URL(url).searchParams.get('maxResults'), '100');
     }
     assert.ok(logs.access.includes('Found 119 orphaned issues in review status'));
+});
+
+test('the approvers of the orphaned issues are requested through the configured fields and renamed approvers and approvedBy (#146)', async () => {
+    const ann = { accountId: 'ann-id', displayName: 'Ann' }, bob = { accountId: 'bob-id', displayName: 'Bob' };
+    const reviewed = issue('OTHER-2'), unset = issue('OTHER-3');
+    reviewed.fields.customfield_1 = [ann, bob];
+    reviewed.fields.customfield_2 = [bob];
+    unset.fields.customfield_1 = null; // Jira's value of an empty user picker
+    unset.fields.customfield_2 = null;
+    const { buildProjectData, requests } = setUp(fakeAtlassian({
+        pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [issue('PROJ-1')], inReview: [reviewed, unset]
+    }), { approvalFields: { approvers: 'customfield_1', approvedBy: 'customfield_2' } });
+    const data = await buildProjectData('P', project);
+    const [url] = urlsMatching(requests, /In%20Review/);
+    assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated,customfield_1,customfield_2');
+    assert.deepEqual(data.orphanedIssues.map(orphan => orphan.fields), [
+        { ...issue('OTHER-2').fields, approvers: [ann, bob], approvedBy: [bob] },
+        { ...issue('OTHER-3').fields, approvers: [], approvedBy: [] }
+    ]); // the site's field ids are gone
+    // An approval changes the hash: the page repaints
+    reviewed.fields.customfield_2 = [ann, bob];
+    assert.notEqual((await buildProjectData('P', project)).dataHash, data.dataHash);
 });
 
 test('the parents of the orphaned issues are fetched with the parents of the linked issues, once, and their fix versions inherited', async () => {
