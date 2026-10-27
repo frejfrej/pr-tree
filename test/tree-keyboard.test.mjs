@@ -6,7 +6,8 @@ import { node, fakeDocument } from './fake-dom.mjs';
 
 function pullRequest(id, { root = false, issue = true } = {}) {
     return node({ classes: ['pull-request', ...(root ? ['pull-request-root'] : [])], dataset: { id } },
-        node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] })),
+        node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] }),
+            node({ tag: 'span', classes: ['copy-buttons'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-checkout'] }))),
         ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }))] : []));
 }
 
@@ -346,6 +347,25 @@ test('o clicks the row\'s own link (the issue of an orphaned issue), i its first
     assert.equal(handleTreeKey(key('o', outside), context(pullRequest('detached'))), false);
     assert.equal(handleTreeKey(key('q', rows.one), context()), false);
     assert.equal(clicked().length, 4);
+});
+
+test('c clicks the checkout copy button of the focused or the selected pull request, b its branch name copy button; nothing on a header, an orphaned issue, a row folded away or without a row', () => {
+    const { rows, outside, document, context } = sampleTree();
+    const clicked = () => document.events.filter(([kind]) => kind === 'click').map(([, element]) => element);
+    assert.equal(handleTreeKey(key('c', rows.two), context()), true);
+    assert.equal(handleTreeKey(key('b', outside), context(rows.three)), true);
+    assert.equal(handleTreeKey(key('b', rows.one.querySelector('.pull-request-link')), context()), true);
+    assert.deepEqual(clicked(), [
+        rows.two.querySelector('.copy-checkout'),
+        rows.three.querySelector('.copy-branch'),
+        rows.one.querySelector('.copy-branch')
+    ]);
+    for (const [name, target, selectedRow] of [['c', rows.branch, null], ['b', rows.branch, null], ['c', rows.orphan, null], ['b', outside, rows.orphan], ['c', outside, null]]) {
+        assert.equal(handleTreeKey(key(name, target), context(selectedRow)), false, `${name} on ${target === outside ? 'the page' : 'a row'}`);
+    }
+    setPullRequestCollapsed(rows.one, true);
+    assert.equal(handleTreeKey(key('c', outside), context(rows.two)), false);
+    assert.equal(clicked().length, 3);
 });
 
 test('the row or the control of a row holding the focus is focused again, without scrolling, among the rows of the next pass, when it is still in sight', () => {
