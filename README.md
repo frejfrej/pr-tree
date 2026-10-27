@@ -51,7 +51,7 @@
     * Back and Forward put the filters, and the project, back as the URL describes
 * Displays Ahead (green) and Behind (red) commit counts
 * Marks draft pull requests with a "Draft" badge next to the title, and shows the open tasks of a pull request in an amber badge
-* Two buttons after the title of a pull request copy its source branch name and the command checking it out (`git checkout <branch>`); the tooltip shows what is copied, the icon turns into a check once copied. A branch name holding a character the shell would read (`$`, `;`, a quote...) is put in single quotes in the command, so pasting it runs nothing else
+* Two buttons after the title of a pull request copy its source branch name and the command checking it out (`git checkout <branch> --`); the tooltip shows what is copied, the icon turns into a check once copied. A branch name holding a character the shell would read (`$`, `;`, a quote...) is put in single quotes in the command, so pasting it runs nothing else; the final `--` makes git read the name as a branch only, never as a file to restore (a branch named `docs` not fetched yet fails instead of discarding the changes in `docs/`)
 * Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
     * Performed every 2 minutes
@@ -99,7 +99,7 @@
 
 ## Changelog:
 * Version 3.2.0
-    * Two buttons after the title of each pull request copy its source branch name and its checkout command, `git checkout <branch>`, to paste in a terminal; `c` and `b` copy them for the selected pull request. The icon turns into a check for a moment once copied, or into a cross with the reason in its tooltip when the browser refuses (the clipboard needs the page on localhost or https). A branch name with a character the shell would read (`$`, `;`, `|`, a backtick, a quote) is put in single quotes in the command: a branch named to run a command when pasted stays a branch name
+    * Two buttons after the title of each pull request copy its source branch name and its checkout command, `git checkout <branch> --`, to paste in a terminal; `c` and `b` copy them for the selected pull request. The icon turns into a check for a moment once copied, or into a cross with the reason in its tooltip when the browser refuses (the clipboard needs the page on localhost or https). A branch name with a character the shell would read (`$`, `;`, `|`, a backtick, a quote) is put in single quotes in the command: a branch named to run a command when pasted stays a branch name. The final `--` keeps git from reading the name as a file: a branch named like a folder of the repository and not fetched yet fails instead of restoring that folder over your changes
 * Version 3.1.2
     * An In Review pull request that every reviewer approved but with open tasks no longer shows as approved (green band): it shows as in progress (amber band), the assignee's work, as the participant filter already treated it; it turns green once the tasks are resolved
 * Version 3.1.1

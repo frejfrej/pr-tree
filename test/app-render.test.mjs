@@ -461,9 +461,9 @@ test('renderRepositories gives every collapsible block a named toggle button tha
 test('renderRepositories gives each pull request a button copying its branch name and one copying its checkout command, after the title', () => {
     const html = renderSample();
     assert.ok(html.includes('<button type="button" class="copy-button copy-branch" data-copy="feat-a" title="Copy: feat-a" aria-label="Copy the branch name feat-a">'));
-    assert.ok(html.includes('<button type="button" class="copy-button copy-checkout" data-copy="git checkout feat-a" title="Copy: git checkout feat-a" aria-label="Copy git checkout feat-a">'));
+    assert.ok(html.includes('<button type="button" class="copy-button copy-checkout" data-copy="git checkout feat-a --" title="Copy: git checkout feat-a --" aria-label="Copy git checkout feat-a --">'));
     for (const branch of ['feat-b', 'feat-c1', 'feat-c2']) {
-        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="git checkout ${branch}"`), branch);
+        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="git checkout ${branch} --"`), branch);
     }
     assert.equal(count(html, 'class="copy-button copy-branch"'), pullRequests.length);
     assert.equal(count(html, 'class="copy-button copy-checkout"'), pullRequests.length);
@@ -495,5 +495,5 @@ test('a hostile branch name is escaped in every attribute of the copy buttons, a
         const command = checkoutCommand(name);
         assert.ok(html.includes(`data-copy="${escapeHtml(command)}" title="Copy: ${escapeHtml(command)}" aria-label="Copy ${escapeHtml(command)}"`), name);
     }
-    assert.equal(checkoutCommand("a;b`c'd"), "git checkout 'a;b`c'\\''d'");
+    assert.equal(checkoutCommand("a;b`c'd"), "git checkout 'a;b`c'\\''d' --");
 });
