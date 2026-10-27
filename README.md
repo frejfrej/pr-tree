@@ -12,7 +12,7 @@
     * What is folded is remembered by the browser, per project: a reload, a tab opened again or a switch to another project and back finds the repositories, branches and stacks folded as they were left (not the address: a shared link opens everything unfolded)
     * Every toggle is a button: Tab reaches it, Enter or Space folds or unfolds, and its state is announced
     * One row of the tree is selected, marked by a bar on its left edge: the first pull request when the page opens, then the one chosen with the keys, a click or Tab. The address keeps it (`selected=`), so a reload, a shared link or Back selects it again (and scrolls to it); when that row is gone, or a filter hides it, the first pull request is selected until it comes back
-    * Keyboard navigation of the tree: ↓ / `j` and ↑ / `k` select the next and previous row shown (each branch header, the pull requests under it, then the Jira issues without a pull request), skipping what is filtered out or folded; → unfolds the selected branch or pull request's stack, or goes to its first pull request when it is unfolded; ← folds it, or goes to its parent (the branch header for a root pull request) when it is folded or stacks nothing; `o` opens the row in Bitbucket (the branch for a header, an issue in Jira), `i` its first Jira issue, in a new tab; Enter or Space on the focused row folds or unfolds its stack; `x` goes back to the root pull request of the stack and folds it. The keys do nothing while typing in a box or with a filter list open; Page Up, Page Down and Space scroll the tree, and after a click in the sidebar or the banner the arrows scroll there
+    * Keyboard navigation of the tree: ↓ / `j` and ↑ / `k` select the next and previous row shown (each branch header, the pull requests under it, then the Jira issues without a pull request), skipping what is filtered out or folded; → unfolds the selected branch or pull request's stack, or goes to its first pull request when it is unfolded; ← folds it, or goes to its parent (the branch header for a root pull request) when it is folded or stacks nothing; `o` opens the row in Bitbucket (the branch for a header, an issue in Jira), `i` its first Jira issue, in a new tab; `c` copies the `git checkout` command of the selected pull request's branch, `b` the branch name; Enter or Space on the focused row folds or unfolds its stack; `x` goes back to the root pull request of the stack and folds it. The keys do nothing while typing in a box or with a filter list open; Page Up, Page Down and Space scroll the tree, and after a click in the sidebar or the banner the arrows scroll there
     * The tab title shows the selected project and, when participants are selected, the number of pull requests and orphaned issues waiting for them
 * Light and dark themes, following the system setting until the theme toggle is used
 * Lists all projects from the configuration file in a dropdown selector
@@ -51,6 +51,7 @@
     * Back and Forward put the filters, and the project, back as the URL describes
 * Displays Ahead (green) and Behind (red) commit counts
 * Marks draft pull requests with a "Draft" badge next to the title, and shows the open tasks of a pull request in an amber badge
+* Two buttons after the title of a pull request copy its source branch name and the command checking it out (`git checkout <branch>`); the tooltip shows what is copied, the icon turns into a check once copied. A branch name holding a character the shell would read (`$`, `;`, a quote...) is put in single quotes in the command, so pasting it runs nothing else
 * Smart reload: Automatically updates the page when new data is available without full page refresh
     * Repaint is only done if there are changes in the data returned by the server
     * Performed every 2 minutes
@@ -97,6 +98,8 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.2.0
+    * Two buttons after the title of each pull request copy its source branch name and its checkout command, `git checkout <branch>`, to paste in a terminal; `c` and `b` copy them for the selected pull request. The icon turns into a check for a moment once copied, or into a cross with the reason in its tooltip when the browser refuses (the clipboard needs the page on localhost or https). A branch name with a character the shell would read (`$`, `;`, `|`, a backtick, a quote) is put in single quotes in the command: a branch named to run a command when pasted stays a branch name
 * Version 3.1.2
     * An In Review pull request that every reviewer approved but with open tasks no longer shows as approved (green band): it shows as in progress (amber band), the assignee's work, as the participant filter already treated it; it turns green once the tasks are resolved
 * Version 3.1.1

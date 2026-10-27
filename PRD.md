@@ -123,9 +123,10 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.5: Show associated Jira issues with status badges
 - F2.6: Indicate when PR has conflicts with parent branch
 - F2.7: Mark draft pull requests with a "Draft" badge and show the number of open tasks of a pull request
-- F2.8: Walk the tree from the keyboard: ↓ / `j` and ↑ / `k` select the next and previous row shown (each root-branch header, the pull requests under it, then orphaned issues), → unfolds the selected branch or stack or selects its first pull request, ← folds it or selects its parent (a root pull request's branch header), `o` opens the selected row, `i` its first Jira issue, Enter or Space fold or unfold the focused row's stack, `x` goes back to the root of the stack and folds it; ignored while typing, in an open filter list or with the help open
+- F2.8: Walk the tree from the keyboard: ↓ / `j` and ↑ / `k` select the next and previous row shown (each root-branch header, the pull requests under it, then orphaned issues), → unfolds the selected branch or stack or selects its first pull request, ← folds it or selects its parent (a root pull request's branch header), `o` opens the selected row, `i` its first Jira issue, `c` and `b` copy the checkout command and the branch name of the selected pull request (F2.11), Enter or Space fold or unfold the focused row's stack, `x` goes back to the root of the stack and folds it; ignored while typing, in an open filter list or with the help open
 - F2.9: One row is selected whenever a row is shown, the one the URL names (`selected`) when it is shown, the first pull request otherwise; a selection by the user (a key, a click, Tab) replaces the URL entry, a refresh or a filter change never writes it; a load and Back/Forward scroll the selected row into view
 - F2.10: The folded repositories, root branches and stacked pull requests of a project are kept by the browser (localStorage, per project, never the URL) and restored at the project's first render (page load, reopened tab, project switch); written after each user fold (click, key, Collapse all, Expand all), the pull requests no longer rendered pruned after every render; a selected row a fold hides gives way to the row in sight that folds it
+- F2.11: Two buttons after the title of each pull request copy its source branch name and `git checkout <branch>`, the name in single quotes unless made only of letters, digits and `. _ / - + @ = , %` (a branch name may hold `$`, `;`, `|`, a backtick or quotes, which a pasted command would run); the tooltip says what is copied, the button shows for 1.5 s that it copied or why it failed (the clipboard API needs a secure context), and a status region tells screen readers; none on a root-branch header nor an orphaned issue
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time
@@ -404,7 +405,7 @@ The application integrates with a Jira workflow where:
    - URL parameters in app-url.js, banner, sidebar, theme, help and shortcuts in app-shell.js, the multi-select component in multi-select.js
    - Filtering logic in app-filter.js (index built per data load, single pass over the tree, nothing read back from the rendered tree)
    - Filter registry in filter-registry.js (the multi-selects and the single-value filters: state key, element, URL parameter, default), the status band of a pull request in pull-request-status.js
-   - Tree toggles and the pane's click handler in tree-toggle.js, the tree keys in tree-keyboard.js
+   - Tree toggles and the pane's click handler in tree-toggle.js, the tree keys in tree-keyboard.js, the copy buttons in copy-branch.js
    - Counter display in counter-utils.js
 
 4. **Fixtures** (fixtures/)
