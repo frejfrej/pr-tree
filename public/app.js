@@ -2,6 +2,7 @@ import { initializeFilter, filterBranches, countActiveFilters } from './app-filt
 import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
+import { handleCopyClick } from './copy-branch.js';
 import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates, onFoldChange } from './tree-toggle.js';
 import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
@@ -686,7 +687,8 @@ document.addEventListener('DOMContentLoaded', function() {
     loadProjects();
     initializePopovers();
     const treePane = document.getElementById('pull-requests');
-    treePane.addEventListener('click', handleTreeClick);
+    // The pane's one click listener: a copy button copies, anything else may toggle a block
+    treePane.addEventListener('click', event => handleCopyClick(event) || handleTreeClick(event));
     // Every fold of the user's, by a click, a key or Collapse all, is kept for the next page load
     onFoldChange(saveCollapseState);
     // A click in a row, or Tab into one, selects it (a row is focusable)
