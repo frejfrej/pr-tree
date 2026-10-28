@@ -7,7 +7,8 @@
 Reviewed with the user: the placement (icons after the title, then moved
 after the open tasks on 2026-10-28), the keys (`c`, `b`), the module
 (option A below) and, after the implementation, `git switch` in place of
-`git checkout` (2026-10-28). The rest is *Decided*.
+`git checkout` (2026-10-28), then a third action, the branch opened in
+Sourcetree (2026-10-28, §3.5). The rest is *Decided*.
 
 ## 1. Problem
 
@@ -130,6 +131,52 @@ root-branch header or an orphaned issue, or with no row, the key is not
 taken. app-shell.js's guards (typing, modifiers, help, open multi-select,
 drawer) apply unchanged; neither key is used elsewhere.
 
+### 3.5 Open in Sourcetree
+
+Asked on 2026-10-28, after the copy buttons: a third control, after them,
+checking the branch out in Sourcetree. *Decided* from what the two
+products do, not from forum posts (the `sourcetree://` scheme has no
+public documentation):
+
+- **Sourcetree for Mac 4.2.19** (downloaded and inspected, never run)
+  registers `sourcetree://` and parses
+  `sourcetree://(checkoutRef|cloneRepo)?<query>`, with the keys `ref`,
+  `cloneUrl` and `type` (`bitbucket` or `stash`). Its link window lists
+  "Your existing clones of this project" and checks the branch out in
+  the one chosen, or clones afresh; with uncommitted changes it asks
+  whether to keep, stash or discard them. A clone whose remote does not
+  match the link is refused ("Remote details do not match").
+- **Bitbucket Cloud's "Check out in SourceTree"** (the branch page, read
+  on a public repository): `sourcetree://checkoutRef?` followed by
+  `ref=refs/heads/<branch>`, `cloneUrl=<the https clone URL>` and
+  `type=bitbucket`, each value URL-encoded, always the https clone URL
+  (`getCloneUrl("https", repository)`, whatever the user's SSH keys).
+  Logged out: `https://bitbucket.org/<workspace>/<repository>.git`.
+
+So the link is `sourcetreeUrl(branch, repositoryFullName)`, pure, in
+copy-branch.js: those three keys in that order, `encodeURIComponent`
+on each value, the clone URL
+`https://bitbucket.org/<source.repository.full_name>.git` (the source
+repository: a fork's for a pull request from a fork, which Sourcetree
+then offers to clone, #127). Whole href through `escapeHtml` (its `&`
+included). No link without a full name.
+
+The row: an `<a class="sourcetree-link">` after the two buttons, in the
+same group (`<span class="branch-actions">`, was `copy-buttons`), icon
+`fab fa-sourcetree` (aria-hidden), `title="Check out in Sourcetree"`,
+`aria-label="Check out <branch> in Sourcetree"`, no `target`: the
+browser hands the link to Sourcetree (asking the first time) and the
+page stays. Drawn like the buttons (muted, text colour on a hovered,
+focused or selected row, primary on hover, no underline). A click
+focuses it, so the row is selected; tree-toggle.js leaves links alone.
+
+*Not verified*: logged in, Bitbucket's clone URL probably carries the
+user's name (`https://<user>@bitbucket.org/…`, the form of the user's
+clones); Sourcetree's matcher takes the user name apart
+(`…cloneUrl:username:`), so the anonymous form should match those
+clones. Sourcetree is not installed on the user's Mac: the first use
+checks it.
+
 ## 4. Turned down
 
 - **Copy logic in `handleTreeClick`** (option B): one fewer import in
@@ -148,6 +195,11 @@ drawer) apply unchanged; neither key is used elsewhere.
   the dashboard runs on localhost, and the failure says why.
 - **Buttons on root-branch headers**: a destination branch is checked out
   already, or copied from Bitbucket; nothing asked for it.
+- **The SSH clone URL in the Sourcetree link**, or a setting choosing it:
+  Bitbucket's own link is always https, and the user's clones are https.
+- **The user name in the Sourcetree clone URL**: it would take a request
+  for the account's name; Bitbucket's anonymous link has none.
+- **A key for Sourcetree**: not asked; `c` and `b` cover the copies.
 
 ## 5. Tests
 

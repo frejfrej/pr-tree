@@ -9,7 +9,7 @@ function pullRequest(id, { root = false, issue = true } = {}) {
         node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] })),
         ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }))] : []),
         node({ classes: ['participants'] },
-            node({ tag: 'span', classes: ['copy-buttons'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-switch'] }))));
+            node({ tag: 'span', classes: ['branch-actions'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-switch'] }))));
 }
 
 // The header of branch main; repo-one/1 stacks 2, which stacks 3; repo-one/4 stacks nothing and links no issue; then one orphaned issue

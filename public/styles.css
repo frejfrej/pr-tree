@@ -1199,10 +1199,11 @@ select:disabled {
     color: var(--warning-strong);
 }
 
-/* The copy buttons of a pull request (copy-branch.js): muted until the row is
-   hovered, holds the focus or is selected; the class of the button chooses
-   its icon, like the chevrons of a toggle */
-.copy-buttons {
+/* The branch actions of a pull request (copy-branch.js), two copy buttons
+   and the Sourcetree link: muted until the row is hovered, holds the focus
+   or is selected; the class of a copy button chooses its icon, like the
+   chevrons of a toggle */
+.branch-actions {
     display: inline-flex;
     flex-shrink: 0;
     gap: 2px;
@@ -1218,14 +1219,27 @@ select:disabled {
     cursor: pointer;
 }
 
+/* Drawn like the buttons, not like the links of a row (bold, primary, underlined) */
+.pull-request .sourcetree-link {
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: normal;
+}
+
 .pull-request:hover .copy-button,
 .pull-request:focus-within .copy-button,
-.pull-request.selected .copy-button {
+.pull-request.selected .copy-button,
+.pull-request:hover .sourcetree-link,
+.pull-request:focus-within .sourcetree-link,
+.pull-request.selected .sourcetree-link {
     color: var(--text-color);
 }
 
-.pull-request .copy-button:hover {
+.pull-request .copy-button:hover,
+.pull-request .sourcetree-link:hover {
     color: var(--primary-color);
+    text-decoration: none;
 }
 
 .copy-button .copied-icon,

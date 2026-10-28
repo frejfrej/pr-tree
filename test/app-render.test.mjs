@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
-import { switchCommand } from '../public/copy-branch.js';
+import { sourcetreeUrl, switchCommand } from '../public/copy-branch.js';
 import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
@@ -30,7 +30,7 @@ function pullRequest(id, { repo = 'repo-one', source, destination, participants 
         source: {
             branch: { name: source },
             commit: { hash: `s${id}` },
-            repository: { name: repo, links: { html: { href: `https://bitbucket.org/ws/${repo}` } } }
+            repository: { name: repo, full_name: `ws/${repo}`, links: { html: { href: `https://bitbucket.org/ws/${repo}` } } }
         },
         destination: { branch: { name: destination }, commit: { hash: `d${id}` }, repository: { name: repo } },
         links: { html: { href: `https://bitbucket.org/ws/${repo}/pull-requests/${id}` } },
@@ -469,10 +469,10 @@ test('renderRepositories gives each pull request a button copying its branch nam
     assert.equal(count(html, 'class="copy-button copy-branch"'), pullRequests.length);
     assert.equal(count(html, 'class="copy-button copy-switch"'), pullRequests.length);
     // Last on the participants line, after the open tasks when there are some; nothing in the header
-    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<\/div>\s*<\/div>\s*<div class="pull-request-issues">[\s\S]*?<div class="participants">[\s\S]*?<span class="copy-buttons">\s*<button type="button" class="copy-button copy-branch"[\s\S]*?<\/span>\s*<\/div>/);
+    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<\/div>\s*<\/div>\s*<div class="pull-request-issues">[\s\S]*?<div class="participants">[\s\S]*?<span class="branch-actions">\s*<button type="button" class="copy-button copy-branch"[\s\S]*?<\/span>\s*<\/div>/);
     const withTasks = renderRepositories([{ ...stacked, draft: true, task_count: 2 }], {}, [], 'site');
     assert.match(withTasks, /<span class="draft-badge"[^>]*>Draft<\/span>\s*<\/div>/);
-    assert.match(withTasks, /aria-label="open tasks"><\/i>2\s*<\/span>\s*<span class="copy-buttons">/);
+    assert.match(withTasks, /aria-label="open tasks"><\/i>2\s*<\/span>\s*<span class="branch-actions">/);
     // Each draws its icon, the copied and the failed icons, the class of the button choosing the one shown
     assert.equal(count(html, '<i class="fas fa-copy copy-icon" aria-hidden="true"></i>'), pullRequests.length);
     assert.equal(count(html, '<i class="fas fa-terminal copy-icon" aria-hidden="true"></i>'), pullRequests.length);
@@ -480,22 +480,37 @@ test('renderRepositories gives each pull request a button copying its branch nam
     assert.equal(count(html, '<i class="fas fa-times copy-failed-icon" aria-hidden="true"></i>'), 2 * pullRequests.length);
 });
 
+// The Sourcetree link: Bitbucket's own "Check out in SourceTree" (copy-branch.js),
+// after the copy buttons; the browser hands it to Sourcetree, the page stays
+test('renderRepositories gives each pull request a link checking its branch out in Sourcetree, after the copy buttons', () => {
+    const html = renderSample();
+    assert.ok(html.includes('<a class="sourcetree-link" href="sourcetree://checkoutRef?ref=refs%2Fheads%2Ffeat-a&amp;cloneUrl=https%3A%2F%2Fbitbucket.org%2Fws%2Frepo-one.git&amp;type=bitbucket" title="Check out in Sourcetree" aria-label="Check out feat-a in Sourcetree">'));
+    assert.equal(count(html, 'class="sourcetree-link"'), pullRequests.length);
+    assert.equal(count(html, '<i class="fab fa-sourcetree" aria-hidden="true"></i>'), pullRequests.length);
+    assert.match(html, /class="copy-button copy-switch"[^>]*>[\s\S]*?<\/button>\s*<a class="sourcetree-link"[^>]*>\s*<i class="fab fa-sourcetree" aria-hidden="true"><\/i>\s*<\/a>\s*<\/span>\s*<\/div>/);
+    assert.ok(!/<a class="sourcetree-link"[^>]*target=/.test(html));
+    const { full_name, ...withoutFullName } = stacked.source.repository;
+    const noFullName = renderRepositories([{ ...stacked, source: { ...stacked.source, repository: withoutFullName } }], {}, [], 'site');
+    assert.ok(noFullName.includes('copy-switch') && !noFullName.includes('sourcetree-link'));
+});
+
 test('the root-branch headers and the orphaned issues have no copy button', () => {
     const html = renderSample();
     const headers = Array.from(html.matchAll(/<div class="root-branch-header"[\s\S]*?<\/h3>/g), ([header]) => header);
     assert.equal(headers.length, 2); // main of repo-one, develop of repo-two
-    assert.ok(headers.every(header => !header.includes('copy-button')));
+    assert.ok(headers.every(header => !header.includes('copy-button') && !header.includes('sourcetree-link')));
     const orphaned = renderOrphanedIssues([{ key: 'PROJ-9', fields: { summary: 'Alone', status: { name: 'In Review' } } }], 'site');
-    assert.ok(orphaned.includes('PROJ-9') && !orphaned.includes('copy-button'));
+    assert.ok(orphaned.includes('PROJ-9') && !orphaned.includes('copy-button') && !orphaned.includes('sourcetree-link'));
 });
 
-test('a hostile branch name is escaped in every attribute of the copy buttons, and quoted in the command', () => {
+test('a hostile branch name is escaped in every attribute of the copy buttons and the Sourcetree link, and quoted in the command', () => {
     for (const name of ['a"><img/src=x/onerror=alert(1)>', "a;b`c'd"]) {
         const html = renderRepositories([pullRequest(9, { source: name, destination: 'main' })], {}, [], 'site');
         assert.ok(!html.includes('<img/src'), name);
         assert.ok(html.includes(`data-copy="${escapeHtml(name)}" title="Copy: ${escapeHtml(name)}" aria-label="Copy the branch name ${escapeHtml(name)}"`), name);
         const command = switchCommand(name);
         assert.ok(html.includes(`data-copy="${escapeHtml(command)}" title="Copy: ${escapeHtml(command)}" aria-label="Copy ${escapeHtml(command)}"`), name);
+        assert.ok(html.includes(`href="${escapeHtml(sourcetreeUrl(name, 'ws/repo-one'))}" title="Check out in Sourcetree" aria-label="Check out ${escapeHtml(name)} in Sourcetree"`), name);
     }
     assert.equal(switchCommand("a;b`c'd"), "git switch 'a;b`c'\\''d'");
 });

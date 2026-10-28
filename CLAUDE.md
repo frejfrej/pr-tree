@@ -46,7 +46,7 @@ public/app-shell.js    Banner, sidebar, theme, help, keyboard shortcuts, tab tit
 public/filter-registry.js      The five multi-select filters (key, element, URL parameter) and the single-value ones (Work, Hide drafts, SYNC: default, URL form, control property), defaultFilters()
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
 public/pull-request-key.mjs    Keys naming the repository: pull request "repository/id", root branch "repository:branch" (.mjs: the server imports it)
-public/copy-branch.js  The copy buttons of a pull request: branch name, `git switch` with the name shell-quoted, feedback, status region
+public/copy-branch.js  The branch actions of a pull request: copy the branch name, copy `git switch` with the name shell-quoted (feedback, status region), the Sourcetree link
 public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders and, per project in localStorage, across reloads
 public/local-storage.js        localStorage read and written without throwing (theme, sidebar, collapse state)
 public/tree-keyboard.js        The tree keys (arrows, j, k, o, i, c, b, Enter, Space, x) over the rows of the last filter pass (branch headers included), the selected row, focus kept across re-renders

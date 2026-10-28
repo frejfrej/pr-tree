@@ -1,6 +1,6 @@
 /**
- * The copy buttons of a pull request: its source branch name, and the
- * command switching to it.
+ * The branch actions of a pull request: copy its source branch name, copy
+ * the command switching to it, check it out in Sourcetree.
  *
  * A branch name is untrusted text bound for a shell: git allows `$`, `;`,
  * `|`, `&`, a backtick, parentheses, quotes and `!` in it, so anyone who
@@ -12,9 +12,16 @@
  * changes in it), and a name starting with `-` (`refs/heads/--detach` can
  * be pushed) follows `--end-of-options` instead of reading as an option.
  *
- * app-render.js draws the buttons, each carrying what it copies in
- * `data-copy` and its three icons (copy, copied, failed), the class of the
- * button choosing the one shown, like the chevrons of a toggle. app.js
+ * The Sourcetree link is the one of Bitbucket's own "Check out in
+ * SourceTree" (its branch page): `sourcetree://checkoutRef?` with `ref`,
+ * the https `cloneUrl` and `type=bitbucket`, the keys Sourcetree reads.
+ * Sourcetree asks which clone to check the branch out in, and what to do
+ * with uncommitted changes. The page only links: the browser hands the link
+ * to Sourcetree.
+ *
+ * app-render.js draws the link, and the buttons, each carrying what it
+ * copies in `data-copy` and its three icons (copy, copied, failed), the
+ * class of the button choosing the one shown, like the chevrons of a toggle. app.js
  * calls handleCopyClick from the tree pane's one click listener; the keys
  * `c` and `b` (tree-keyboard.js) click the buttons. The feedback lasts
  * 1.5 s: the class `copied` or `copy-failed`, the tooltip, and the
@@ -36,6 +43,17 @@ const shownFeedback = new WeakMap();
 export function switchCommand(branch) {
     const word = /^[\w./+@=,%-]+$/.test(branch) ? branch : `'${branch.replaceAll("'", "'\\''")}'`;
     return `git switch ${branch.startsWith('-') ? '--end-of-options ' : ''}${word}`;
+}
+
+/** The link checking `branch` out in Sourcetree, as Bitbucket writes it; null without the repository's full name ("workspace/repository") */
+export function sourcetreeUrl(branch, repositoryFullName) {
+    if (!repositoryFullName) return null;
+    const query = [
+        ['ref', `refs/heads/${branch}`],
+        ['cloneUrl', `https://bitbucket.org/${repositoryFullName}.git`],
+        ['type', 'bitbucket']
+    ].map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');
+    return `sourcetree://checkoutRef?${query}`;
 }
 
 function showFeedback(button, outcome, message, { status, setTimeout, clearTimeout }) {

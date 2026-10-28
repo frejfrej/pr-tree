@@ -36,7 +36,7 @@
 import { isDraft, issueApprovals, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
-import { switchCommand } from './copy-branch.js';
+import { sourcetreeUrl, switchCommand } from './copy-branch.js';
 
 // The one escape of the page, shared with the filter options (escape-html.js)
 export { escapeHtml };
@@ -61,12 +61,24 @@ function copyButton(kind, icon, text, label) {
                             </button>`;
 }
 
-// The two copy buttons of a pull request: its source branch name, and the command switching to it
-function copyButtons(branch) {
+// The link checking a branch out in Sourcetree, nothing without the
+// repository's full name. No target: the browser hands it to Sourcetree
+function sourcetreeLink(branch, repositoryFullName) {
+    const url = sourcetreeUrl(branch, repositoryFullName);
+    if (!url) return '';
+    return `<a class="sourcetree-link" href="${escapeHtml(url)}" title="Check out in Sourcetree" aria-label="Check out ${escapeHtml(branch)} in Sourcetree">
+                                <i class="fab fa-sourcetree" aria-hidden="true"></i>
+                            </a>`;
+}
+
+// The branch actions of a pull request: copy its source branch name, copy
+// the command switching to it, check it out in Sourcetree
+function branchActions(branch, repositoryFullName) {
     const command = switchCommand(branch);
-    return `<span class="copy-buttons">
+    return `<span class="branch-actions">
                             ${copyButton('copy-branch', 'fa-copy', branch, `Copy the branch name ${branch}`)}
                             ${copyButton('copy-switch', 'fa-terminal', command, `Copy ${command}`)}
+                            ${sourcetreeLink(branch, repositoryFullName)}
                         </span>`;
 }
 
@@ -347,7 +359,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                             </span>`
                             : ''}
                         ${renderTaskBadge(openTaskCount(pullRequest))}
-                        ${copyButtons(sourceBranch)}
+                        ${branchActions(sourceBranch, pullRequest.source.repository?.full_name)}
                     </div>
                     ${alertsHtml}
                 </div>

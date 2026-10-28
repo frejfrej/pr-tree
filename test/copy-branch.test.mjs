@@ -1,6 +1,6 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { switchCommand, handleCopyClick } from '../public/copy-branch.js';
+import { switchCommand, sourcetreeUrl, handleCopyClick } from '../public/copy-branch.js';
 import { node } from './fake-dom.mjs';
 
 // A copy button as app-render.js draws it: its icons, what it copies, its tooltip
@@ -66,6 +66,25 @@ test('switchCommand ends the options before a name starting with -, which git wo
     assert.equal(switchCommand('-f'), 'git switch --end-of-options -f');
     assert.equal(switchCommand('--detach'), 'git switch --end-of-options --detach');
     assert.equal(switchCommand('-a;b'), "git switch --end-of-options '-a;b'");
+});
+
+// The href of Bitbucket's own "Check out in SourceTree", read on the branch
+// page of a public repository (2026-10-28)
+test('sourcetreeUrl is the link of Bitbucket\'s "Check out in SourceTree": ref, https clone URL, type', () => {
+    assert.equal(sourcetreeUrl('master', 'atlassian/bitbucket-upload-file'),
+        'sourcetree://checkoutRef?ref=refs%2Fheads%2Fmaster&cloneUrl=https%3A%2F%2Fbitbucket.org%2Fatlassian%2Fbitbucket-upload-file.git&type=bitbucket');
+});
+
+test('sourcetreeUrl encodes a branch name holding what would end or split a value: &, =, #, %, +', () => {
+    const url = sourcetreeUrl('a&type=x#y%z+1', 'ws/repo');
+    assert.equal(url, 'sourcetree://checkoutRef?ref=refs%2Fheads%2Fa%26type%3Dx%23y%25z%2B1&cloneUrl=https%3A%2F%2Fbitbucket.org%2Fws%2Frepo.git&type=bitbucket');
+    const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));
+    assert.deepEqual([...params], [['ref', 'refs/heads/a&type=x#y%z+1'], ['cloneUrl', 'https://bitbucket.org/ws/repo.git'], ['type', 'bitbucket']]);
+});
+
+test('sourcetreeUrl gives no link without the full name of the repository', () => {
+    assert.equal(sourcetreeUrl('master', undefined), null);
+    assert.equal(sourcetreeUrl('master', ''), null);
 });
 
 test('handleCopyClick takes no click outside a copy button and writes nothing', async () => {
