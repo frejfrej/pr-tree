@@ -1,16 +1,23 @@
 /**
  * The branch actions of a pull request: copy its source branch name, copy
- * the command switching to it, check it out in Sourcetree.
+ * the command fetching and switching to it, check it out in Sourcetree.
  *
- * A branch name is untrusted text bound for a shell: git allows `$`, `;`,
- * `|`, `&`, a backtick, parentheses, quotes and `!` in it, so anyone who
- * can push could name a branch that runs a command when the copied
- * `git switch` is pasted. switchCommand leaves a name of letters, digits
- * and `. _ / - + @ = , %` bare, and puts any other in single quotes. It is
- * bound for git too: `git switch` never reads its argument as a path (a
- * `git checkout docs`, not fetched yet, restores the folder docs/ over the
- * changes in it), and a name starting with `-` (`refs/heads/--detach` can
- * be pushed) follows `--end-of-options` instead of reading as an option.
+ * A branch name is untrusted text bound for a shell, which may be bash,
+ * zsh, sh, fish, Git Bash, Windows PowerShell 5.1 or PowerShell 7: git
+ * allows `$`, `;`, `|`, `&`, a backtick, parentheses, quotes and `!` in it,
+ * so anyone who can push could name a branch that runs a command when the
+ * copied command is pasted. switchCommand fetches the branch from `origin`,
+ * then switches to it, joined by `;` (PowerShell 5.1 has no `&&`; a switch
+ * after a failed fetch does what a switch alone does), the name always in
+ * single quotes, literal in every one of those shells. No quoting carries a
+ * `'`, a `"` or a typographic quote everywhere (PowerShell closes a quoted
+ * word on `‘ ’ ‚ ‛` too, and 5.1 drops a `"` passed to git), nor `=/`,
+ * turned into a Windows path by Git Bash: such a name gets no command, only
+ * its name copied. It is bound for git too: `git switch` never reads its
+ * argument as a path (a `git checkout docs`, not fetched yet, restores the
+ * folder docs/ over the changes in it), and a name starting with `-`
+ * (`refs/heads/--detach` can be pushed) follows `--end-of-options` instead
+ * of reading as an option.
  *
  * The Sourcetree link is the one of Bitbucket's own "Check out in
  * SourceTree" (its branch page): `sourcetree://checkoutRef?` with `ref`,
@@ -39,10 +46,14 @@ const missingClipboard = 'the clipboard needs https or localhost';
 // The tooltip of a button showing feedback, and the timer ending it
 const shownFeedback = new WeakMap();
 
-/** The shell command switching to `branch`, the name quoted unless it is plainly safe, and never read as an option */
+// What no quoting keeps the same in every shell: a quote, a typographic one, =/ (Git Bash)
+const unquotable = /['"\u2018-\u201e]|=\//;
+
+/** The command fetching `branch` from origin and switching to it, for POSIX shells and PowerShell alike; null for a name no quoting carries */
 export function switchCommand(branch) {
-    const word = /^[\w./+@=,%-]+$/.test(branch) ? branch : `'${branch.replaceAll("'", "'\\''")}'`;
-    return `git switch ${branch.startsWith('-') ? '--end-of-options ' : ''}${word}`;
+    if (unquotable.test(branch)) return null;
+    const word = `${branch.startsWith('-') ? '--end-of-options ' : ''}'${branch}'`;
+    return `git fetch origin ${word}; git switch ${word}`;
 }
 
 /** The link checking `branch` out in Sourcetree, as Bitbucket writes it; null without the repository's full name ("workspace/repository") */
