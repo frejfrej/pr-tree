@@ -8,8 +8,9 @@
  * the destination map of that repository, so two repositories sharing a branch
  * name never show each other's pull requests under it.
  * The tree carries no inline handler: app.js installs one click listener on
- * the pane (handleTreeClick in tree-toggle.js), which toggles the block a
- * click lands on and leaves the links alone; toggleButton renders every
+ * the pane, which copies what a copy button carries (handleCopyClick in
+ * copy-branch.js) or toggles the block a click lands on and leaves the links
+ * alone (handleTreeClick in tree-toggle.js); toggleButton renders every
  * chevron button, a real button with a name and aria-expanded, and
  * tree-toggle.js keeps aria-expanded in step. The pull-request and issue
  * links carry, as data attributes, what the popovers show;
@@ -35,6 +36,7 @@
 import { isDraft, issueApprovals, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
+import { sourcetreeUrl, switchCommand } from './copy-branch.js';
 
 // The one escape of the page, shared with the filter options (escape-html.js)
 export { escapeHtml };
@@ -47,6 +49,38 @@ function toggleButton(name) {
                         <i class="fas fa-chevron-down" aria-hidden="true"></i>
                         <i class="fas fa-chevron-right" aria-hidden="true"></i>
                     </button>`;
+}
+
+// A copy button: `text` is what it copies, `label` its accessible name. Its
+// own icon, the copied and the failed icons, the class copy-branch.js sets
+// on the button choosing the one shown. No handler of its own: the click
+// listener of the pane copies (handleCopyClick).
+function copyButton(kind, icon, text, label) {
+    return `<button type="button" class="copy-button ${kind}" data-copy="${escapeHtml(text)}" title="Copy: ${escapeHtml(text)}" aria-label="${escapeHtml(label)}">
+                                <i class="fas ${icon} copy-icon" aria-hidden="true"></i><i class="fas fa-check copied-icon" aria-hidden="true"></i><i class="fas fa-times copy-failed-icon" aria-hidden="true"></i>
+                            </button>`;
+}
+
+// The link checking a branch out in Sourcetree, nothing without the
+// repository's full name. No target: the browser hands it to Sourcetree
+function sourcetreeLink(branch, repositoryFullName) {
+    const url = sourcetreeUrl(branch, repositoryFullName);
+    if (!url) return '';
+    return `<a class="sourcetree-link" href="${escapeHtml(url)}" title="Check out in Sourcetree" aria-label="Check out ${escapeHtml(branch)} in Sourcetree">
+                                <i class="fab fa-sourcetree" aria-hidden="true"></i>
+                            </a>`;
+}
+
+// The branch actions of a pull request: copy its source branch name, copy
+// the command fetching and switching to it (none for a name no quoting
+// carries), check it out in Sourcetree
+function branchActions(branch, repositoryFullName) {
+    const command = switchCommand(branch);
+    return `<span class="branch-actions">
+                            ${copyButton('copy-branch', 'fa-copy', branch, `Copy the branch name ${branch}`)}
+                            ${command ? copyButton('copy-switch', 'fa-terminal', command, `Copy ${command}`) : ''}
+                            ${sourcetreeLink(branch, repositoryFullName)}
+                        </span>`;
 }
 
 /**
@@ -326,6 +360,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                             </span>`
                             : ''}
                         ${renderTaskBadge(openTaskCount(pullRequest))}
+                        ${branchActions(sourceBranch, pullRequest.source.repository?.full_name)}
                     </div>
                     ${alertsHtml}
                 </div>

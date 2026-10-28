@@ -8,7 +8,10 @@
  * unfolded; `←` folds it, or selects the parent when folded or with nothing
  * stacked shown; a selected row folded out of sight takes only `↓` / `↑`; `o` opens the row's own link (the
  * pull request in Bitbucket, an orphaned issue in Jira), `i` its first Jira
- * issue; `x` selects the root pull request of the stack and folds it. Enter
+ * issue; `c` copies the command fetching and switching to a pull
+ * request's branch, `b` the branch name (a click on its copy button,
+ * copy-branch.js); `x` selects the
+ * root pull request of the stack and folds it. Enter
  * and Space on the row itself fold or unfold its stack, only while it shows
  * the focus ring: a click focuses a row too (it is focusable), and Space
  * must still scroll the page after it.
@@ -187,11 +190,12 @@ function focusRow(row) {
     row.scrollIntoView({ block: 'nearest' });
 }
 
-// A click on the link, like the mouse's: it opens in a new tab, and handleTreeClick leaves links alone
-function openLink(row, selector) {
-    const link = row?.querySelector(selector);
-    if (!link) return false;
-    link.click();
+// A click on a link or a button of the row, like the mouse's: a link opens in a new tab (handleTreeClick
+// leaves links alone), a copy button copies with its feedback (handleCopyClick)
+function clickIn(row, selector) {
+    const control = row?.querySelector(selector);
+    if (!control) return false;
+    control.click();
     return true;
 }
 
@@ -255,9 +259,13 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
             return true;
         }
         case 'o':
-            return openLink(rowInSight, '.pull-request-header > a, .root-branch-link');
+            return clickIn(rowInSight, '.pull-request-header > a, .root-branch-link');
         case 'i':
-            return openLink(rowInSight, '.jira-issue-link');
+            return clickIn(rowInSight, '.jira-issue-link');
+        case 'c':
+            return clickIn(rowInSight, '.copy-switch');
+        case 'b':
+            return clickIn(rowInSight, '.copy-branch');
         case 'x': {
             const root = rowInSight && rootRowOf(rowInSight);
             if (!root) return false;

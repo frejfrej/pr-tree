@@ -1199,6 +1199,82 @@ select:disabled {
     color: var(--warning-strong);
 }
 
+/* The branch actions of a pull request (copy-branch.js), two copy buttons
+   and the Sourcetree link: muted until the row is hovered, holds the focus
+   or is selected; the class of a copy button chooses its icon, like the
+   chevrons of a toggle */
+.branch-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 2px;
+    margin-left: 8px;
+}
+
+.copy-button {
+    padding: 0 4px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* Drawn like the buttons, not like the links of a row (bold, primary, underlined) */
+.pull-request .sourcetree-link {
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: normal;
+}
+
+.pull-request:hover .copy-button,
+.pull-request:focus-within .copy-button,
+.pull-request.selected .copy-button,
+.pull-request:hover .sourcetree-link,
+.pull-request:focus-within .sourcetree-link,
+.pull-request.selected .sourcetree-link {
+    color: var(--text-color);
+}
+
+.pull-request .copy-button:hover,
+.pull-request .sourcetree-link:hover {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.copy-button .copied-icon,
+.copy-button .copy-failed-icon,
+.copy-button.copied .copy-icon,
+.copy-button.copy-failed .copy-icon {
+    display: none;
+}
+
+.copy-button.copied .copied-icon,
+.copy-button.copy-failed .copy-failed-icon {
+    display: inline;
+}
+
+.pull-request .copy-button.copied {
+    color: var(--success-strong);
+}
+
+.pull-request .copy-button.copy-failed {
+    color: var(--error-strong);
+}
+
+/* Read by screen readers, not shown: the copy status region */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* A draft: not ready for review, out of the reviewers' attention */
 .draft-badge {
     flex-shrink: 0;

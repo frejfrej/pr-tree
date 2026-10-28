@@ -236,6 +236,17 @@ test('every button and link of the page has a name of its own, and the icons ins
     }
 });
 
+test('the copy buttons of the tree report to screen readers through one status region, outside the tree pane a render replaces', async () => {
+    const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
+    const [region] = openingTags(html, 'span').filter(span => attribute(span, 'id') === 'copyStatus');
+    assert.ok(region, 'the copyStatus region');
+    assert.equal(attribute(region, 'role'), 'status');
+    assert.equal(attribute(region, 'class'), 'visually-hidden');
+    assert.ok(html.indexOf('id="copyStatus"') < html.indexOf('id="pull-requests"'));
+    const css = await (await fetch(`${baseUrl}/styles.css`)).text();
+    assert.match(css, /\.visually-hidden\s*\{[^}]*position:\s*absolute/);
+});
+
 test('the help is a dialog the browser makes modal: focus moved in, page behind inert, Escape (#109)', async () => {
     const html = withoutComments(await (await fetch(`${baseUrl}/`)).text());
     const [dialog] = openingTags(html, 'dialog');
