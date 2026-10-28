@@ -6,9 +6,10 @@ import { node, fakeDocument } from './fake-dom.mjs';
 
 function pullRequest(id, { root = false, issue = true } = {}) {
     return node({ classes: ['pull-request', ...(root ? ['pull-request-root'] : [])], dataset: { id } },
-        node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] }),
-            node({ tag: 'span', classes: ['copy-buttons'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-checkout'] }))),
-        ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }))] : []));
+        node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] })),
+        ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }))] : []),
+        node({ classes: ['participants'] },
+            node({ tag: 'span', classes: ['copy-buttons'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-switch'] }))));
 }
 
 // The header of branch main; repo-one/1 stacks 2, which stacks 3; repo-one/4 stacks nothing and links no issue; then one orphaned issue
@@ -349,14 +350,14 @@ test('o clicks the row\'s own link (the issue of an orphaned issue), i its first
     assert.equal(clicked().length, 4);
 });
 
-test('c clicks the checkout copy button of the focused or the selected pull request, b its branch name copy button; nothing on a header, an orphaned issue, a row folded away or without a row', () => {
+test('c clicks the git switch copy button of the focused or the selected pull request, b its branch name copy button; nothing on a header, an orphaned issue, a row folded away or without a row', () => {
     const { rows, outside, document, context } = sampleTree();
     const clicked = () => document.events.filter(([kind]) => kind === 'click').map(([, element]) => element);
     assert.equal(handleTreeKey(key('c', rows.two), context()), true);
     assert.equal(handleTreeKey(key('b', outside), context(rows.three)), true);
     assert.equal(handleTreeKey(key('b', rows.one.querySelector('.pull-request-link')), context()), true);
     assert.deepEqual(clicked(), [
-        rows.two.querySelector('.copy-checkout'),
+        rows.two.querySelector('.copy-switch'),
         rows.three.querySelector('.copy-branch'),
         rows.one.querySelector('.copy-branch')
     ]);

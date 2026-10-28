@@ -1,16 +1,16 @@
 /**
  * The copy buttons of a pull request: its source branch name, and the
- * command checking it out.
+ * command switching to it.
  *
  * A branch name is untrusted text bound for a shell: git allows `$`, `;`,
  * `|`, `&`, a backtick, parentheses, quotes and `!` in it, so anyone who
  * can push could name a branch that runs a command when the copied
- * `git checkout` is pasted. checkoutCommand leaves a name of letters,
- * digits and `. _ / - + @ = , %` bare, and puts any other in single quotes.
- * It is bound for git too: the command ends with `--`, so a name that is
- * also a path (`docs`, not fetched yet) never restores that path over the
- * changes in it, and a name starting with `-` (`refs/heads/-f` can be
- * pushed) follows `--end-of-options` instead of reading as an option.
+ * `git switch` is pasted. switchCommand leaves a name of letters, digits
+ * and `. _ / - + @ = , %` bare, and puts any other in single quotes. It is
+ * bound for git too: `git switch` never reads its argument as a path (a
+ * `git checkout docs`, not fetched yet, restores the folder docs/ over the
+ * changes in it), and a name starting with `-` (`refs/heads/--detach` can
+ * be pushed) follows `--end-of-options` instead of reading as an option.
  *
  * app-render.js draws the buttons, each carrying what it copies in
  * `data-copy` and its three icons (copy, copied, failed), the class of the
@@ -32,10 +32,10 @@ const missingClipboard = 'the clipboard needs https or localhost';
 // The tooltip of a button showing feedback, and the timer ending it
 const shownFeedback = new WeakMap();
 
-/** The shell command checking out `branch`, the name quoted unless it is plainly safe, and never read as an option or a path */
-export function checkoutCommand(branch) {
+/** The shell command switching to `branch`, the name quoted unless it is plainly safe, and never read as an option */
+export function switchCommand(branch) {
     const word = /^[\w./+@=,%-]+$/.test(branch) ? branch : `'${branch.replaceAll("'", "'\\''")}'`;
-    return `git checkout ${branch.startsWith('-') ? '--end-of-options ' : ''}${word} --`;
+    return `git switch ${branch.startsWith('-') ? '--end-of-options ' : ''}${word}`;
 }
 
 function showFeedback(button, outcome, message, { status, setTimeout, clearTimeout }) {

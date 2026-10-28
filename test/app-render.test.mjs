@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
-import { checkoutCommand } from '../public/copy-branch.js';
+import { switchCommand } from '../public/copy-branch.js';
 import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
@@ -456,21 +456,23 @@ test('renderRepositories gives every collapsible block a named toggle button tha
 });
 
 // The copy buttons: one copying the source branch name, one the command
-// checking it out, after the title; what they copy is in data-copy, the click
-// listener of the pane copies it (copy-branch.js)
-test('renderRepositories gives each pull request a button copying its branch name and one copying its checkout command, after the title', () => {
+// switching to it, at the end of the participants line, after the open tasks;
+// what they copy is in data-copy, the click listener of the pane copies it
+// (copy-branch.js)
+test('renderRepositories gives each pull request a button copying its branch name and one copying its git switch command, after the open tasks', () => {
     const html = renderSample();
     assert.ok(html.includes('<button type="button" class="copy-button copy-branch" data-copy="feat-a" title="Copy: feat-a" aria-label="Copy the branch name feat-a">'));
-    assert.ok(html.includes('<button type="button" class="copy-button copy-checkout" data-copy="git checkout feat-a --" title="Copy: git checkout feat-a --" aria-label="Copy git checkout feat-a --">'));
+    assert.ok(html.includes('<button type="button" class="copy-button copy-switch" data-copy="git switch feat-a" title="Copy: git switch feat-a" aria-label="Copy git switch feat-a">'));
     for (const branch of ['feat-b', 'feat-c1', 'feat-c2']) {
-        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="git checkout ${branch} --"`), branch);
+        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="git switch ${branch}"`), branch);
     }
     assert.equal(count(html, 'class="copy-button copy-branch"'), pullRequests.length);
-    assert.equal(count(html, 'class="copy-button copy-checkout"'), pullRequests.length);
-    // In the header, after the title (and the Draft badge), before the issues
-    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<span class="copy-buttons">\s*<button type="button" class="copy-button copy-branch"[\s\S]*?<\/span>\s*<\/div>\s*<\/div>\s*<div class="pull-request-issues">/);
-    const draft = renderRepositories([{ ...stacked, draft: true }], {}, [], 'site');
-    assert.match(draft, /<span class="draft-badge"[^>]*>Draft<\/span>\s*<span class="copy-buttons">/);
+    assert.equal(count(html, 'class="copy-button copy-switch"'), pullRequests.length);
+    // Last on the participants line, after the open tasks when there are some; nothing in the header
+    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<\/div>\s*<\/div>\s*<div class="pull-request-issues">[\s\S]*?<div class="participants">[\s\S]*?<span class="copy-buttons">\s*<button type="button" class="copy-button copy-branch"[\s\S]*?<\/span>\s*<\/div>/);
+    const withTasks = renderRepositories([{ ...stacked, draft: true, task_count: 2 }], {}, [], 'site');
+    assert.match(withTasks, /<span class="draft-badge"[^>]*>Draft<\/span>\s*<\/div>/);
+    assert.match(withTasks, /aria-label="open tasks"><\/i>2\s*<\/span>\s*<span class="copy-buttons">/);
     // Each draws its icon, the copied and the failed icons, the class of the button choosing the one shown
     assert.equal(count(html, '<i class="fas fa-copy copy-icon" aria-hidden="true"></i>'), pullRequests.length);
     assert.equal(count(html, '<i class="fas fa-terminal copy-icon" aria-hidden="true"></i>'), pullRequests.length);
@@ -492,8 +494,8 @@ test('a hostile branch name is escaped in every attribute of the copy buttons, a
         const html = renderRepositories([pullRequest(9, { source: name, destination: 'main' })], {}, [], 'site');
         assert.ok(!html.includes('<img/src'), name);
         assert.ok(html.includes(`data-copy="${escapeHtml(name)}" title="Copy: ${escapeHtml(name)}" aria-label="Copy the branch name ${escapeHtml(name)}"`), name);
-        const command = checkoutCommand(name);
+        const command = switchCommand(name);
         assert.ok(html.includes(`data-copy="${escapeHtml(command)}" title="Copy: ${escapeHtml(command)}" aria-label="Copy ${escapeHtml(command)}"`), name);
     }
-    assert.equal(checkoutCommand("a;b`c'd"), "git checkout 'a;b`c'\\''d' --");
+    assert.equal(switchCommand("a;b`c'd"), "git switch 'a;b`c'\\''d'");
 });

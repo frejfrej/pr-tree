@@ -8,7 +8,7 @@
  * unfolded; `←` folds it, or selects the parent when folded or with nothing
  * stacked shown; a selected row folded out of sight takes only `↓` / `↑`; `o` opens the row's own link (the
  * pull request in Bitbucket, an orphaned issue in Jira), `i` its first Jira
- * issue; `c` copies the `git checkout` of a pull request's branch, `b` the
+ * issue; `c` copies the `git switch` to a pull request's branch, `b` the
  * branch name (a click on its copy button, copy-branch.js); `x` selects the
  * root pull request of the stack and folds it. Enter
  * and Space on the row itself fold or unfold its stack, only while it shows
@@ -262,7 +262,7 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
         case 'i':
             return clickIn(rowInSight, '.jira-issue-link');
         case 'c':
-            return clickIn(rowInSight, '.copy-checkout');
+            return clickIn(rowInSight, '.copy-switch');
         case 'b':
             return clickIn(rowInSight, '.copy-branch');
         case 'x': {

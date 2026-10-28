@@ -36,7 +36,7 @@
 import { isDraft, issueApprovals, openTaskCount, otherReviewers, statusClass, syncKey } from './pull-request-status.js';
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
-import { checkoutCommand } from './copy-branch.js';
+import { switchCommand } from './copy-branch.js';
 
 // The one escape of the page, shared with the filter options (escape-html.js)
 export { escapeHtml };
@@ -61,12 +61,12 @@ function copyButton(kind, icon, text, label) {
                             </button>`;
 }
 
-// The two copy buttons of a pull request: its source branch name, and the command checking it out
+// The two copy buttons of a pull request: its source branch name, and the command switching to it
 function copyButtons(branch) {
-    const command = checkoutCommand(branch);
+    const command = switchCommand(branch);
     return `<span class="copy-buttons">
                             ${copyButton('copy-branch', 'fa-copy', branch, `Copy the branch name ${branch}`)}
-                            ${copyButton('copy-checkout', 'fa-terminal', command, `Copy ${command}`)}
+                            ${copyButton('copy-switch', 'fa-terminal', command, `Copy ${command}`)}
                         </span>`;
 }
 
@@ -323,7 +323,6 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                                ${escapeHtml(pullRequest.title)}
                             </a>
                             ${draft ? '<span class="draft-badge" title="Draft: not ready for review yet">Draft</span>' : ''}
-                            ${copyButtons(sourceBranch)}
                         </div>
                     </div>
                     <div class="pull-request-issues">
@@ -348,6 +347,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                             </span>`
                             : ''}
                         ${renderTaskBadge(openTaskCount(pullRequest))}
+                        ${copyButtons(sourceBranch)}
                     </div>
                     ${alertsHtml}
                 </div>
