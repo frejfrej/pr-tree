@@ -242,8 +242,11 @@ checks it.
 
 ## 5. Tests
 
-- `test/copy-branch.test.mjs`: `switchCommand` (a plain name; `$`, `;`,
-  `|`, a backtick, `'` quoted; a `'` escaped); `handleCopyClick` on fake
+- `test/copy-branch.test.mjs`: the text of `switchCommand` (the name
+  always quoted; what POSIX shells and PowerShell read in a bare word;
+  `--end-of-options`; no command for a quote, a typographic quote or
+  `=/`) and of `sourcetreeUrl` (Bitbucket's own link; the values decoded
+  back); `handleCopyClick` on fake
   elements with a fake clipboard and timer: a click elsewhere returns
   `false` and writes nothing; a click on the button or its icon writes
   `data-copy`, sets `copied`, the check icon and the status text, and
@@ -253,6 +256,16 @@ checks it.
   `data-copy`, `aria-label` and `title`, a hostile branch name
   (`"><img src=x onerror=alert(1)>` and ``a;b`c``) escaped in every
   attribute; none on root-branch headers nor orphaned issues.
+- `test/copy-branch-shells.test.mjs`: what the shells make of that text.
+  The command of each tricky name (payloads for POSIX shells and
+  PowerShell, `$HOME`, `@args`, `#x`, `1.10`, `docs` with uncommitted
+  changes, `--detach`) is pasted in every shell installed (sh, bash, zsh,
+  dash, fish, PowerShell 7; on Windows, Windows PowerShell 5.1 and Git
+  Bash), each in its own clone of a temporary repository whose branches
+  were pushed after the clone: the branch is fetched and checked out with
+  its upstream, nothing new appears in the clone, the changes stay, and
+  HEAD never detaches. A shell missing is reported skipped. Removing the
+  quotes or `--end-of-options` fails it in every shell (checked).
 - `test/tree-keyboard.test.mjs`: `c` and `b` click the right button of
   the pull request in sight; not taken on a header, an orphaned issue, or
   with no row.
