@@ -1001,6 +1001,20 @@ select:disabled {
     color: var(--attention-strong);
 }
 
+/* Who a highlighted row waits for and why, in the tooltip and the accessible
+   name the filter pass writes (app-filter.js): shown on a highlighted row only */
+.attention-reason {
+    display: none;
+    flex-shrink: 0;
+    margin-left: 8px;
+    color: var(--attention-strong);
+}
+
+.pull-request.needs-attention .attention-reason,
+.orphaned-issue.needs-attention .attention-reason {
+    display: inline;
+}
+
 .pull-request-header {
     display: flex;
     align-items: center;

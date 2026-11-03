@@ -236,6 +236,11 @@ export function calculateDescendants(pullRequest, byDestination) {
     return count;
 }
 
+// The hourglass after the title of every row, shown by styles.css only on a
+// highlighted row: the filter pass writes who the row waits for and why in
+// its tooltip and accessible name (app-filter.js); until then it says so in general
+const attentionReasonIcon = '<span class="attention-reason" role="img" aria-label="Waiting for a selected participant" title="Waiting for a selected participant"><i class="fas fa-hourglass-half" aria-hidden="true"></i></span>';
+
 // Function to recursively render a pull-request
 function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
     let approvedDetails = "";
@@ -336,6 +341,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                                ${escapeHtml(pullRequest.title)}
                             </a>
                             ${draft ? '<span class="draft-badge" title="Draft: not ready for review yet">Draft</span>' : ''}
+                            ${attentionReasonIcon}
                         </div>
                     </div>
                     <div class="pull-request-issues">
@@ -500,6 +506,7 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
                        ${key}
                     </a>
                     <span class="orphaned-issue-summary">${summary}</span>
+                    ${attentionReasonIcon}
                 </div>
                 <div class="pull-request-details">
                     <div class="participants">

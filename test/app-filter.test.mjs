@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeAttention, countActiveFilters } from '../public/app-filter.js';
+import { computeAttention, attentionReason, orphanedIssueAttentionReason, countActiveFilters } from '../public/app-filter.js';
 
 const author = { uuid: 'author-uuid', display_name: 'Author' };
 const jane = { uuid: 'jane-uuid', display_name: 'Jane' };
@@ -8,9 +8,10 @@ const bob = { uuid: 'bob-uuid', display_name: 'Bob' };
 const rovoDev = { uuid: 'rovo-uuid', display_name: 'Rovo Dev' };
 
 // An index entry as buildFilterIndex makes it: the assignees of the linked
-// issues, the reviewers who have not approved, the status band and the open tasks
-function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false, draft = false, openTasks = 0 } = {}) {
-    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview, draft, openTasks };
+// issues, the reviewers who have not approved, the status band, whether a
+// linked issue is In Progress, and the open tasks
+function entry({ assignees = [], pendingReviewers = [], statusInProgress = false, statusInReview = false, issueInProgress = false, draft = false, openTasks = 0 } = {}) {
+    return { assignees: new Set(assignees), pendingReviewers: new Set(pendingReviewers), statusInProgress, statusInReview, issueInProgress, draft, openTasks };
 }
 
 const inReview = { statusInReview: true };
@@ -70,6 +71,28 @@ test('open tasks wait for the assignee in review, draft or not, and leave the re
 test('no attention without a selected participant', () => {
     const attention = computeAttention(entry({ assignees: ['Jane'], pendingReviewers: ['Jane'], statusInProgress: true, statusInReview: true }), []);
     assert.deepEqual(attention, { assignee: false, reviewer: false, any: false });
+});
+
+test('attentionReason names each selected participant the pull request waits for, and why', () => {
+    const review = entry({ pendingReviewers: ['Jane', 'Bob'], ...inReview });
+    assert.equal(attentionReason(review, ['Jane']), 'Waiting for Jane: review');
+    assert.equal(attentionReason(review, ['Bob', 'Jane']), 'Waiting for Bob: review · Jane: review');
+    assert.equal(attentionReason(entry({ assignees: ['Bob'], ...inProgress, issueInProgress: true, openTasks: 2 }), ['Bob']), 'Waiting for Bob: issue in progress');
+    assert.equal(attentionReason(entry({ assignees: ['Bob'], ...inProgress, openTasks: 1 }), ['Bob']), 'Waiting for Bob: 1 open task'); // approved, tasks open
+    assert.equal(attentionReason(entry({ assignees: ['Bob'], pendingReviewers: ['Jane'], ...inReview, openTasks: 2 }), ['Jane', 'Bob']), 'Waiting for Jane: review · Bob: 2 open tasks');
+    // Both roles: in review with open tasks, Jane a pending reviewer and the assignee ("review" and
+    // "issue in progress" never meet: an issue In Progress gives the in-progress band, which waits for no reviewer)
+    assert.equal(attentionReason(entry({ assignees: ['Jane'], pendingReviewers: ['Jane'], ...inReview, openTasks: 2 }), ['Jane']), 'Waiting for Jane: review, 2 open tasks');
+    assert.equal(attentionReason(entry({ pendingReviewers: ['Jane'], ...inReview, draft: true }), ['Jane']), '');
+    assert.equal(attentionReason(review, []), '');
+});
+
+test('orphanedIssueAttentionReason: approval while approvers are pending, the assignee once nobody is', () => {
+    const pending = { assignees: new Set(['Bob']), pendingReviewers: new Set(['Ann']) };
+    const nobodyPending = { assignees: new Set(['Bob']), pendingReviewers: new Set() };
+    assert.equal(orphanedIssueAttentionReason(pending, ['Ann', 'Bob']), 'Waiting for Ann: approval');
+    assert.equal(orphanedIssueAttentionReason(nobodyPending, ['Bob']), 'Waiting for Bob: nobody left to approve');
+    assert.equal(orphanedIssueAttentionReason(pending, ['Bob']), '');
 });
 
 test('countActiveFilters counts filters, not selected values', () => {
@@ -162,6 +185,16 @@ test('buildFilterIndex: approved by every reviewer with open tasks is in progres
     assert.deepEqual(computeAttention(entry, ['Bob']), { assignee: false, reviewer: false, any: false }); // Bob approved
     assert.equal(evaluatePullRequest(entry, { ...noFilter, participants: ['Jane'], work: 'assignees' }).visible, true);
     assert.equal(evaluatePullRequest(entry, { ...noFilter, participants: ['Jane'], work: 'reviewers' }).visible, false);
+});
+
+test('buildFilterIndex tells a linked issue in progress from an approved pull request with open tasks', () => {
+    assert.equal(entryInStatus('In Progress').issueInProgress, true);
+    assert.equal(entryInStatus('In Review').issueInProgress, false);
+    const allApproved = { ...sampleApiResult, pullRequests: [{ ...sampleApiResult.pullRequests[0], task_count: 1, participants: [{ user: author, approved: false }, { user: jane, approved: true }, { user: bob, approved: true }] }] };
+    const entry = buildFilterIndex(allApproved).pullRequestsByKey.get('repo/10');
+    assert.equal(entry.statusInProgress, true);
+    assert.equal(entry.issueInProgress, false);
+    assert.equal(attentionReason(entry, ['Jane']), 'Waiting for Jane: 1 open task');
 });
 
 test('buildFilterIndex keys each pull request like the SYNC statuses response: repo/destHash..sourceHash', () => {
@@ -787,6 +820,55 @@ test('filterBranches highlights and counts an orphaned issue waiting for a selec
         // "All work" keeps both for Bob; only the approved one waits for him
         const allForBob = filterBranches({ ...defaultFilters(), participants: ['Bob'] });
         assert.deepEqual([allForBob.shownRows, allForBob.attentionCount], [[pending, approved], 1]);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
+test('filterBranches writes the reason on the icon of a highlighted row, follows the participants, rewrites nothing unchanged', () => {
+    const pr = {
+        id: 1, title: 'one', source: { branch: { name: 'one' }, repository: { name: 'repo' } }, destination: { branch: { name: 'main' }, repository: { name: 'repo' } },
+        author, participants: [{ user: author, approved: false }, { user: jane, approved: false }, { user: bob, approved: false }]
+    };
+    initializeFilter({ pullRequests: [pr], jiraIssuesMap: { 'repo/1': ['PROJ-1'] }, jiraIssuesDetails: [{ key: 'PROJ-1', fields: { summary: 'one', status: { name: 'In Review' }, assignee: null, fixVersions: [] } }] });
+    const icon = node({ classes: ['attention-reason'] });
+    const row = node({ classes: ['pull-request'], dataset: { id: 'repo/1' } }, icon);
+    const previousDocument = globalThis.document;
+    globalThis.document = fakeDocument(node({}, node({ classes: ['repository'] }, node({ classes: ['root-branch'] }, node({ classes: ['root-branch-content'] }, row)))));
+    try {
+        const pass = participants => filterBranches({ ...defaultFilters(), participants });
+        pass(['Jane']);
+        assert.deepEqual([icon.getAttribute('aria-label'), icon.getAttribute('title')], ['Waiting for Jane: review', 'Waiting for Jane: review']);
+        pass(['Bob']);
+        assert.equal(icon.getAttribute('aria-label'), 'Waiting for Bob: review');
+        pass(['Jane', 'Bob']);
+        assert.equal(icon.getAttribute('aria-label'), 'Waiting for Jane: review · Bob: review');
+        let writes = 0;
+        const setAttribute = icon.setAttribute;
+        icon.setAttribute = (...args) => { writes++; setAttribute.apply(icon, args); };
+        pass(['Jane', 'Bob']);
+        assert.equal(writes, 0);
+        pass([]);
+        assert.ok(!row.classList.contains('needs-attention'));
+        assert.equal(writes, 0);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
+test('filterBranches writes the reason on an orphaned issue: its pending approver, its assignee once approved (#146)', () => {
+    const ann = { accountId: 'ann-id', displayName: 'Ann' };
+    const issue = (key, approvedBy) => ({ key, fields: { summary: key, status: { name: 'In Review' }, assignee: { displayName: 'Bob' }, fixVersions: [], approvers: [ann], approvedBy } });
+    initializeFilter({ orphanedIssues: [issue('PROJ-50', []), issue('PROJ-51', [ann])] });
+    const [pendingIcon, approvedIcon] = [node({ classes: ['attention-reason'] }), node({ classes: ['attention-reason'] })];
+    const pending = node({ classes: ['orphaned-issue'], dataset: { issueKey: 'PROJ-50' } }, pendingIcon);
+    const approved = node({ classes: ['orphaned-issue'], dataset: { issueKey: 'PROJ-51' } }, approvedIcon);
+    const previousDocument = globalThis.document;
+    globalThis.document = fakeDocument(node({}, node({ classes: ['repository', 'orphaned-issues'] }, pending, approved)));
+    try {
+        filterBranches({ ...defaultFilters(), participants: ['Ann', 'Bob'] });
+        assert.equal(pendingIcon.getAttribute('aria-label'), 'Waiting for Ann: approval');
+        assert.equal(approvedIcon.getAttribute('aria-label'), 'Waiting for Bob: nobody left to approve');
     } finally {
         globalThis.document = previousDocument;
     }

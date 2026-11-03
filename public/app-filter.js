@@ -163,15 +163,29 @@ function splitIssueKey(key) {
  * reviewers"), assignee attention ("Ready for assignees") or either ("Ready for
  * participants"); "All work", "All reviews" and "All issues" keep every PR of
  * the participants, whether it waits for them or not.
+ * The conditions are pullRequestWaitingFor's, which also says who; the
+ * highlight and its reason (attentionReason) come from them both.
  * @param {{ assignees: Set<string>, pendingReviewers: Set<string>, statusInProgress: boolean, statusInReview: boolean, draft?: boolean, openTasks: number }} entry - an entry of buildFilterIndex().pullRequestsByKey
  * @param {string[]} participants - the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
-export function computeAttention({ assignees, pendingReviewers, statusInProgress, statusInReview, draft, openTasks }, participants) {
+export function computeAttention(entry, participants) {
+    return attentionOf(pullRequestWaitingFor(entry, participants));
+}
+
+/**
+ * The selected participants a pull request waits for, by role, in the order
+ * of `participants`: the conditions of computeAttention. Pure.
+ * @returns {{ reviewers: string[], assignees: string[] }}
+ */
+export function pullRequestWaitingFor({ assignees, pendingReviewers, statusInProgress, statusInReview, draft, openTasks }, participants) {
     const tasksInReview = openTasks > 0 && statusInReview === true;
-    const assignee = (statusInProgress === true || tasksInReview) && participants.some(name => assignees.has(name));
-    const reviewer = statusInReview === true && draft !== true && participants.some(name => pendingReviewers.has(name));
-    return { assignee, reviewer, any: assignee || reviewer };
+    const waitsForAssignee = statusInProgress === true || tasksInReview;
+    const waitsForReviewer = statusInReview === true && draft !== true;
+    return {
+        reviewers: waitsForReviewer ? participants.filter(name => pendingReviewers.has(name)) : [],
+        assignees: waitsForAssignee ? participants.filter(name => assignees.has(name)) : []
+    };
 }
 
 /**
@@ -180,14 +194,62 @@ export function computeAttention({ assignees, pendingReviewers, statusInProgress
  * has not approved, it waits for its pending approvers (reviewer attention),
  * not for its assignee, like a pull request in review; with nobody pending (no
  * approver, or all approved) it waits for its assignee, the one to move it on.
+ * The conditions are orphanedIssueWaitingFor's, as for a pull request.
  * @param {{ assignees: Set<string>, pendingReviewers: Set<string> }} entry - an entry of buildFilterIndex().orphanedIssuesByKey
  * @param {string[]} participants - the selected participants
  * @returns {{ assignee: boolean, reviewer: boolean, any: boolean }}
  */
-export function computeOrphanedIssueAttention({ assignees, pendingReviewers }, participants) {
-    const reviewer = participants.some(name => pendingReviewers.has(name));
-    const assignee = pendingReviewers.size === 0 && participants.some(name => assignees.has(name));
+export function computeOrphanedIssueAttention(entry, participants) {
+    return attentionOf(orphanedIssueWaitingFor(entry, participants));
+}
+
+/**
+ * The selected participants an orphaned issue waits for, by role, in the
+ * order of `participants`: the conditions of computeOrphanedIssueAttention. Pure.
+ * @returns {{ reviewers: string[], assignees: string[] }}
+ */
+export function orphanedIssueWaitingFor({ assignees, pendingReviewers }, participants) {
+    return {
+        reviewers: participants.filter(name => pendingReviewers.has(name)),
+        assignees: pendingReviewers.size === 0 ? participants.filter(name => assignees.has(name)) : []
+    };
+}
+
+function attentionOf({ reviewers, assignees }) {
+    const assignee = assignees.length > 0;
+    const reviewer = reviewers.length > 0;
     return { assignee, reviewer, any: assignee || reviewer };
+}
+
+/**
+ * Why a pull request is highlighted, as the icon after its title says it:
+ * "Waiting for Jane: review · Bob: 2 open tasks", each selected participant
+ * it waits for, in the order of `participants`, with "review" as a reviewer
+ * and, as an assignee, "issue in progress" when a linked issue is In
+ * Progress, the open tasks otherwise; '' when it waits for nobody. Pure.
+ * @returns {string}
+ */
+export function attentionReason(entry, participants) {
+    const tasks = entry.openTasks === 1 ? '1 open task' : `${entry.openTasks} open tasks`;
+    return waitingText(participants, pullRequestWaitingFor(entry, participants), 'review', entry.issueInProgress ? 'issue in progress' : tasks);
+}
+
+/**
+ * Why an orphaned issue is highlighted: "approval" for a pending approver,
+ * "nobody left to approve" for its assignee; '' when it waits for nobody. Pure.
+ * @returns {string}
+ */
+export function orphanedIssueAttentionReason(entry, participants) {
+    return waitingText(participants, orphanedIssueWaitingFor(entry, participants), 'approval', 'nobody left to approve');
+}
+
+// "Waiting for Name: role, role · Name: role", in the order of the selected participants
+function waitingText(participants, { reviewers, assignees }, reviewerWord, assigneeWord) {
+    const people = participants
+        .map(name => [name, [reviewers.includes(name) && reviewerWord, assignees.includes(name) && assigneeWord].filter(Boolean)])
+        .filter(([, roles]) => roles.length > 0)
+        .map(([name, roles]) => `${name}: ${roles.join(', ')}`);
+    return people.length > 0 ? `Waiting for ${people.join(' · ')}` : '';
 }
 
 // ------------------------------------------------------------------- index
@@ -268,6 +330,9 @@ export function buildFilterIndex({ pullRequests = [], jiraIssuesMap = {}, jiraIs
             linkedIssues,
             statusInProgress: band === 'status-in-progress',
             statusInReview: band === 'status-in-review',
+            // An in-progress band by an issue In Progress, not by the open tasks of an approved
+            // pull request: what the reason of an assignee's attention says (attentionReason)
+            issueInProgress: linkedIssues.some(issue => issue.fields.status?.name === 'In Progress'),
             // A draft waits for no reviewer (computeAttention) and "Hide drafts" hides it
             draft: isDraft(pullRequest),
             // Open tasks in review wait for the assignee (computeAttention), the count the badge shows
@@ -429,7 +494,8 @@ export function evaluateOrphanedIssue(entry, filters) {
  * The orphaned issues section, rendered as a repository block, is walked
  * apart: its rows are evaluated by issue key, its counter refreshed, and it
  * is hidden while no row is left; the attention of its visible rows is
- * counted. Everything a decision needs comes from the index and the loaded
+ * counted. A row waiting for a selected participant is highlighted and its
+ * reason written on its icon (writeAttentionReason). Everything a decision needs comes from the index and the loaded
  * SYNC statuses, nothing from what the tree shows. The rows left displayed
  * are listed in document order for the keyboard navigation (tree-keyboard.js),
  * a filtered-out pull request kept for a visible descendant included, and
@@ -519,6 +585,7 @@ function filterPullRequest(pullRequestElement, pass) {
         const { visible, attention } = evaluatePullRequest(entry, pass.filters, syncStatus);
         isVisible = visible;
         pullRequestElement.classList.toggle('needs-attention', attention.any);
+        if (attention.any) writeAttentionReason(pullRequestElement, attentionReason(entry, pass.filters.participants || []));
         if (visible && attention.any) {
             pass.shownAttention++;
         }
@@ -558,6 +625,7 @@ function filterOrphanedIssues(pass) {
             ? evaluateOrphanedIssue(entry, pass.filters)
             : { visible: false, attention: { any: false } };
         row.classList.toggle('needs-attention', attention.any);
+        if (attention.any) writeAttentionReason(row, orphanedIssueAttentionReason(entry, pass.filters.participants || []));
         setDisplay(row, isVisible ? '' : 'none');
         total++;
         if (isVisible) {
@@ -569,6 +637,17 @@ function filterOrphanedIssues(pass) {
     const counter = section.querySelector('.repo-pr-counter');
     if (counter) updateCounterDisplay(counter, visible, total, 'issue');
     setDisplay(section, visible > 0 ? '' : 'none');
+}
+
+// The reason of a highlighted row, on the icon after its title (app-render.js):
+// its tooltip and its accessible name, written only when they change; a row
+// without the icon is left alone. A row that loses its highlight keeps its
+// last reason, hidden with the icon
+function writeAttentionReason(row, text) {
+    const icon = row.querySelector('.attention-reason');
+    if (!icon || icon.getAttribute('aria-label') === text) return;
+    icon.setAttribute('aria-label', text);
+    icon.setAttribute('title', text);
 }
 
 // Only touches the style when it changes, to keep style invalidation minimal
