@@ -594,17 +594,68 @@ function jiraUserAsParticipant(user) {
     return { display_name: user.displayName, links: { avatar: { href: jiraAvatar(user) } } };
 }
 
+// The row of a pull request, by its key (repository/id), in the tree as rendered now
+function pullRequestRow(key) {
+    return document.querySelector(`.pull-request[data-id="${CSS.escape(key)}"]`);
+}
+
 /**
- * Hover popovers of the pull-request links (rendered title and description)
- * and of the issue links (key and summary), read from the data attributes
- * renderPullRequest writes.
+ * Hover popovers of the pull-request links (rendered title and description),
+ * of the issue links (key and summary), read from the data attributes
+ * renderPullRequest writes, and of the "(see 12, 45)" links, which show the
+ * preview of the related pull request's title link, under its repository
+ * and number. A related pull request the last filter pass shows gets a
+ * button that reveals it: unfolds what hides it, selects it, scrolls to it.
+ * app.js owns the shown rows and the selection, hence the two functions.
+ * @param {{ isShown?: (row: Element) => boolean, reveal?: (row: Element) => void }} [options]
  */
-export function initializePopovers() {
+export function initializePopovers({ isShown = () => false, reveal = () => {} } = {}) {
     let popoverTimeout;
     let currentLink = null;
     const popover = document.createElement('div');
     popover.className = 'popover';
     document.body.appendChild(popover);
+
+    // Bitbucket's rendering of the title and description of a pull-request link: HTML by design
+    function renderPullRequestPreview(titleLink) {
+        const title = decodeURIComponent(titleLink.dataset.renderedTitle);
+        const description = decodeURIComponent(titleLink.dataset.renderedDescription);
+        popover.className = 'pull-request-popover';
+        popover.innerHTML = `
+            <div class="pull-request-popover-title">${title}</div>
+            <div class="pull-request-popover-description">${description}</div>
+        `;
+    }
+
+    // The preview of a related pull request: its repository and number (text), then its
+    // title line with the scroll button while the filters show it, then its description
+    function renderRelatedPreview(link) {
+        const key = link.dataset.relatedKey;
+        const row = pullRequestRow(key);
+        const titleLink = row?.querySelector('.pull-request-link');
+        if (!titleLink) return false;
+        renderPullRequestPreview(titleLink);
+        const separator = key.lastIndexOf('/');
+        const id = key.slice(separator + 1);
+        const header = document.createElement('div');
+        header.className = 'pull-request-popover-header';
+        header.append(popover.querySelector('.pull-request-popover-title'));
+        if (isShown(row)) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'scroll-to-pull-request';
+            button.dataset.relatedKey = key;
+            button.title = `Scroll to pull request ${id}`;
+            button.setAttribute('aria-label', `Scroll to pull request ${id}`);
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-crosshairs';
+            icon.setAttribute('aria-hidden', 'true');
+            button.append(icon);
+            header.append(button);
+        }
+        popover.prepend(textElement('pull-request-popover-repository', `${key.slice(0, separator)} · #${id}`), header);
+        return true;
+    }
 
     function showPopover(link) {
         if (link.classList.contains('jira-issue-link')) {
@@ -614,15 +665,11 @@ export function initializePopovers() {
                 textElement('jira-issue-popover-key', link.dataset.issueKey),
                 textElement('jira-issue-popover-summary', link.dataset.issueSummary)
             );
+        } else if (link.classList.contains('related-pull-request-link')) {
+            // A row gone with a re-render: no preview
+            if (!renderRelatedPreview(link)) return;
         } else {
-            // Bitbucket's rendering of the title and description: HTML by design
-            const title = decodeURIComponent(link.dataset.renderedTitle);
-            const description = decodeURIComponent(link.dataset.renderedDescription);
-            popover.className = 'pull-request-popover';
-            popover.innerHTML = `
-                <div class="pull-request-popover-title">${title}</div>
-                <div class="pull-request-popover-description">${description}</div>
-            `;
+            renderPullRequestPreview(link);
         }
 
         // The popover is fixed: viewport coordinates, kept inside the viewport
@@ -648,8 +695,10 @@ export function initializePopovers() {
         return element;
     }
 
+    const linkSelector = '.jira-issue-link, .pull-request-link, .related-pull-request-link';
+
     document.addEventListener('mouseover', function(event) {
-        const link = event.target.closest('.jira-issue-link, .pull-request-link');
+        const link = event.target.closest(linkSelector);
 
         if (link) {
             clearTimeout(popoverTimeout);
@@ -664,7 +713,7 @@ export function initializePopovers() {
     });
 
     document.addEventListener('mouseout', function(event) {
-        const link = event.target.closest('.jira-issue-link, .pull-request-link');
+        const link = event.target.closest(linkSelector);
 
         if (link) {
             clearTimeout(popoverTimeout);
@@ -680,6 +729,17 @@ export function initializePopovers() {
     popover.addEventListener('mouseout', function() {
         clearTimeout(popoverTimeout);
         popoverTimeout = setTimeout(hidePopover, 300);
+    });
+
+    // The scroll button of a related preview: the row is looked up again, a refresh may
+    // have re-rendered the tree meanwhile; a row gone or filtered out since only closes it
+    popover.addEventListener('click', function(event) {
+        const button = event.target.closest('.scroll-to-pull-request');
+        if (!button) return;
+        const row = pullRequestRow(button.dataset.relatedKey);
+        clearTimeout(popoverTimeout);
+        hidePopover();
+        if (row && isShown(row)) reveal(row);
     });
 
     // A popover left open while the tree scrolls would float away from its link
