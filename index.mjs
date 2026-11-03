@@ -80,7 +80,9 @@ app.use('/api', (req, res, next) => {
 // thing served from the project directory: a static middleware mounted on it
 // served config.js (the credentials), the logs and the sources too.
 app.get('/README.md', (req, res) => {
-    res.sendFile(path.join(__dirname, 'README.md'), error => {
+    // The root keeps the dotfile check to the file name: under a dot-folder (a
+    // worktree in .claude/, an install in ~/.local) an absolute path is refused
+    res.sendFile('README.md', { root: __dirname }, error => {
         if (!error) return;
         // Without this callback Express would answer with the error and its absolute path
         log(`Error serving README.md: ${error.message}`, errorLogStream);
