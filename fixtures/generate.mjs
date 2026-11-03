@@ -72,6 +72,14 @@ const repositoryFirstId = {
     'products.oslc': 1150
 };
 
+// An issue delivered in two repositories (3.3.0): the first pull request of
+// the repository also names the first issue of its partner's first pull
+// request, which has the same number (repositoryFirstId)
+const issuePartners = {
+    'products.secollab.client': 'products.secollab',
+    'products.web.common': 'products.web.oslc'
+};
+
 // Active sprints: the same boards serve both projects, so both projects
 // see the same sprints with different issue counts (as in the real logs)
 export const sprintDefinitions = [
@@ -480,6 +488,62 @@ function createParticipants(random, author) {
     return participants;
 }
 
+const issueKeyPattern = /[A-Z]+-\d+/;
+
+// The title of a pull request, and Bitbucket's rendering of it, changed together
+function setTitle(pullRequest, title) {
+    pullRequest.title = title;
+    pullRequest.rendered.title.html = `<p>${escapeHtml(title)}</p>`;
+}
+
+/**
+ * Issue keys shared by several pull requests, and keys named by the branch
+ * only (3.3.0), on the titles of a repository's pull requests after they are
+ * generated, from a random stream of their own so the rest of the data stays
+ * as it was: the first pull request of a partner repository names its
+ * partner's first issue (issuePartners); a pull request stacked on another
+ * names its parent's own first issue, always the first of the repository,
+ * one in eight of the others; then a title naming one key its branch also
+ * carries loses it, always the first of the repository, one in ten of the
+ * others. One draw per pull request per step, so the result depends on the
+ * repository only (one shared by two projects is the same in both).
+ */
+function shareIssueKeys(repoName, pullRequests, options) {
+    const random = createRandom(`shared-keys-${repoName}`);
+    const originalKey = new Map(pullRequests.map(pullRequest => [pullRequest, pullRequest.title.match(issueKeyPattern)?.[0]]));
+    const touched = new Set();
+    // Whether the key was added: none, or one the title names already, adds nothing
+    const prepend = (pullRequest, key) => {
+        if (!key || pullRequest.title.includes(key)) return false;
+        setTitle(pullRequest, `${key} ${pullRequest.title}`);
+        touched.add(pullRequest);
+        return true;
+    };
+
+    const partner = issuePartners[repoName];
+    const partnerFirst = partner ? repositoryData(partner, options).pullRequests[0] : undefined;
+    if (partnerFirst && pullRequests.length > 0) {
+        const partnerKey = (partnerFirst.title.match(issueKeyPattern) || partnerFirst.source.branch.name.match(issueKeyPattern))?.[0];
+        prepend(pullRequests[0], partnerKey);
+    }
+
+    let firstStacked = true;
+    for (const [index, pullRequest] of pullRequests.entries()) {
+        const draw = random();
+        const parent = pullRequests.slice(0, index).find(earlier => earlier.source.branch.name === pullRequest.destination.branch.name);
+        if (parent && (firstStacked || draw < 0.12) && prepend(pullRequest, originalKey.get(parent))) firstStacked = false;
+    }
+
+    let firstBranchOnly = true;
+    for (const pullRequest of pullRequests) {
+        const draw = random();
+        const keys = pullRequest.title.match(new RegExp(issueKeyPattern, 'g')) || [];
+        if (touched.has(pullRequest) || keys.length !== 1 || !pullRequest.title.startsWith(`${keys[0]} `) || !pullRequest.source.branch.name.includes(keys[0])) continue;
+        if (firstBranchOnly || draw < 0.1) setTitle(pullRequest, pullRequest.title.slice(keys[0].length + 1));
+        firstBranchOnly = false;
+    }
+}
+
 /**
  * Pull requests of one repository, with the Jira issues they refer to.
  * Chains are built by targeting the source branch of an earlier pull request.
@@ -601,6 +665,7 @@ export function generateRepository(repoName, { scale = 1, chainDepth = deepChain
         pullRequests.push(pullRequest);
     }
 
+    shareIssueKeys(repoName, pullRequests, { scale, chainDepth });
     return { repository, pullRequests, issues, parentIssues };
 }
 
