@@ -18,6 +18,8 @@
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
 * Displays a link to related issues with the corresponding status
+    * The issues are read from the title of the pull request, or, when the title names none, from its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches)
+    * After an issue, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number: each number opens the pull request in Bitbucket, and hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), with a crosshairs button while the filters show it, which unfolds what hides it, selects it and scrolls to it
 * Displays the status of the pull requests alongside the status of related issues
 * Lists the Jira issues in review that no pull request links, in a section below the tree
     * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC and Hide drafts do not apply) and is hidden when nothing in it matches
@@ -38,6 +40,7 @@
     * Lists the assignees of the linked Jira issues and of the orphaned issues, the reviewers of the pull requests and the Jira approvers of the orphaned issues
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
     * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved (a draft waits for no reviewer), In Progress pull requests and In Review pull requests with open tasks, with a linked issue assigned to them
+    * An hourglass after a highlighted title says who it waits for and why, in its tooltip and for screen readers: "Waiting for Jane: review · Bob: 2 open tasks" (`review`, `issue in progress`, `N open tasks`; for a Jira issue without a pull request, `approval` or `nobody left to approve`)
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
 * "Hide drafts" hides the draft pull requests
 * Provides a fix version filter
@@ -99,6 +102,12 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.3.0
+    * With participants selected, a highlighted pull request or issue says who it waits for and why: an hourglass after its title, whose tooltip reads, for example, "Waiting for Jane: review · Bob: 2 open tasks" (`review`, `issue in progress` or `N open tasks` on a pull request; `approval` or `nobody left to approve` on a Jira issue without a pull request), and screen readers read the same. Before, only the colour of the title said it
+    * A pull request whose title names no Jira key takes the keys of its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches): it shows its issues, takes their band, sprint, epic, story and fix version, its assignee finds it with the participant filter, and the issue leaves the Jira issues in review without a pull request. A key in the title still wins; a lowercase key in a branch is not read
+    * After an issue of a card, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number. Each number opens the pull request in Bitbucket; hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), and, while the filters show that pull request, a crosshairs button that unfolds what hides it, selects it and scrolls to it
+    * The help no longer answers "Not Found" when the dashboard sits under a folder whose name starts with a dot (`~/.local/…`, a git worktree in `.claude/`)
+    * Fixture mode: some pull requests name their issue in their branch only, and a few issues are shared by several pull requests, within a stack and between two repositories (#2400 of products.secollab and of products.secollab.client)
 * Version 3.2.0
     * Two icons at the end of the reviewers line of each pull request, after its commit counts and open tasks, copy its source branch name and the command fetching and switching to it, `git fetch origin '<branch>'; git switch '<branch>'`, ready to paste in a terminal: bash, zsh, sh, fish, Git Bash or PowerShell (5.1 and 7). The branch opens even when it was pushed after your last fetch; your remote must be named `origin`. The tooltip shows what is copied; the icon turns into a check for a moment once copied, or into a cross with the reason in its tooltip when the browser refuses (the clipboard needs the page on localhost or https), and screen readers hear the result
     * `c` copies the command of the selected pull request, `b` its branch name

@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 ## Bitbucket Pull-Requests Tree
 
-**Version:** 3.2.0
-**Last Updated:** 2026-10-28
+**Version:** 3.3.0
+**Last Updated:** 2026-11-04
 **Author:** François-Régis Jaunatre
 **Status:** Active Development
 
@@ -127,6 +127,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F2.9: One row is selected whenever a row is shown, the one the URL names (`selected`) when it is shown, the first pull request otherwise; a selection by the user (a key, a click, Tab) replaces the URL entry, a refresh or a filter change never writes it; a load and Back/Forward scroll the selected row into view
 - F2.10: The folded repositories, root branches and stacked pull requests of a project are kept by the browser (localStorage, per project, never the URL) and restored at the project's first render (page load, reopened tab, project switch); written after each user fold (click, key, Collapse all, Expand all), the pull requests no longer rendered pruned after every render; a selected row a fold hides gives way to the row in sight that folds it
 - F2.11: Two buttons at the end of the reviewers line of each pull request, after its commit counts and open tasks, copy its source branch name and `git fetch origin '<branch>'; git switch '<branch>'`, for bash, zsh, sh, fish, Git Bash and PowerShell 5.1 and 7 alike (`;`, PowerShell 5.1 having no `&&`; the name always in single quotes, since a branch name may hold `$`, `;`, `|`, a backtick, which a pasted command would run; no command for a name holding `'`, `"`, a typographic quote or `=/`, which no quoting keeps the same in all of them), `--end-of-options` before a name starting with `-` (`git switch`, unlike `git checkout`, never reads the name as a path); the tooltip says what is copied, the button shows for 1.5 s that it copied or why it failed (the clipboard API needs a secure context), and a status region tells screen readers; after them, a link checking the branch out in Sourcetree, as Bitbucket's "Check out in SourceTree" writes it (`sourcetree://checkoutRef?ref=refs/heads/<branch>&cloneUrl=https://bitbucket.org/<source repository>.git&type=bitbucket`, values URL-encoded); none on a root-branch header nor an orphaned issue
+- F2.12: After each linked issue of a pull request, "(see 12, 45)" lists the other pull requests of the project linking the same issue key, in any repository, once each, in id order then by repository name; each number links to the pull request in Bitbucket (accessible name "Pull request 12 of <repository>", the repository of its key); hovering it shows the preview of that pull request's title link (F7.1) under its repository and number, with a button ("Scroll to pull request 12") while the last filter pass shows it (kept, or shown for a pull request stacked on it), which unfolds the repository, branch and stacks hiding it (stored like the user's folds, F2.10), selects it (F2.9) and scrolls it to the middle of the view; a row gone or filtered out by the click only closes the preview
 
 **Acceptance Criteria:**
 - PRs appear in chronological order by update time
@@ -142,7 +143,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 **Description:** Extract and display Jira issue information from PR titles and track workflow status
 
 **Requirements:**
-- F3.1: Extract Jira issue keys from PR titles using configurable regex
+- F3.1: Extract Jira issue keys from PR titles, or from the source branch when the title names none, using configurable regex (case-sensitive, as configured)
 - F3.2: Fetch issue details from Jira API (summary, status, priority)
 - F3.3: Display issue status with color-coded badges
 - F3.4: Show issue priority icons
@@ -193,6 +194,7 @@ The application integrates with a Jira workflow where:
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
 - F4.16: "Hide drafts" hides the draft pull requests, with or without participants selected
 - F4.17: The participant and work filters keep an orphaned issue as they keep a pull request, its Jira approvers being its reviewers (whoever approved included) and its assignee its assignee; it waits for its approvers who have not approved, and for its assignee once nobody is pending
+- F4.18: A row waiting for a selected participant (F4.5, F4.13, F4.17) shows an hourglass after its title (after the Draft badge; after the summary of an orphaned issue), in the colour of the highlighted title, whose tooltip and accessible name say who it waits for and why, in the order the participants were selected: "Waiting for Jane: review · Bob: 2 open tasks"; on a pull request `review` (a pending reviewer), `issue in progress` (an assignee, a linked issue In Progress), `N open tasks` (an assignee, open tasks); on an orphaned issue `approval` (a pending approver), `nobody left to approve` (its assignee); the filter pass writes it from the rule of the highlight, on highlighted rows only
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values
