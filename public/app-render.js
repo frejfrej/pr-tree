@@ -317,12 +317,13 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
             `<li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
         jiraIssuesHtml = linkedIssues.map(issueDetails => {
-            return `<li>${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
+            // The icon and the link in one group: the line wraps before the related list, never between them
+            return `<li><span class="jira-issue">${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
                        data-issue-key="${escapeHtml(issueDetails.key)}"
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
                        ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status?.name ?? 'no status')})
-                    </a>${relatedLinks(related.get(issueDetails.key), key)}</li>`;
+                    </a></span>${relatedLinks(related.get(issueDetails.key), key)}</li>`;
         }).join('');
 
         if (sameStatusIcon || noOtherParticipantsAlert) {

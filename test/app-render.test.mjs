@@ -239,6 +239,15 @@ test('renderRepositories lists the other pull requests of each issue after its l
     assert.ok(!rowHtml(html, 'repo-a/12').includes('related-pull-requests'));
 });
 
+test('an issue line keeps its priority icon and its link together, the related list after them: the line wraps only before the list', () => {
+    // PROJ-1, High, on repo-one/1: a long status wraps the link's text beside its icon, as before 3.3.0
+    assert.match(rowHtml(renderSample(), 'repo-one/1'), /<li><span class="jira-issue"><img src="https:\/\/jira\/high.svg"[^>]*class="jira-priority-icon"[^>]*><a href="[^"]*"[^>]*class="jira-issue-link">[^<]*<\/a><\/span><\/li>/);
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const html = renderRepositories([a45, b45], { 'repo-a/45': ['PROJ-1'], 'repo-b/45': ['PROJ-1'] }, oneIssue, 'site');
+    assert.match(rowHtml(html, 'repo-b/45'), /<li><span class="jira-issue"><a href="[^"]*"[^>]*class="jira-issue-link">[^<]*<\/a><\/span><span class="related-pull-requests">\(see /);
+});
+
 test('renderRepositories escapes what the related links carry', () => {
     const hostile = pullRequest(7, { repo: 'r"<x>', source: 's7', destination: 'main' });
     hostile.links.html.href = 'https://bitbucket.org/"><script>';

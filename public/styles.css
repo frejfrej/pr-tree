@@ -1100,6 +1100,13 @@ select:disabled {
     margin-bottom: 5px;
 }
 
+/* The priority icon and the link of an issue, wrapping the link's text
+   beside the icon; the line wraps only after this group */
+.jira-issue {
+    display: flex;
+    align-items: center;
+}
+
 /* "(see 12, 45)": the other pull requests of the issue; the line is a flex
    row, where the space before it would collapse; it goes below the issue
    when the column is too narrow for both, rather than squeezing the issue */
