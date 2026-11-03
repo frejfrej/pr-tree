@@ -27,6 +27,31 @@ test('createJiraIssuesMap keys the pull requests by repository and id: two repos
     assert.deepEqual([...createJiraIssuesMap(pullRequests, jiraRegex)], [['repo-a/45', ['PROJ-1']], ['repo-b/45', ['PROJ-2']]]);
 });
 
+test('createJiraIssuesMap reads the branch when the title names no key, the title only otherwise', () => {
+    const fromBranch = pullRequest(1, 'Fix login redirect');
+    fromBranch.source.branch.name = 'FRJ_261103_PROJ-123_Fix-login';
+    const both = pullRequest(2, 'PROJ-2 title wins');
+    both.source.branch.name = 'feature/PROJ-99-other';
+    const twoInBranch = pullRequest(3, 'no key');
+    twoInBranch.source.branch.name = 'PROJ-7-and-OTHER-8';
+    const lowercase = pullRequest(4, 'no key');
+    lowercase.source.branch.name = 'feature/proj-5-lowercase';
+    const none = pullRequest(5, 'no key');
+    assert.deepEqual([...createJiraIssuesMap([fromBranch, both, twoInBranch, lowercase, none], jiraRegex)], [
+        ['repo-a/1', ['PROJ-123']],
+        ['repo-a/2', ['PROJ-2']],
+        ['repo-a/3', ['PROJ-7', 'OTHER-8']],
+        ['repo-a/4', []],
+        ['repo-a/5', []]
+    ]);
+});
+
+test('createJiraIssuesMap does without a source branch', () => {
+    const pr = pullRequest(6, 'no key');
+    delete pr.source.branch;
+    assert.deepEqual([...createJiraIssuesMap([pr], jiraRegex)], [['repo-a/6', []]]);
+});
+
 test('missingParentKeys lists the parents named but absent, once each, in first-seen order', () => {
     const issues = [issue('A-1', { parent: 'A-500' }), issue('A-2', { parent: 'A-500' }), issue('A-3', { parent: 'A-4' }), issue('A-4'), issue('A-5', { parent: 'A-501' })];
     assert.deepEqual(missingParentKeys(issues), ['A-500', 'A-501']);
