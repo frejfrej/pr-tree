@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
 import { sourcetreeUrl, switchCommand } from '../public/copy-branch.js';
-import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
+import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue } from '../public/app-render.js';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -206,6 +206,46 @@ test('every pull request and orphaned issue carries the reason icon, after the t
     const orphanHtml = renderOrphanedIssues([{ key: 'PROJ-5', fields: { summary: 'Five', status: { name: 'In Review' }, priority: null, assignee: null, updated: '' } }], 'site');
     assert.equal(count(orphanHtml, reasonIcon), 1);
     assert.ok(orphanHtml.indexOf('orphaned-issue-summary') < orphanHtml.indexOf('attention-reason'));
+});
+
+test('relatedPullRequestsByIssue: every pull request of an issue once, by number then repository', () => {
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const a12 = pullRequest(12, { repo: 'repo-a', source: 'a12', destination: 'main' });
+    const map = { 'repo-a/45': ['PROJ-1', 'PROJ-1'], 'repo-b/45': ['PROJ-1'], 'repo-a/12': ['PROJ-1', 'PROJ-2'] };
+    const related = relatedPullRequestsByIssue([a45, b45, a12], map);
+    assert.deepEqual(related.get('PROJ-1').map(({ key }) => key), ['repo-a/12', 'repo-a/45', 'repo-b/45']);
+    assert.deepEqual(related.get('PROJ-2').map(({ key }) => key), ['repo-a/12']);
+    assert.deepEqual(related.get('PROJ-1')[0], { key: 'repo-a/12', id: 12, repository: 'repo-a', href: 'https://bitbucket.org/ws/repo-a/pull-requests/12' });
+});
+
+const oneIssue = [{ key: 'PROJ-1', fields: { summary: 'One', status: { name: 'In Review' }, priority: null } }];
+// The HTML of one row, from its data-id to the next pull request
+const rowHtml = (html, key) => html.split(`data-id="${key}"`)[1].split('class="pull-request ')[0];
+
+test('renderRepositories lists the other pull requests of each issue after its link, never the card itself', () => {
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const a12 = pullRequest(12, { repo: 'repo-a', source: 'a12', destination: 'main' });
+    // repo-a #45 names PROJ-1 twice: the card draws an issue line per mention, as today, each with its list;
+    // repo-b #45 lists repo-a #45 once all the same. PROJ-9 has no details
+    const map = { 'repo-a/45': ['PROJ-1', 'PROJ-1'], 'repo-b/45': ['PROJ-1'], 'repo-a/12': ['PROJ-9'] };
+    const html = renderRepositories([a45, b45, a12], map, oneIssue, 'site');
+    assert.equal(count(rowHtml(html, 'repo-a/45'), 'class="related-pull-request-link"'), 2);
+    assert.equal(count(rowHtml(html, 'repo-a/45'), 'data-related-key="repo-b/45"'), 2);
+    assert.ok(rowHtml(html, 'repo-a/45').includes('<span class="related-pull-requests">(see <a href="https://bitbucket.org/ws/repo-b/pull-requests/45" target="_blank" class="related-pull-request-link" data-related-key="repo-b/45" aria-label="Pull request 45 of repo-b">45</a>)</span>'));
+    assert.ok(rowHtml(html, 'repo-b/45').includes('data-related-key="repo-a/45"'));
+    assert.equal(count(rowHtml(html, 'repo-b/45'), 'class="related-pull-request-link"'), 1);
+    assert.ok(!rowHtml(html, 'repo-a/12').includes('related-pull-requests'));
+});
+
+test('renderRepositories escapes what the related links carry', () => {
+    const hostile = pullRequest(7, { repo: 'r"<x>', source: 's7', destination: 'main' });
+    hostile.links.html.href = 'https://bitbucket.org/"><script>';
+    const plain = pullRequest(8, { repo: 'repo-a', source: 's8', destination: 'main' });
+    const html = renderRepositories([hostile, plain], { 'r"<x>/7': ['PROJ-1'], 'repo-a/8': ['PROJ-1'] }, oneIssue, 'site');
+    assert.ok(html.includes('href="https://bitbucket.org/&quot;&gt;&lt;script&gt;" target="_blank" class="related-pull-request-link" data-related-key="r&quot;&lt;x&gt;/7" aria-label="Pull request 7 of r&quot;&lt;x&gt;"'));
+    assert.ok(!html.includes('<script>'));
 });
 
 test('renderRepositories marks a draft and counts its open tasks, nothing for a ready pull request without tasks (#119)', () => {

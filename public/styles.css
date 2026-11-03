@@ -1099,6 +1099,13 @@ select:disabled {
     margin-bottom: 5px;
 }
 
+/* "(see 12, 45)": the other pull requests of the issue; the line is a flex
+   row, where the space before it would collapse */
+.related-pull-requests {
+    margin-left: 6px;
+    color: var(--text-muted);
+}
+
 .jira-priority-icon {
     display: inline-block;
     width: 16px;

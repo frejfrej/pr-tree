@@ -15,7 +15,9 @@
  * tree-toggle.js keeps aria-expanded in step. The pull-request and issue
  * links carry, as data attributes, what the popovers show;
  * initializePopovers reads them back, so the writer and the reader of those
- * attributes live together.
+ * attributes live together. The "(see 12, 45)" links after an issue carry
+ * only the key of the related pull request's row, whose title link the
+ * preview reads.
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
@@ -101,6 +103,38 @@ export function pullRequestsByDestination(pullRequests) {
 }
 
 /**
+ * The pull requests of each issue, by issue key, from the issue map of the
+ * response: once each, however often a title names the key, in id order,
+ * ties by repository. The repository is the one of the pull-request key, where
+ * Bitbucket numbers the pull request (the destination). Pure.
+ * @returns {Map<string, { key: string, id: number, repository: string, href: string }[]>}
+ */
+export function relatedPullRequestsByIssue(pullRequests, jiraIssuesMap) {
+    const byIssue = new Map();
+    for (const pullRequest of pullRequests) {
+        const key = pullRequestKey(pullRequest);
+        for (const issueKey of new Set(jiraIssuesMap[key] || [])) {
+            if (!byIssue.has(issueKey)) byIssue.set(issueKey, []);
+            byIssue.get(issueKey).push({ key, id: pullRequest.id, repository: pullRequest.destination.repository.name, href: pullRequest.links.html.href });
+        }
+    }
+    for (const list of byIssue.values()) {
+        list.sort((a, b) => a.id - b.id || a.repository.localeCompare(b.repository));
+    }
+    return byIssue;
+}
+
+// The "(see 12, 45)" after an issue of a card: the other pull requests of the
+// issue, each a link to Bitbucket carrying the key of its row, which its
+// preview reads (initializePopovers); nothing when the card is alone
+function relatedLinks(pullRequests = [], ownKey) {
+    const others = pullRequests.filter(other => other.key !== ownKey);
+    if (others.length === 0) return '';
+    const links = others.map(other => `<a href="${escapeHtml(other.href)}" target="_blank" class="related-pull-request-link" data-related-key="${escapeHtml(other.key)}" aria-label="Pull request ${escapeHtml(other.id)} of ${escapeHtml(other.repository)}">${escapeHtml(other.id)}</a>`);
+    return `<span class="related-pull-requests">(see ${links.join(', ')})</span>`;
+}
+
+/**
  * The tree as an HTML string: one block per repository, its root branches and
  * the pull requests nested under their parents, most recently updated first.
  * Ends with the hidden no-match message the filter pass shows when needed.
@@ -115,6 +149,8 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
         acc[repoName].push(pr);
         return acc;
     }, {});
+    // The pull requests of each issue, across the repositories: the "see" list of each card
+    const related = relatedPullRequestsByIssue(pullRequests, jiraIssuesMap);
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
@@ -130,7 +166,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
                     </div>
                 </div>
                 <div class="repository-content">
-                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName)}
+                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related)}
                 </div>
             </div>
         `;
@@ -174,7 +210,7 @@ function getBranchUrl(branchName, pullRequest) {
 }
 
 // Function to recursively render the pull-requests
-function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
+function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level = 0) {
     let html = '';
     if (level === 0) {
         const rootBranches = findRootBranches(pullRequests);
@@ -205,7 +241,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
                     <div class="root-branch-content">
             `;
             rootPullRequests.forEach(rootPullRequest => {
-                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, 1);
+                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, 1);
             });
             html += `
                     </div>
@@ -216,7 +252,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
         // Sort by updated_on date in descending order (most recent first)
         pullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
         pullRequests.forEach(pullRequest => {
-            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level+1);
+            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level+1);
         });
     }
     return html;
@@ -242,7 +278,7 @@ export function calculateDescendants(pullRequest, byDestination) {
 const attentionReasonIcon = '<span class="attention-reason" role="img" aria-label="Waiting for a selected participant" title="Waiting for a selected participant"><i class="fas fa-hourglass-half" aria-hidden="true"></i></span>';
 
 // Function to recursively render a pull-request
-function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
+function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level = 0) {
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
@@ -286,7 +322,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
                        ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status?.name ?? 'no status')})
-                    </a></li>`;
+                    </a>${relatedLinks(related.get(issueDetails.key), key)}</li>`;
         }).join('');
 
         if (sameStatusIcon || noOtherParticipantsAlert) {
@@ -374,7 +410,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
         </div>
     `;
     if (hasChildren) {
-        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level + 1)}</div>`;
+        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level + 1)}</div>`;
     }
     return html;
 }
