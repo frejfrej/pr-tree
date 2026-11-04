@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'module';
-import { generateProjectData, generateSyncStatuses, repositoryVolumes } from '../fixtures/generate.mjs';
+import { generateProjectData, generateSyncStatuses, repositoryVolumes, shareIssueKeys } from '../fixtures/generate.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from '../fixtures/index.mjs';
 import { extractJiraIssues } from '../project-assembly.mjs';
 import { pullRequestKey } from '../public/pull-request-key.mjs';
@@ -330,4 +330,33 @@ test('fixtures: OSLC has its own branch-only and stacked shares, and products.we
     const webOslc = data => data.pullRequests.filter(pr => pr.destination.repository.name === 'products.web.oslc');
     assert.deepEqual(webOslc(secollab).map(pr => pr.title), webOslc(oslc).map(pr => pr.title));
     assert.deepEqual(webOslc(secollab).map(pr => secollab.jiraIssuesMap[pullRequestKey(pr)]), webOslc(oslc).map(pr => oslc.jiraIssuesMap[pullRequestKey(pr)]));
+});
+
+test('fixtures: every pull request\'s rendered title is its title, the keys shared or taken away included (3.3.0)', () => {
+    for (const [name, config] of Object.entries(projects)) {
+        for (const pullRequest of generateProjectData(name, config).pullRequests) {
+            assert.equal(pullRequest.rendered.title.raw, pullRequest.title, `${name} ${pullRequestKey(pullRequest)}`);
+        }
+    }
+});
+
+// What shareIssueKeys reads of a pull request: its title and the rendering of it, its branch, its destination
+function titledPullRequest(title, branch, destination = 'develop') {
+    return { title, rendered: { title: { type: 'rendered', raw: title, markup: 'markdown', html: `<p>${title}</p>` } }, source: { branch: { name: branch } }, destination: { branch: { name: destination } } };
+}
+
+test('fixtures: a stacked pull request takes its parent\'s key when its title names only a longer one (SECOLLAB-580 is not in SECOLLAB-5801)', () => {
+    const parent = titledPullRequest('SECOLLAB-580 Parent', 'feature/parent');
+    const child = titledPullRequest('SECOLLAB-5801 Child', 'feature/child', 'feature/parent');
+    shareIssueKeys('a-repository', [parent, child], {});
+    assert.equal(child.title, 'SECOLLAB-580 SECOLLAB-5801 Child');
+    assert.equal(parent.title, 'SECOLLAB-580 Parent');
+});
+
+test('fixtures: a title keeps its key when its branch names only a longer one (SECOLLAB-5801 is not SECOLLAB-580)', () => {
+    const longer = titledPullRequest('SECOLLAB-580 Fix', 'FRJ_260425_SECOLLAB-5801_Fix');
+    const same = titledPullRequest('SECOLLAB-7 Other', 'FRJ_260425_SECOLLAB-7_Other');
+    shareIssueKeys('a-repository', [longer, same], {});
+    assert.equal(longer.title, 'SECOLLAB-580 Fix');
+    assert.equal(same.title, 'Other');
 });
