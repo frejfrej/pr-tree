@@ -44,6 +44,7 @@ public/page-build-header.mjs   The X-Page-Build header name, shared with page-bu
 public/atlassian-pause.js      The Atlassian pause on the page: 503 of a project load, pause end, banner indicator
 public/app-shell.js    Banner, sidebar, theme, help, keyboard shortcuts, tab title
 public/filter-registry.js      The five multi-select filters (key, element, URL parameter) and the single-value ones (Work, Hide drafts, SYNC: default, URL form, control property), defaultFilters()
+public/issue-links.js        The Jira issue links shown under an issue: the rule (ticked phrases, done never), the options of the Links setting, its stored selection and default
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
 public/pull-request-key.mjs    Keys naming the repository: pull request "repository/id", root branch "repository:branch" (.mjs: the server imports it)
 public/copy-branch.js  The branch actions of a pull request: copy the branch name, copy `git fetch` + `git switch`, quoted for POSIX shells and PowerShell alike (feedback, status region), the Sourcetree link

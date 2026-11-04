@@ -20,6 +20,8 @@
 * Displays a link to related issues with the corresponding status
     * The issues are read from the title of the pull request, or, when the title names none, from its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches)
     * After an issue, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number: each number opens the pull request in Bitbucket, and hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), with a crosshairs button while the filters show it, which unfolds what hides it, selects it and scrolls to it
+    * Under an issue, one line per Jira issue link of the types chosen in the "Links" setting: Jira's wording ("is blocked by", "blocks", "relates to"...), the linked issue (hovering it shows its summary) with its status, and, when the linked issue has pull requests in the tree, their numbers ("· #41, #57"), with the same preview and crosshairs button as "(see …)". Links to done issues are never shown. The Jira issues in review without a pull request show their links the same way
+    * The "Links" setting, at the bottom of the sidebar, lists the link wordings the project's issues use; "is blocked by" and "blocks" are ticked until you change it, and "None" hides every link. It is a display setting, not a filter: the browser remembers it (a wording the current project does not use stays ticked for the others), it is not in the address, and "Clear filters" leaves it alone
 * Displays the status of the pull requests alongside the status of related issues
 * Lists the Jira issues in review that no pull request links, in a section below the tree
     * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC and Hide drafts do not apply) and is hidden when nothing in it matches
@@ -101,6 +103,10 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.4.0
+    * Under each issue of a card, and of the Jira issues in review without a pull request, one line per Jira issue link: "is blocked by SECOLLAB-98 (In Progress) · #41", the linked issue with its status and, when it has pull requests in the tree, their numbers, which preview the pull request and scroll to it like "(see …)". Links to done issues are never shown
+    * A "Links" setting at the bottom of the sidebar chooses which links are shown, by Jira's wording: "is blocked by" and "blocks" by default, any other the project's issues use ("relates to", "duplicates"...), or "None". The browser remembers the choice; it is not a filter, so the address, the history and "Clear filters" leave it alone
+    * Fixture mode: issues linked to each other and to issues outside the dashboard, of every default Jira link type, some of them done
 * Version 3.3.0
     * The Jira keys are read whatever their case, in titles and branches alike: `feature/secollab-123-fix` links SECOLLAB-123. The regexes of `projects.js` ignore the case (the `i` flag); a project of your own needs it too
     * A pull request whose title names no Jira key takes the keys of its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches): it shows its issues, takes their band, sprint, epic, story and fix version, its assignee finds it with the participant filter, and the issue leaves the Jira issues in review without a pull request. A key in the title still wins

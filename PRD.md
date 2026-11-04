@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD)
 ## Bitbucket Pull-Requests Tree
 
-**Version:** 3.3.0
+**Version:** 3.4.0
 **Last Updated:** 2026-11-04
 **Author:** François-Régis Jaunatre
 **Status:** Active Development
@@ -152,6 +152,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F3.7: Support Jira workflow integration with "In Review" and "In Progress" statuses
 - F3.8: Fetch the parent of linked issues, and the summary, type and parent of parent issues, so that sub-tasks reach their story and epic
 - F3.9: Fetch the Jira approvers of the orphaned issues and who approved (two custom fields named in config.js, `approversField` and `approvedByField`), show them like the reviewers of a pull request, and keep an orphaned issue for its approvers: reviews without a pull request (documentation, Xray tests)
+- F3.10: Fetch the issue links of the linked and orphaned issues and show, under each issue, one line per link of the wordings chosen in the Links setting (default "is blocked by" and "blocks"): the wording, the linked issue and its status, and its pull requests in the tree; links to done issues (Jira status category) never. The setting is kept by the browser and is not a filter (not in the URL, the history or Clear filters)
 
 **Workflow Context:**
 The application integrates with a Jira workflow where:
@@ -565,6 +566,7 @@ YYYY-MM-DDTHH:mm:ss.sssZ - Message
 ### 8.3 Responsive Behavior
 - Desktop-first: the banner and the filter sidebar stay fixed while the pull-request pane scrolls
 - The sidebar can be hidden (button or `F` key); the state is remembered per browser
+- Below the filters, after a divider, the Links setting (a multi-select of the issue-link wordings, "None" when nothing is ticked) chooses the link lines drawn under the issues; it is a display setting, remembered per browser
 - Below 900px the sidebar becomes a drawer over the pane and the banner hides its text labels
 - Repository and branch headers stick to the top of the pane while scrolling
 - Modal dialog for help content (focus moved in and back, page behind inert, Escape closes)
