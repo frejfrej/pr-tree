@@ -32,6 +32,37 @@ function rethrowRateLimit(error) {
 const gapParts = ['parents', 'sprints'];
 
 /**
+ * The Jira links of an issue (`fields.issuelinks`) in the one shape the page
+ * and the fixtures read, in Jira's order: the link type's name, the direction
+ * of this link (`inward` when Jira gives the other issue as `inwardIssue`),
+ * the type's phrase for that direction ("is blocked by", "blocks"), and the
+ * other issue's key, summary and status, the status trimmed to its name and
+ * category (`null` without one): no `self` or icon URL reaches the payload
+ * or the hash. A link without a type name, a phrase or an issue key is
+ * skipped; anything but a list gives none (a site with linking off sends no
+ * field).
+ * @returns {{ type: string, direction: 'inward' | 'outward', phrase: string, key: string, summary: string, status: { name: string, statusCategory: { key: string } } | null }[]}
+ */
+export function normalizeIssueLinks(issuelinks) {
+    if (!Array.isArray(issuelinks)) return [];
+    return issuelinks.flatMap(link => {
+        const direction = link?.inwardIssue ? 'inward' : link?.outwardIssue ? 'outward' : null;
+        const other = direction && link[`${direction}Issue`];
+        const phrase = direction && link.type?.[direction];
+        if (!other?.key || !link.type?.name || !phrase) return [];
+        const status = other.fields?.status;
+        return [{
+            type: link.type.name,
+            direction,
+            phrase,
+            key: other.key,
+            summary: other.fields?.summary ?? '',
+            status: status ? { name: status.name, statusCategory: { key: status.statusCategory?.key } } : null
+        }];
+    });
+}
+
+/**
  * @param {object} options
  * @param {typeof fetch} options.fetch - sends a request to Atlassian (the server passes atlassianFetch)
  * @param {string} options.workspace - the Bitbucket workspace slug
@@ -92,12 +123,20 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
     // picker's user becomes a list of one, and what is not a user (an unset
     // field's null, the text of a field configured by mistake) is dropped
     const { approvers: approversField, approvedBy: approvedByField } = approvalFields;
-    const orphanedIssueFields = ['key', 'summary', 'status', 'priority', 'fixVersions', 'assignee', 'parent', 'issuetype', 'updated', approversField, approvedByField]
+    const orphanedIssueFields = ['key', 'summary', 'status', 'priority', 'fixVersions', 'assignee', 'parent', 'issuetype', 'updated', 'issuelinks', approversField, approvedByField]
         .filter(Boolean).join(',');
     const users = value => (Array.isArray(value) ? value : [value]).filter(user => user !== null && typeof user === 'object');
     function withApprovals(issue) {
         const { [approversField]: approvers, [approvedByField]: approvedBy, ...fields } = issue.fields;
         return { ...issue, fields: { ...fields, approvers: users(approvers), approvedBy: users(approvedBy) } };
+    }
+
+    // The links of an issue under the name and in the shape the page reads
+    // (fields.issueLinks, normalizeIssueLinks) instead of Jira's issuelinks:
+    // the page and the fixtures see one shape, as for the approvers
+    function withIssueLinks(issue) {
+        const { issuelinks, ...fields } = issue.fields;
+        return { ...issue, fields: { ...fields, issueLinks: normalizeIssueLinks(issuelinks) } };
     }
 
     async function fetchInReviewIssuesWithoutPR(jiraProjects, existingIssues) {
@@ -110,7 +149,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             // linked issues, the approvers when their fields are configured)
             const jql = `project in (${jiraProjects.join(',')}) AND status = "In Review" ORDER BY priority DESC, updated DESC`;
             for await (const page of searchIssuePages(jql, orphanedIssueFields)) {
-                orphanedIssues.push(...page.issues.filter(issue => !existingIssuesSet.has(issue.key)).map(withApprovals));
+                orphanedIssues.push(...page.issues.filter(issue => !existingIssuesSet.has(issue.key)).map(issue => withIssueLinks(withApprovals(issue))));
             }
             log.access(`Found ${orphanedIssues.length} orphaned issues in review status`);
         } catch (error) {
@@ -158,7 +197,7 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
         }
     }
 
-    // The linked issues in batches of 50 (their parents are fetchParentIssues' job)
+    // The linked issues in batches of 50, with their Jira links (their parents are fetchParentIssues' job)
     async function fetchJiraIssuesDetails(jiraIssues, jiraProjects) {
         const jiraBaseUrl = `https://${jiraSiteName}.atlassian.net/rest/api/3/search/jql`;
 
@@ -168,11 +207,11 @@ export function createProjectData({ fetch, workspace, bbAuth, jiraSiteName, jira
             const startTime = Date.now();
             const jiraIssuesBatch = jiraIssues.slice(i, i + pageSize);
             const jql = `issueKey in (${jiraIssuesBatch.join(',')}) AND project in (${jiraProjects.join(',')})`;
-            const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee,parent,issuetype`;
+            const url = `${jiraBaseUrl}?jql=${encodeURIComponent(jql)}&fields=key,summary,status,priority,fixVersions,assignee,parent,issuetype,issuelinks`;
 
             try {
                 const data = await jiraJson(url);
-                jiraIssuesDetails.push(...data.issues);
+                jiraIssuesDetails.push(...data.issues.map(withIssueLinks));
             } catch (error) {
                 log.error(`Error in fetchJiraIssuesDetails: ${error.message}`);
                 throw error;
