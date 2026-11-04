@@ -628,15 +628,13 @@ export function initializePopovers({ isShown = () => false, reveal = () => {} } 
     popover.className = 'popover';
     document.body.appendChild(popover);
 
-    // Bitbucket's rendering of the title and description of a pull-request link: HTML by design
+    // Bitbucket's rendering of the title and description of a pull-request link: HTML by
+    // design; returns the title's element
     function renderPullRequestPreview(titleLink) {
-        const title = decodeURIComponent(titleLink.dataset.renderedTitle);
-        const description = decodeURIComponent(titleLink.dataset.renderedDescription);
+        const title = htmlElement('pull-request-popover-title', decodeURIComponent(titleLink.dataset.renderedTitle));
         popover.className = 'pull-request-popover';
-        popover.innerHTML = `
-            <div class="pull-request-popover-title">${title}</div>
-            <div class="pull-request-popover-description">${description}</div>
-        `;
+        popover.replaceChildren(title, htmlElement('pull-request-popover-description', decodeURIComponent(titleLink.dataset.renderedDescription)));
+        return title;
     }
 
     // The preview of a related pull request: its repository and number (text), then its
@@ -646,26 +644,29 @@ export function initializePopovers({ isShown = () => false, reveal = () => {} } 
         const row = pullRequestRow(key);
         const titleLink = row?.querySelector('.pull-request-link');
         if (!titleLink) return false;
-        renderPullRequestPreview(titleLink);
+        const title = renderPullRequestPreview(titleLink);
         const separator = key.lastIndexOf('/');
+        const repository = key.slice(0, separator);
         const id = key.slice(separator + 1);
         const header = document.createElement('div');
         header.className = 'pull-request-popover-header';
-        header.append(popover.querySelector('.pull-request-popover-title'));
+        header.append(title);
         if (isShown(row)) {
+            // Named with the repository, as the "see" link is: two repositories share numbers
+            const label = `Scroll to pull request ${id} of ${repository}`;
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'scroll-to-pull-request';
             button.dataset.relatedKey = key;
-            button.title = `Scroll to pull request ${id}`;
-            button.setAttribute('aria-label', `Scroll to pull request ${id}`);
+            button.title = label;
+            button.setAttribute('aria-label', label);
             const icon = document.createElement('i');
             icon.className = 'fas fa-crosshairs';
             icon.setAttribute('aria-hidden', 'true');
             button.append(icon);
             header.append(button);
         }
-        popover.prepend(textElement('pull-request-popover-repository', `${key.slice(0, separator)} · #${id}`), header);
+        popover.prepend(textElement('pull-request-popover-repository', `${repository} · #${id}`), header);
         return true;
     }
 
@@ -678,8 +679,11 @@ export function initializePopovers({ isShown = () => false, reveal = () => {} } 
                 textElement('jira-issue-popover-summary', link.dataset.issueSummary)
             );
         } else if (link.classList.contains('related-pull-request-link')) {
-            // A row gone with a re-render: no preview
-            if (!renderRelatedPreview(link)) return;
+            // A row gone with a re-render: no preview, not even the one of the link hovered before
+            if (!renderRelatedPreview(link)) {
+                hidePopover();
+                return;
+            }
         } else {
             renderPullRequestPreview(link);
         }
@@ -704,6 +708,14 @@ export function initializePopovers({ isShown = () => false, reveal = () => {} } 
         const element = document.createElement('div');
         element.className = className;
         element.textContent = text;
+        return element;
+    }
+
+    // Only for Bitbucket's rendered HTML
+    function htmlElement(className, html) {
+        const element = document.createElement('div');
+        element.className = className;
+        element.innerHTML = html;
         return element;
     }
 

@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
 import { sourcetreeUrl, switchCommand } from '../public/copy-branch.js';
-import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue } from '../public/app-render.js';
+import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue, initializePopovers } from '../public/app-render.js';
+import { node, fakeDocument } from './fake-dom.mjs';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -243,6 +244,79 @@ test('renderRepositories escapes what the related links carry', () => {
     const html = renderRepositories([hostile, plain], { 'r"<x>/7': ['PROJ-1'], 'repo-a/8': ['PROJ-1'] }, oneIssue, 'site');
     assert.ok(html.includes('href="https://bitbucket.org/&quot;&gt;&lt;script&gt;" target="_blank" class="related-pull-request-link" data-related-key="r&quot;&lt;x&gt;/7" aria-label="Pull request 7 of r&quot;&lt;x&gt;"'));
     assert.ok(!html.includes('<script>'));
+});
+
+// The popovers over a fake page: a row for each key of `rows` (its rendered
+// title), a "see" link for each key of `related`, the timers mocked; `hover`
+// moves the pointer onto a link and waits for the preview, `leave` off it
+function popoverPage(t, { rows, related, isShown = () => true }) {
+    const rowElements = Object.fromEntries(Object.entries(rows).map(([key, title]) => [key, node({ classes: ['pull-request'], dataset: { id: key } },
+        node({ tag: 'a', classes: ['pull-request-link'], dataset: { renderedTitle: encodeURIComponent(title), renderedDescription: encodeURIComponent('<p>Description</p>') } }))]));
+    const links = Object.fromEntries(related.map(key => [key, node({ tag: 'a', classes: ['related-pull-request-link'], dataset: { relatedKey: key } })]));
+    const body = node({ tag: 'body' }, node({ id: 'main' }, ...Object.values(rowElements), ...Object.values(links)));
+    const document = fakeDocument(body);
+    const saved = { document: globalThis.document, window: globalThis.window, CSS: globalThis.CSS };
+    Object.assign(globalThis, { document, window: { innerWidth: 1024, innerHeight: 768 }, CSS: { escape: value => value } });
+    t.after(() => Object.assign(globalThis, saved));
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const revealed = [];
+    initializePopovers({ isShown, reveal: row => revealed.push(row) });
+    return {
+        rows: rowElements,
+        links,
+        popover: body.children.at(-1),
+        revealed,
+        hover(link) {
+            document.dispatch('mouseover', { target: link });
+            t.mock.timers.tick(500);
+        },
+        leave: link => document.dispatch('mouseout', { target: link })
+    };
+}
+
+test('a "see" number previews its pull request: repository and number, its title beside the scroll button while the filters show it, its description; the button reveals the row', t => {
+    const page = popoverPage(t, { rows: { 'repo-a/12': '<p>Twelve</p>' }, related: ['repo-a/12'] });
+    page.hover(page.links['repo-a/12']);
+    const { popover } = page;
+    assert.equal(popover.style.display, 'block');
+    assert.equal(popover.className, 'pull-request-popover');
+    assert.deepEqual(popover.children.map(child => child.className), ['pull-request-popover-repository', 'pull-request-popover-header', 'pull-request-popover-description']);
+    const [repository, header, description] = popover.children;
+    assert.equal(repository.textContent, 'repo-a · #12');
+    assert.deepEqual(header.children.map(child => child.className), ['pull-request-popover-title', 'scroll-to-pull-request']);
+    assert.equal(header.children[0].innerHTML, '<p>Twelve</p>');
+    assert.equal(description.innerHTML, '<p>Description</p>');
+
+    // A click on the icon of the button: the preview closes, the row is revealed
+    popover.dispatch('click', { target: header.children[1].children[0] });
+    assert.equal(popover.style.display, 'none');
+    assert.equal(page.revealed.length, 1);
+    assert.ok(page.revealed[0] === page.rows['repo-a/12']);
+});
+
+test('a "see" number previews without the scroll button the pull request the filters hide', t => {
+    const page = popoverPage(t, { rows: { 'repo-a/12': '<p>Twelve</p>' }, related: ['repo-a/12'], isShown: () => false });
+    page.hover(page.links['repo-a/12']);
+    assert.equal(page.popover.style.display, 'block');
+    assert.equal(page.popover.querySelector('.scroll-to-pull-request'), null);
+    assert.equal(page.popover.querySelector('.pull-request-popover-title').innerHTML, '<p>Twelve</p>');
+});
+
+test('the scroll button names the repository of its pull request, as the "see" link does: two repositories share numbers', t => {
+    const page = popoverPage(t, { rows: { 'repo-b/12': '<p>Twelve</p>' }, related: ['repo-b/12'] });
+    page.hover(page.links['repo-b/12']);
+    const button = page.popover.querySelector('.scroll-to-pull-request');
+    assert.equal(button.getAttribute('aria-label'), 'Scroll to pull request 12 of repo-b');
+    assert.equal(button.title, 'Scroll to pull request 12 of repo-b');
+});
+
+test('a "see" number whose pull request has no row closes the preview shown before, never leaving another pull request\'s', t => {
+    const page = popoverPage(t, { rows: { 'repo-a/12': '<p>Twelve</p>' }, related: ['repo-a/12', 'repo-a/45'] });
+    page.hover(page.links['repo-a/12']);
+    assert.equal(page.popover.style.display, 'block');
+    page.leave(page.links['repo-a/12']);
+    page.hover(page.links['repo-a/45']);
+    assert.equal(page.popover.style.display, 'none');
 });
 
 test('the "see" lists name only the pull requests the tree shows: a branch loop has no row to point at', () => {
