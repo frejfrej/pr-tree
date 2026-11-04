@@ -1,5 +1,7 @@
 import { initializeFilter, filterBranches, countActiveFilters } from './app-filter.js';
-import { renderRepositories, renderOrphanedIssues, initializePopovers } from './app-render.js';
+import { renderRepositories, renderOrphanedIssues, initializePopovers, treeRelatedPullRequests } from './app-render.js';
+import { issueLinkStorageKey, issueLinkOptions, readIssueLinkPhrases, mergeIssueLinkPhrases } from './issue-links.js';
+import { readStorage, writeStorage } from './local-storage.js';
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleCopyClick } from './copy-branch.js';
@@ -38,6 +40,11 @@ let projectLoading = false;
 let loadPrefersTypedText = true;
 // The rows the last filter pass left displayed, in document order: where j and k go (tree-keyboard.js)
 let treeRows = [];
+// The phrases of the Jira issue links drawn under each issue (the Links
+// setting, issue-links.js): read once from localStorage, the default when
+// nothing is stored, written only when the user changes the control. Not a
+// filter: not in the URL, the history, Clear filters or the badge
+let issueLinkPhrases = readIssueLinkPhrases(readStorage(issueLinkStorageKey));
 // The row the user last selected (its key, the `selected` URL parameter), and
 // the row selected: that one when the last pass shows it, the first row shown
 // otherwise. Only a selection by the user changes the first (see selectRow)
@@ -509,16 +516,19 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     currentApiResult = apiResult;
     const filterIndex = initializeFilter(currentApiResult);
 
-    // Create main content
+    // Create main content, with the issue links of the phrases the Links setting ticked
     const mainContent = renderRepositories(
         currentApiResult.pullRequests,
         currentApiResult.jiraIssuesMap,
         currentApiResult.jiraIssuesDetails,
-        currentApiResult.jiraSiteName
+        currentApiResult.jiraSiteName,
+        { linkPhrases: issueLinkPhrases }
     );
 
-    // Add orphaned issues section (a repository block, filtered with the tree)
-    const orphanedIssuesHtml = renderOrphanedIssues(currentApiResult.orphanedIssues, currentApiResult.jiraSiteName);
+    // Add orphaned issues section (a repository block, filtered with the tree); the "#" links
+    // of its link lines name the pull requests of the tree
+    const related = treeRelatedPullRequests(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap);
+    const orphanedIssuesHtml = renderOrphanedIssues(currentApiResult.orphanedIssues, currentApiResult.jiraSiteName, { linkPhrases: issueLinkPhrases, related });
 
     // Combine content
     container.innerHTML = mainContent + orphanedIssuesHtml;
@@ -536,6 +546,13 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     for (const { key, elementId } of multiSelectFilters) {
         const multiSelect = getMultiSelect(elementId);
         if (multiSelect) multiSelect.setOptions(filterIndex[key]);
+    }
+    // The Links setting offers the phrases of this project's links; it shows the
+    // ticked ones it offers, while the others stay stored (never written here)
+    const issueLinkSelect = getMultiSelect('issueLinkSelect');
+    if (issueLinkSelect) {
+        issueLinkSelect.setOptions(issueLinkOptions([...currentApiResult.jiraIssuesDetails, ...(currentApiResult.orphanedIssues ?? [])]));
+        issueLinkSelect.setSelectedValues(issueLinkPhrases);
     }
 
     // Every option list is populated: restore the filters from the URL (see restoreFiltersFromUrl for preferTypedText) and apply them once
@@ -681,6 +698,19 @@ document.addEventListener('visibilitychange', function() {
 // Initialize multi-select components
 function initializeMultiSelects() {
     for (const { elementId } of multiSelectFilters) createMultiSelect(elementId, { onChange: handleFilterChange });
+    createMultiSelect('issueLinkSelect', { emptyText: 'None', onChange: handleIssueLinkChange });
+}
+
+// A change of the Links setting: the phrases ticked, plus those of the
+// selection this project does not offer (issue-links.js), stored, then the
+// tree rendered again with the same data, as a refresh with new data does:
+// folds, selection, focus, filters and SYNC badges kept; no fetch, the URL
+// and the history untouched
+function handleIssueLinkChange(ticked) {
+    const offered = getMultiSelect('issueLinkSelect').options.map(option => option.value);
+    issueLinkPhrases = mergeIssueLinkPhrases(ticked, issueLinkPhrases, offered);
+    writeStorage(issueLinkStorageKey, JSON.stringify(issueLinkPhrases));
+    if (currentProject && currentApiResult) renderEverything(currentApiResult);
 }
 
 // Update the DOMContentLoaded event listener

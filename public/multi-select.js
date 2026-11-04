@@ -3,6 +3,9 @@
  * A reusable multi-select dropdown component with checkbox-based selection.
  * The markup of the dropdown is generated: the page only declares an empty
  * element with the class and the id.
+ * `emptyText` (default "Show all", which for a filter means no filtering)
+ * is what the display shows while nothing is ticked, from the start, before
+ * any option is set: the Links setting says "None".
  */
 
 import { escapeHtml } from './escape-html.js';
@@ -47,6 +50,7 @@ export class MultiSelect {
         this.options = [];
         this.selectedValues = [];
         this.onChange = options.onChange || null;
+        this.emptyText = options.emptyText ?? 'Show all';
         this.searchText = '';
 
         this.element.innerHTML = multiSelectMarkup(elementId);
@@ -57,6 +61,7 @@ export class MultiSelect {
         this.searchInput = this.element.querySelector('.multi-select-search-input');
         this.clearBtn = this.element.querySelector('.multi-select-clear');
         this.selectAllBtn = this.element.querySelector('.multi-select-select-all');
+        this.updateDisplay();
 
         this.init();
     }
@@ -262,7 +267,7 @@ export class MultiSelect {
 
     updateDisplay() {
         if (this.selectedValues.length === 0) {
-            this.display.textContent = 'Show all';
+            this.display.textContent = this.emptyText;
             this.display.classList.remove('has-selection');
         } else if (this.selectedValues.length === 1) {
             const selectedOption = this.options.find(opt => opt.value === this.selectedValues[0]);

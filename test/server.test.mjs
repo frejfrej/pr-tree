@@ -188,11 +188,13 @@ test('every select and multi-select of the app has an accessible name (#62)', as
     }
 
     // A multi-select trigger is a button named by the visible label of its filter, then by its
-    // selection; the page holds one per filter of the registry, and no other
+    // selection; the page holds one per filter of the registry and the Links setting, and no other
     const classes = div => (attribute(div, 'class') ?? '').split(/\s+/);
     const multiSelects = openingTags(html, 'div').filter(div => classes(div).includes('multi-select'));
-    assert.deepEqual(multiSelects.map(div => attribute(div, 'id')).sort(), multiSelectFilters.map(filter => filter.elementId).sort());
-    for (const { elementId: id } of multiSelectFilters) {
+    const multiSelectIds = [...multiSelectFilters.map(filter => filter.elementId), 'issueLinkSelect'];
+    assert.deepEqual(multiSelects.map(div => attribute(div, 'id')).sort(), [...multiSelectIds].sort());
+    assert.match(html, /<span id="issueLinkSelectLabel">Links<\/span>/);
+    for (const id of multiSelectIds) {
         assert.ok(hasTextById(html, `${id}Label`), `the visible label ${id}Label`);
         const markup = multiSelectMarkup(id);
         const [trigger] = openingTags(markup, 'div').filter(div => attribute(div, 'class') === 'multi-select-trigger');
