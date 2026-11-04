@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
 import { sourcetreeUrl, switchCommand } from '../public/copy-branch.js';
+import { issueLinkOptions } from '../public/issue-links.js';
 import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue, initializePopovers } from '../public/app-render.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
@@ -363,7 +364,10 @@ test('renderRepositories writes what the popovers and the SYNC badges read back'
 test('renderRepositories renders every pull request of the fixture projects once, deep stack included', () => {
     for (const [name, config] of Object.entries(projects)) {
         const data = generateProjectData(name, config);
-        const html = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, data.jiraSiteName);
+        // Every phrase the fixture offers, so the checks below cover the link lines too
+        const linkPhrases = issueLinkOptions([...data.jiraIssuesDetails, ...data.orphanedIssues]).map(option => option.value);
+        const html = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, data.jiraSiteName, { linkPhrases });
+        if (name === 'SECOLLAB') assert.ok(count(html, 'class="issue-link"') > 0);
         assert.equal(count(html, 'class="pull-request '), data.pullRequests.length, name);
         assert.equal(count(html, '<div class="repository">'), new Set(data.pullRequests.map(pr => pr.source.repository.name)).size, name);
         // A children container per pull request stacked upon, within its own repository
@@ -663,4 +667,66 @@ test('a branch name holding a quote has no command button, only its name and its
         assert.equal(count(html, 'copy-switch'), 0, name);
         assert.equal(count(html, 'class="sourcetree-link"'), 1, name);
     }
+});
+
+const linkTo = (direction, phrase, key, summary, status, type = 'Blocks') => ({ type, direction, phrase, key, summary, status });
+const inProgress = { name: 'In Progress', statusCategory: { key: 'indeterminate' } };
+const done = { name: 'Done', statusCategory: { key: 'done' } };
+
+test('renderRepositories lists the links of the ticked phrases under their issue, inward first, done ones never, nothing by default', () => {
+    const details = [{ key: 'PROJ-1', fields: { summary: 'First', status: { name: 'In Review' }, priority: null, issueLinks: [
+        linkTo('outward', 'blocks', 'PROJ-130', 'Mail', inProgress),
+        linkTo('inward', 'is blocked by', 'PROJ-98', 'Renderer', inProgress),
+        linkTo('inward', 'is blocked by', 'PROJ-97', 'Old', done),
+        linkTo('outward', 'relates to', 'PROJ-7', 'Fonts', null, 'Relates')
+    ] } }];
+    const pr = pullRequest(1, { source: 'feat-a', destination: 'main' });
+    const row = rowHtml(renderRepositories([pr], { 'repo-one/1': ['PROJ-1'] }, details, 'site', { linkPhrases: ['blocks', 'is blocked by'] }), 'repo-one/1');
+    assert.equal(count(row, 'class="issue-link"'), 2);
+    assert.ok(row.indexOf('PROJ-98') < row.indexOf('PROJ-130'));
+    assert.ok(!row.includes('PROJ-97') && !row.includes('PROJ-7'));
+    assert.match(row, /<i class="fas fa-link" aria-hidden="true"><\/i>\s*<span class="issue-link-phrase">is blocked by<\/span>\s*<a href="https:\/\/site\.atlassian\.net\/browse\/PROJ-98"/);
+    const keyLink = row.match(/<a [^>]*data-issue-key="PROJ-98"[^>]*>/)[0];
+    assert.ok(keyLink.includes('class="jira-issue-link"') && keyLink.includes('data-issue-summary="Renderer"'));
+    assert.ok(row.includes('<span class="issue-link-status">(In Progress)</span>'));
+    // The card's own issue is still the first Jira link of the row (the i key)
+    assert.ok(row.indexOf('data-issue-key="PROJ-1"') < row.indexOf('data-issue-key="PROJ-98"'));
+    assert.ok(!rowHtml(renderRepositories([pr], { 'repo-one/1': ['PROJ-1'] }, details, 'site'), 'repo-one/1').includes('issue-links'));
+    const relatesOnly = rowHtml(renderRepositories([pr], { 'repo-one/1': ['PROJ-1'] }, details, 'site', { linkPhrases: ['relates to'] }), 'repo-one/1');
+    assert.ok(relatesOnly.includes('<span class="issue-link-status">(no status)</span>'));
+});
+
+test('a link line names the pull requests of the linked issue the tree shows, never the card itself', () => {
+    const a1 = pullRequest(1, { repo: 'repo-a', source: 'a1', destination: 'main' });
+    const b41 = pullRequest(41, { repo: 'repo-b', source: 'b41', destination: 'main' });
+    const b57 = pullRequest(57, { repo: 'repo-b', source: 'b57', destination: 'main' });
+    // repo-a/1 delivers PROJ-1 and PROJ-98; PROJ-1 is blocked by PROJ-98, which repo-b/41 and repo-b/57 deliver too
+    const map = { 'repo-a/1': ['PROJ-1', 'PROJ-98'], 'repo-b/41': ['PROJ-98'], 'repo-b/57': ['PROJ-98'] };
+    const details = [
+        { key: 'PROJ-1', fields: { summary: 'First', status: { name: 'In Review' }, issueLinks: [linkTo('inward', 'is blocked by', 'PROJ-98', 'Renderer', inProgress)] } },
+        { key: 'PROJ-98', fields: { summary: 'Renderer', status: inProgress, issueLinks: [] } }
+    ];
+    const line = rowHtml(renderRepositories([a1, b41, b57], map, details, 'site', { linkPhrases: ['is blocked by'] }), 'repo-a/1').split('class="issue-links"')[1];
+    assert.ok(line.includes(' · <a href="https://bitbucket.org/ws/repo-b/pull-requests/41" target="_blank" class="related-pull-request-link" data-related-key="repo-b/41" aria-label="Pull request 41 of repo-b">#41</a>, <a '));
+    assert.ok(line.includes('aria-label="Pull request 57 of repo-b">#57</a>'));
+    assert.ok(!line.includes('data-related-key="repo-a/1"'));
+});
+
+test('renderOrphanedIssues lists the links of an orphaned issue after its header, with the pull requests of the linked issue', () => {
+    const orphan = { key: 'PROJ-9', fields: { summary: 'Docs', status: { name: 'In Review' }, updated: '', approvers: [], approvedBy: [], issueLinks: [linkTo('inward', 'is blocked by', 'PROJ-98', 'Renderer', inProgress)] } };
+    const related = new Map([['PROJ-98', [{ key: 'repo-b/41', id: 41, repository: 'repo-b', href: 'https://bitbucket.org/ws/repo-b/pull-requests/41' }]]]);
+    const html = renderOrphanedIssues([orphan], 'site', { linkPhrases: ['is blocked by'], related });
+    assert.ok(html.indexOf('class="pull-request-header"') < html.indexOf('class="issue-links"'));
+    assert.ok(html.includes('data-related-key="repo-b/41"'));
+    assert.ok(!renderOrphanedIssues([orphan], 'site').includes('issue-links'));
+});
+
+test('a link line escapes the phrase, the key, the summary and the status', () => {
+    const hostile = '<img src=x onerror=alert(1)>"\'&';
+    const details = [{ key: 'PROJ-1', fields: { summary: 'First', status: { name: 'In Review' }, issueLinks: [
+        { type: 'Blocks', direction: 'inward', phrase: hostile, key: hostile, summary: hostile, status: { name: hostile, statusCategory: { key: 'new' } } }
+    ] } }];
+    const row = rowHtml(renderRepositories([pullRequest(1, { source: 'feat-a', destination: 'main' })], { 'repo-one/1': ['PROJ-1'] }, details, 'site', { linkPhrases: [hostile] }), 'repo-one/1');
+    assert.ok(!row.includes('<img src=x'));
+    assert.ok(row.includes(escapeHtml(hostile)));
 });

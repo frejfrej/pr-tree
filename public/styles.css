@@ -1079,7 +1079,9 @@ select:disabled {
     padding: 0;
 }
 
-.jira-issues li {
+/* The issue lines only: the link lines nested in them flow as text, where
+   the spaces between phrase, key, status and "#" links stay */
+.jira-issues > li {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1099,6 +1101,30 @@ select:disabled {
 .related-pull-requests {
     margin-left: 6px;
     color: var(--text-muted);
+}
+
+/* The Jira links of an issue (the Links setting), one line each under the
+   issue: a line of its own in the issue's flex row, indented under the key */
+.issue-links {
+    flex-basis: 100%;
+    list-style-type: none;
+    margin: 2px 0 0 20px;
+    padding: 0;
+}
+
+.issue-link {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.issue-link-phrase,
+.issue-link-status {
+    color: var(--text-muted);
+}
+
+/* Under the header of an orphaned issue */
+.orphaned-issue .issue-links {
+    margin: 4px 0 0 20px;
 }
 
 .jira-priority-icon {
@@ -1330,7 +1356,8 @@ select:disabled {
     font-weight: normal;
 }
 
-.orphaned-issue.needs-attention .jira-issue-link {
+/* The issue's own key only, never a linked key of its link lines */
+.orphaned-issue.needs-attention .pull-request-header > .jira-issue-link {
     color: var(--attention-strong);
 }
 
