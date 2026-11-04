@@ -337,6 +337,12 @@ test('the pull requests of a project have the documented shape, and the same dat
     assert.equal(again.dataHash, data.dataHash);
 });
 
+test('the fixture server serves the issue links of the SECOLLAB issues', async () => {
+    const body = await (await fetch(`${baseUrl}/api/pull-requests/SECOLLAB`)).json();
+    assert.ok(body.jiraIssuesDetails.some(issue => issue.fields.issueLinks?.length > 0));
+    assert.ok(body.orphanedIssues.every(issue => Array.isArray(issue.fields.issueLinks)));
+});
+
 test('an unknown project: 404 from both routes (#105)', async () => {
     const pullRequests = await fetch(`${baseUrl}/api/pull-requests/NO_SUCH_PROJECT`);
     assert.equal(pullRequests.status, 404);

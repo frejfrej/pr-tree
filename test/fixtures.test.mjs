@@ -294,6 +294,30 @@ test('some orphaned issues of the SECOLLAB fixture have Jira approvers, never th
     assert.ok(withApprovers.some(issue => issue.fields.assignee && issue.fields.approvedBy.length < issue.fields.approvers.length), 'one assigned and pending');
 });
 
+test('fixtures: issue links of every kind, consistent on both sides, some to done issues and to issues with a pull request (3.4.0)', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const withPullRequest = new Set(Object.values(data.jiraIssuesMap).flat());
+    // Every issue of a pull request has its links, as the server sends them; the parent-only issues have none
+    for (const issue of data.jiraIssuesDetails.filter(i => withPullRequest.has(i.key))) assert.ok(Array.isArray(issue.fields.issueLinks), issue.key);
+    const issues = [...data.jiraIssuesDetails.filter(i => i.fields.issueLinks), ...data.orphanedIssues];
+    const links = issues.flatMap(i => i.fields.issueLinks.map(link => ({ from: i.key, ...link })));
+    const phrases = { Blocks: ['is blocked by', 'blocks'], Relates: ['relates to', 'relates to'], Duplicate: ['is duplicated by', 'duplicates'], Cloners: ['is cloned by', 'clones'] };
+    for (const link of links) {
+        assert.equal(link.phrase, phrases[link.type][link.direction === 'inward' ? 0 : 1]);
+        assert.deepEqual(Object.keys(link).sort(), ['direction', 'from', 'key', 'phrase', 'status', 'summary', 'type']);
+    }
+    assert.deepEqual(new Set(links.map(l => l.type)), new Set(Object.keys(phrases)));
+    assert.ok(links.some(l => l.status.statusCategory.key === 'done'));
+    assert.ok(links.some(l => l.phrase === 'is blocked by' && withPullRequest.has(l.key)));
+    assert.ok(links.some(l => !issues.some(i => i.key === l.key)), 'some link to an issue outside the dashboard');
+    // Both sides of a link between two dashboard issues
+    const byKey = new Map(issues.map(i => [i.key, i]));
+    for (const link of links.filter(l => byKey.has(l.key))) {
+        assert.ok(byKey.get(link.key).fields.issueLinks.some(back => back.key === link.from && back.type === link.type && back.direction !== link.direction), `${link.from} ${link.phrase} ${link.key}`);
+    }
+    assert.ok(data.orphanedIssues.some(i => i.fields.issueLinks.length > 0));
+});
+
 test('fixtures: some pull requests name their issue in the branch only (3.3.0)', () => {
     const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
     const branchOnly = data.pullRequests.filter(pr =>
