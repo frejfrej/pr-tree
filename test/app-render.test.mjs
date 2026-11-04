@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
 import { sourcetreeUrl, switchCommand } from '../public/copy-branch.js';
-import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml } from '../public/app-render.js';
+import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue, initializePopovers } from '../public/app-render.js';
+import { node, fakeDocument } from './fake-dom.mjs';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -194,6 +195,142 @@ test('renderRepositories renders the issues, participants, commit badges and ale
     assert.ok(html.includes('</i>-3'));
     assert.ok(html.includes('</i>at least -100'));
     assert.ok(html.includes('Pull request has no other participants'));
+});
+
+test('relatedPullRequestsByIssue: every pull request of an issue once, by number then repository', () => {
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const a12 = pullRequest(12, { repo: 'repo-a', source: 'a12', destination: 'main' });
+    const map = { 'repo-a/45': ['PROJ-1', 'PROJ-1'], 'repo-b/45': ['PROJ-1'], 'repo-a/12': ['PROJ-1', 'PROJ-2'] };
+    const related = relatedPullRequestsByIssue([a45, b45, a12], map);
+    assert.deepEqual(related.get('PROJ-1').map(({ key }) => key), ['repo-a/12', 'repo-a/45', 'repo-b/45']);
+    assert.deepEqual(related.get('PROJ-2').map(({ key }) => key), ['repo-a/12']);
+    assert.deepEqual(related.get('PROJ-1')[0], { key: 'repo-a/12', id: 12, repository: 'repo-a', href: 'https://bitbucket.org/ws/repo-a/pull-requests/12' });
+});
+
+const oneIssue = [{ key: 'PROJ-1', fields: { summary: 'One', status: { name: 'In Review' }, priority: null } }];
+// The HTML of one row, from its data-id to the next pull request
+const rowHtml = (html, key) => html.split(`data-id="${key}"`)[1].split('class="pull-request ')[0];
+
+test('renderRepositories lists the other pull requests of each issue after its link, never the card itself', () => {
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const a12 = pullRequest(12, { repo: 'repo-a', source: 'a12', destination: 'main' });
+    // repo-a #45 names PROJ-1 twice: the card draws an issue line per mention, as today, each with its list;
+    // repo-b #45 lists repo-a #45 once all the same. PROJ-9 has no details
+    const map = { 'repo-a/45': ['PROJ-1', 'PROJ-1'], 'repo-b/45': ['PROJ-1'], 'repo-a/12': ['PROJ-9'] };
+    const html = renderRepositories([a45, b45, a12], map, oneIssue, 'site');
+    assert.equal(count(rowHtml(html, 'repo-a/45'), 'class="related-pull-request-link"'), 2);
+    assert.equal(count(rowHtml(html, 'repo-a/45'), 'data-related-key="repo-b/45"'), 2);
+    assert.ok(rowHtml(html, 'repo-a/45').includes('<span class="related-pull-requests">(see <a href="https://bitbucket.org/ws/repo-b/pull-requests/45" target="_blank" class="related-pull-request-link" data-related-key="repo-b/45" aria-label="Pull request 45 of repo-b">45</a>)</span>'));
+    assert.ok(rowHtml(html, 'repo-b/45').includes('data-related-key="repo-a/45"'));
+    assert.equal(count(rowHtml(html, 'repo-b/45'), 'class="related-pull-request-link"'), 1);
+    assert.ok(!rowHtml(html, 'repo-a/12').includes('related-pull-requests'));
+});
+
+test('an issue line keeps its priority icon and its link together, the related list after them: the line wraps only before the list', () => {
+    // PROJ-1, High, on repo-one/1: a long status wraps the link's text beside its icon, as before 3.3.0
+    assert.match(rowHtml(renderSample(), 'repo-one/1'), /<li><span class="jira-issue"><img src="https:\/\/jira\/high.svg"[^>]*class="jira-priority-icon"[^>]*><a href="[^"]*"[^>]*class="jira-issue-link">[^<]*<\/a><\/span><\/li>/);
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const html = renderRepositories([a45, b45], { 'repo-a/45': ['PROJ-1'], 'repo-b/45': ['PROJ-1'] }, oneIssue, 'site');
+    assert.match(rowHtml(html, 'repo-b/45'), /<li><span class="jira-issue"><a href="[^"]*"[^>]*class="jira-issue-link">[^<]*<\/a><\/span><span class="related-pull-requests">\(see /);
+});
+
+test('renderRepositories escapes what the related links carry', () => {
+    const hostile = pullRequest(7, { repo: 'r"<x>', source: 's7', destination: 'main' });
+    hostile.links.html.href = 'https://bitbucket.org/"><script>';
+    const plain = pullRequest(8, { repo: 'repo-a', source: 's8', destination: 'main' });
+    const html = renderRepositories([hostile, plain], { 'r"<x>/7': ['PROJ-1'], 'repo-a/8': ['PROJ-1'] }, oneIssue, 'site');
+    assert.ok(html.includes('href="https://bitbucket.org/&quot;&gt;&lt;script&gt;" target="_blank" class="related-pull-request-link" data-related-key="r&quot;&lt;x&gt;/7" aria-label="Pull request 7 of r&quot;&lt;x&gt;"'));
+    assert.ok(!html.includes('<script>'));
+});
+
+// The popovers over a fake page: a row for each key of `rows` (its rendered
+// title), a "see" link for each key of `related`, the timers mocked; `hover`
+// moves the pointer onto a link and waits for the preview, `leave` off it
+function popoverPage(t, { rows, related, isShown = () => true }) {
+    const rowElements = Object.fromEntries(Object.entries(rows).map(([key, title]) => [key, node({ classes: ['pull-request'], dataset: { id: key } },
+        node({ tag: 'a', classes: ['pull-request-link'], dataset: { renderedTitle: encodeURIComponent(title), renderedDescription: encodeURIComponent('<p>Description</p>') } }))]));
+    const links = Object.fromEntries(related.map(key => [key, node({ tag: 'a', classes: ['related-pull-request-link'], dataset: { relatedKey: key } })]));
+    const body = node({ tag: 'body' }, node({ id: 'main' }, ...Object.values(rowElements), ...Object.values(links)));
+    const document = fakeDocument(body);
+    const saved = { document: globalThis.document, window: globalThis.window, CSS: globalThis.CSS };
+    Object.assign(globalThis, { document, window: { innerWidth: 1024, innerHeight: 768 }, CSS: { escape: value => value } });
+    t.after(() => Object.assign(globalThis, saved));
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const revealed = [];
+    initializePopovers({ isShown, reveal: row => revealed.push(row) });
+    return {
+        rows: rowElements,
+        links,
+        popover: body.children.at(-1),
+        revealed,
+        hover(link) {
+            document.dispatch('mouseover', { target: link });
+            t.mock.timers.tick(500);
+        },
+        leave: link => document.dispatch('mouseout', { target: link })
+    };
+}
+
+test('a "see" number previews its pull request: repository and number, its title beside the scroll button while the filters show it, its description; the button reveals the row', t => {
+    const page = popoverPage(t, { rows: { 'repo-a/12': '<p>Twelve</p>' }, related: ['repo-a/12'] });
+    page.hover(page.links['repo-a/12']);
+    const { popover } = page;
+    assert.equal(popover.style.display, 'block');
+    assert.equal(popover.className, 'pull-request-popover');
+    assert.deepEqual(popover.children.map(child => child.className), ['pull-request-popover-repository', 'pull-request-popover-header', 'pull-request-popover-description']);
+    const [repository, header, description] = popover.children;
+    assert.equal(repository.textContent, 'repo-a · #12');
+    assert.deepEqual(header.children.map(child => child.className), ['pull-request-popover-title', 'scroll-to-pull-request']);
+    assert.equal(header.children[0].innerHTML, '<p>Twelve</p>');
+    assert.equal(description.innerHTML, '<p>Description</p>');
+
+    // A click on the icon of the button: the preview closes, the row is revealed
+    popover.dispatch('click', { target: header.children[1].children[0] });
+    assert.equal(popover.style.display, 'none');
+    assert.equal(page.revealed.length, 1);
+    assert.ok(page.revealed[0] === page.rows['repo-a/12']);
+});
+
+test('a "see" number previews without the scroll button the pull request the filters hide', t => {
+    const page = popoverPage(t, { rows: { 'repo-a/12': '<p>Twelve</p>' }, related: ['repo-a/12'], isShown: () => false });
+    page.hover(page.links['repo-a/12']);
+    assert.equal(page.popover.style.display, 'block');
+    assert.equal(page.popover.querySelector('.scroll-to-pull-request'), null);
+    assert.equal(page.popover.querySelector('.pull-request-popover-title').innerHTML, '<p>Twelve</p>');
+});
+
+test('the scroll button names the repository of its pull request, as the "see" link does: two repositories share numbers', t => {
+    const page = popoverPage(t, { rows: { 'repo-b/12': '<p>Twelve</p>' }, related: ['repo-b/12'] });
+    page.hover(page.links['repo-b/12']);
+    const button = page.popover.querySelector('.scroll-to-pull-request');
+    assert.equal(button.getAttribute('aria-label'), 'Scroll to pull request 12 of repo-b');
+    assert.equal(button.title, 'Scroll to pull request 12 of repo-b');
+});
+
+test('a "see" number whose pull request has no row closes the preview shown before, never leaving another pull request\'s', t => {
+    const page = popoverPage(t, { rows: { 'repo-a/12': '<p>Twelve</p>' }, related: ['repo-a/12', 'repo-a/45'] });
+    page.hover(page.links['repo-a/12']);
+    assert.equal(page.popover.style.display, 'block');
+    page.leave(page.links['repo-a/12']);
+    page.hover(page.links['repo-a/45']);
+    assert.equal(page.popover.style.display, 'none');
+});
+
+test('the "see" lists name only the pull requests the tree shows: a branch loop has no row to point at', () => {
+    const root = pullRequest(1, { repo: 'repo-a', source: 'a1', destination: 'main' });
+    const stackedOnRoot = pullRequest(4, { repo: 'repo-a', source: 'a4', destination: 'a1' });
+    // x <- y <- x: no root branch reaches them
+    const loopOne = pullRequest(2, { repo: 'repo-a', source: 'x', destination: 'y' });
+    const loopTwo = pullRequest(3, { repo: 'repo-a', source: 'y', destination: 'x' });
+    const map = { 'repo-a/1': ['PROJ-1'], 'repo-a/2': ['PROJ-1'], 'repo-a/3': ['PROJ-1'], 'repo-a/4': ['PROJ-1'] };
+    const html = renderRepositories([root, stackedOnRoot, loopOne, loopTwo], map, oneIssue, 'site');
+    assert.equal(count(html, 'class="pull-request '), 2);
+    assert.ok(rowHtml(html, 'repo-a/1').includes('(see <a href="https://bitbucket.org/ws/repo-a/pull-requests/4"'));
+    assert.equal(count(rowHtml(html, 'repo-a/1'), 'related-pull-request-link'), 1);
+    assert.equal(count(rowHtml(html, 'repo-a/4'), 'related-pull-request-link'), 1);
 });
 
 test('renderRepositories marks a draft and counts its open tasks, nothing for a ready pull request without tasks (#119)', () => {

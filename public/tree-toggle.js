@@ -3,7 +3,7 @@
  *
  * Repositories, root branches and pull requests with children can be
  * collapsed. Every code path that changes a collapsed state goes through the
- * set*Collapsed helpers, so the collapsed class, the children container, the
+ * set*Collapsed helpers (unfoldToRow, which opens whatever hides a row, too), so the collapsed class, the children container, the
  * child counter and the aria-expanded of the toggle button always change
  * together. The chevrons are pure CSS, driven by the "collapsed" class.
  * app.js installs handleTreeClick on the tree pane; the rendered tree carries
@@ -132,6 +132,24 @@ export function handleTreeClick(event) {
 export function isCollapsedAway(row) {
     const from = row.classList.contains('root-branch-header') ? row.parentElement?.parentElement : row;
     return Boolean(from?.closest('.repository.collapsed, .root-branch.collapsed, .children[hidden]'));
+}
+
+/**
+ * Unfolds every block that hides a row (the stacks above it, its root branch,
+ * its repository), as a fold of the user's: the scroll icon of a related pull
+ * request's preview brings the row into sight (app.js). A row in sight is
+ * left as it is; nothing is folded.
+ */
+export function unfoldToRow(row) {
+    for (let element = row.parentElement; element; element = element.parentElement) {
+        if (element.classList.contains('children') && element.hidden) {
+            setPullRequestCollapsed(element.previousElementSibling, false);
+        } else if (element.classList.contains('root-branch') && element.classList.contains('collapsed')) {
+            setRootBranchCollapsed(element, false);
+        } else if (element.classList.contains('repository') && element.classList.contains('collapsed')) {
+            setRepositoryCollapsed(element, false);
+        }
+    }
 }
 
 function setAllCollapsed(collapsed) {

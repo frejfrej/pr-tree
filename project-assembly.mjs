@@ -8,20 +8,28 @@ import { pullRequestKey } from './public/pull-request-key.mjs';
  * two responses have one shape and one hash. Nothing here fetches anything.
  */
 
-/** The issue keys of the project regex found in a title, in order, repeats included */
-export function extractJiraIssues(title, jiraRegex) {
-    return title.match(jiraRegex) || [];
+/**
+ * The issue keys of the project regex found in a text (a title, a branch
+ * name), in order, repeats included, in upper case as Jira writes them: the
+ * regexes of projects.js ignore the case, and a key must match the one Jira
+ * returns (the issue details, the orphaned issues)
+ */
+export function extractJiraIssues(text, jiraRegex) {
+    return (text.match(jiraRegex) || []).map(key => key.toUpperCase());
 }
 
 /**
  * The issue keys of every pull request, by pull request key, repository/id
- * (pullRequestKey, shared with the page).
+ * (pullRequestKey, shared with the page): those of its title, or, when the
+ * title names none, those of its source branch (INITIALS_YYMMDD_KEY_Slug).
  * @returns {Map<string, string[]>}
  */
 export function createJiraIssuesMap(pullRequests, jiraRegex) {
     const jiraIssuesMap = new Map();
     for (const pullRequest of pullRequests) {
-        jiraIssuesMap.set(pullRequestKey(pullRequest), extractJiraIssues(pullRequest.title, jiraRegex));
+        const titleKeys = extractJiraIssues(pullRequest.title, jiraRegex);
+        const keys = titleKeys.length > 0 ? titleKeys : extractJiraIssues(pullRequest.source?.branch?.name ?? '', jiraRegex);
+        jiraIssuesMap.set(pullRequestKey(pullRequest), keys);
     }
     return jiraIssuesMap;
 }

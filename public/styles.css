@@ -1081,8 +1081,24 @@ select:disabled {
 
 .jira-issues li {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     margin-bottom: 5px;
+}
+
+/* The priority icon and the link of an issue, wrapping the link's text
+   beside the icon; the line wraps only after this group */
+.jira-issue {
+    display: flex;
+    align-items: center;
+}
+
+/* "(see 12, 45)": the other pull requests of the issue; the line is a flex
+   row, where the space before it would collapse; it goes below the issue
+   when the column is too narrow for both, rather than squeezing the issue */
+.related-pull-requests {
+    margin-left: 6px;
+    color: var(--text-muted);
 }
 
 .jira-priority-icon {
@@ -1362,6 +1378,38 @@ select:disabled {
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
+}
+
+/* The preview of a related pull request: its repository and number above
+   the title, the scroll button at the end of the title line */
+.pull-request-popover-repository {
+    margin-bottom: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.pull-request-popover-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.pull-request-popover-header .pull-request-popover-title {
+    flex: 1;
+}
+
+.scroll-to-pull-request {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--surface-color);
+    color: var(--primary-color);
+    cursor: pointer;
+}
+
+.scroll-to-pull-request:hover {
+    background-color: var(--surface-muted);
 }
 
 /* 9. Modal and help ------------------------------------------------------- */

@@ -15,7 +15,9 @@
  * tree-toggle.js keeps aria-expanded in step. The pull-request and issue
  * links carry, as data attributes, what the popovers show;
  * initializePopovers reads them back, so the writer and the reader of those
- * attributes live together.
+ * attributes live together. The "(see 12, 45)" links after an issue carry
+ * only the key of the related pull request's row, whose title link the
+ * preview reads.
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
@@ -101,6 +103,56 @@ export function pullRequestsByDestination(pullRequests) {
 }
 
 /**
+ * The pull requests of each issue, by issue key, from the issue map of the
+ * response: once each, however often a title names the key, in id order,
+ * ties by repository. The repository is the one of the pull-request key, where
+ * Bitbucket numbers the pull request (the destination). Pure.
+ * @returns {Map<string, { key: string, id: number, repository: string, href: string }[]>}
+ */
+export function relatedPullRequestsByIssue(pullRequests, jiraIssuesMap) {
+    const byIssue = new Map();
+    for (const pullRequest of pullRequests) {
+        const key = pullRequestKey(pullRequest);
+        for (const issueKey of new Set(jiraIssuesMap[key] || [])) {
+            if (!byIssue.has(issueKey)) byIssue.set(issueKey, []);
+            byIssue.get(issueKey).push({ key, id: pullRequest.id, repository: pullRequest.destination.repository.name, href: pullRequest.links.html.href });
+        }
+    }
+    for (const list of byIssue.values()) {
+        list.sort((a, b) => a.id - b.id || a.repository.localeCompare(b.repository));
+    }
+    return byIssue;
+}
+
+/**
+ * The pull requests of one repository the tree shows: those on a root branch
+ * and those stacked on them, at any depth; none of a branch loop, which no
+ * root branch reaches. Each visited once. Pure.
+ */
+export function pullRequestsInTree(repoPullRequests) {
+    const byDestination = pullRequestsByDestination(repoPullRequests);
+    const pending = findRootBranches(repoPullRequests).flatMap(branch => byDestination.get(branch));
+    const shown = new Set();
+    while (pending.length > 0) {
+        const pullRequest = pending.pop();
+        if (shown.has(pullRequest)) continue;
+        shown.add(pullRequest);
+        pending.push(...(byDestination.get(pullRequest.source.branch.name) || []));
+    }
+    return [...shown];
+}
+
+// The "(see 12, 45)" after an issue of a card: the other pull requests of the
+// issue, each a link to Bitbucket carrying the key of its row, which its
+// preview reads (initializePopovers); nothing when the card is alone
+function relatedLinks(pullRequests = [], ownKey) {
+    const others = pullRequests.filter(other => other.key !== ownKey);
+    if (others.length === 0) return '';
+    const links = others.map(other => `<a href="${escapeHtml(other.href)}" target="_blank" class="related-pull-request-link" data-related-key="${escapeHtml(other.key)}" aria-label="Pull request ${escapeHtml(other.id)} of ${escapeHtml(other.repository)}">${escapeHtml(other.id)}</a>`);
+    return `<span class="related-pull-requests">(see ${links.join(', ')})</span>`;
+}
+
+/**
  * The tree as an HTML string: one block per repository, its root branches and
  * the pull requests nested under their parents, most recently updated first.
  * Ends with the hidden no-match message the filter pass shows when needed.
@@ -115,6 +167,8 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
         acc[repoName].push(pr);
         return acc;
     }, {});
+    // The pull requests of each issue the tree shows, across the repositories: the "see" list of each card
+    const related = relatedPullRequestsByIssue(Object.values(pullRequestsByRepo).flatMap(pullRequestsInTree), jiraIssuesMap);
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
@@ -130,7 +184,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
                     </div>
                 </div>
                 <div class="repository-content">
-                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName)}
+                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related)}
                 </div>
             </div>
         `;
@@ -174,7 +228,7 @@ function getBranchUrl(branchName, pullRequest) {
 }
 
 // Function to recursively render the pull-requests
-function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
+function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level = 0) {
     let html = '';
     if (level === 0) {
         const rootBranches = findRootBranches(pullRequests);
@@ -205,7 +259,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
                     <div class="root-branch-content">
             `;
             rootPullRequests.forEach(rootPullRequest => {
-                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, 1);
+                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, 1);
             });
             html += `
                     </div>
@@ -216,7 +270,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
         // Sort by updated_on date in descending order (most recent first)
         pullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
         pullRequests.forEach(pullRequest => {
-            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level+1);
+            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level+1);
         });
     }
     return html;
@@ -237,7 +291,7 @@ export function calculateDescendants(pullRequest, byDestination) {
 }
 
 // Function to recursively render a pull-request
-function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level = 0) {
+function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level = 0) {
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
@@ -276,12 +330,13 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
             `<li><i class="fas fa-exclamation-triangle red" aria-hidden="true" title="JIRA issues have different statuses"></i> JIRA issues have different statuses</li>` : '';
 
         jiraIssuesHtml = linkedIssues.map(issueDetails => {
-            return `<li>${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
+            // The icon and the link in one group: the line wraps before the related list, never between them
+            return `<li><span class="jira-issue">${renderPriority(issueDetails.fields.priority)}<a href="${issueUrl(jiraSiteName, issueDetails.key)}" target="_blank"
                        data-issue-key="${escapeHtml(issueDetails.key)}"
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
                        ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status?.name ?? 'no status')})
-                    </a></li>`;
+                    </a></span>${relatedLinks(related.get(issueDetails.key), key)}</li>`;
         }).join('');
 
         if (sameStatusIcon || noOtherParticipantsAlert) {
@@ -368,7 +423,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
         </div>
     `;
     if (hasChildren) {
-        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, level + 1)}</div>`;
+        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level + 1)}</div>`;
     }
     return html;
 }
@@ -551,17 +606,69 @@ function jiraUserAsParticipant(user) {
     return { display_name: user.displayName, links: { avatar: { href: jiraAvatar(user) } } };
 }
 
+// The row of a pull request, by its key (repository/id), in the tree as rendered now
+function pullRequestRow(key) {
+    return document.querySelector(`.pull-request[data-id="${CSS.escape(key)}"]`);
+}
+
 /**
- * Hover popovers of the pull-request links (rendered title and description)
- * and of the issue links (key and summary), read from the data attributes
- * renderPullRequest writes.
+ * Hover popovers of the pull-request links (rendered title and description),
+ * of the issue links (key and summary), read from the data attributes
+ * renderPullRequest writes, and of the "(see 12, 45)" links, which show the
+ * preview of the related pull request's title link, under its repository
+ * and number. A related pull request the last filter pass shows gets a
+ * button that reveals it: unfolds what hides it, selects it, scrolls to it.
+ * app.js owns the shown rows and the selection, hence the two functions.
+ * @param {{ isShown?: (row: Element) => boolean, reveal?: (row: Element) => void }} [options]
  */
-export function initializePopovers() {
+export function initializePopovers({ isShown = () => false, reveal = () => {} } = {}) {
     let popoverTimeout;
     let currentLink = null;
     const popover = document.createElement('div');
     popover.className = 'popover';
     document.body.appendChild(popover);
+
+    // Bitbucket's rendering of the title and description of a pull-request link: HTML by
+    // design; returns the title's element
+    function renderPullRequestPreview(titleLink) {
+        const title = htmlElement('pull-request-popover-title', decodeURIComponent(titleLink.dataset.renderedTitle));
+        popover.className = 'pull-request-popover';
+        popover.replaceChildren(title, htmlElement('pull-request-popover-description', decodeURIComponent(titleLink.dataset.renderedDescription)));
+        return title;
+    }
+
+    // The preview of a related pull request: its repository and number (text), then its
+    // title line with the scroll button while the filters show it, then its description
+    function renderRelatedPreview(link) {
+        const key = link.dataset.relatedKey;
+        const row = pullRequestRow(key);
+        const titleLink = row?.querySelector('.pull-request-link');
+        if (!titleLink) return false;
+        const title = renderPullRequestPreview(titleLink);
+        const separator = key.lastIndexOf('/');
+        const repository = key.slice(0, separator);
+        const id = key.slice(separator + 1);
+        const header = document.createElement('div');
+        header.className = 'pull-request-popover-header';
+        header.append(title);
+        if (isShown(row)) {
+            // Named with the repository, as the "see" link is: two repositories share numbers
+            const label = `Scroll to pull request ${id} of ${repository}`;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'scroll-to-pull-request';
+            button.dataset.relatedKey = key;
+            button.title = label;
+            button.setAttribute('aria-label', label);
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-crosshairs';
+            icon.setAttribute('aria-hidden', 'true');
+            button.append(icon);
+            header.append(button);
+        }
+        popover.prepend(textElement('pull-request-popover-repository', `${repository} · #${id}`), header);
+        return true;
+    }
 
     function showPopover(link) {
         if (link.classList.contains('jira-issue-link')) {
@@ -571,15 +678,14 @@ export function initializePopovers() {
                 textElement('jira-issue-popover-key', link.dataset.issueKey),
                 textElement('jira-issue-popover-summary', link.dataset.issueSummary)
             );
+        } else if (link.classList.contains('related-pull-request-link')) {
+            // A row gone with a re-render: no preview, not even the one of the link hovered before
+            if (!renderRelatedPreview(link)) {
+                hidePopover();
+                return;
+            }
         } else {
-            // Bitbucket's rendering of the title and description: HTML by design
-            const title = decodeURIComponent(link.dataset.renderedTitle);
-            const description = decodeURIComponent(link.dataset.renderedDescription);
-            popover.className = 'pull-request-popover';
-            popover.innerHTML = `
-                <div class="pull-request-popover-title">${title}</div>
-                <div class="pull-request-popover-description">${description}</div>
-            `;
+            renderPullRequestPreview(link);
         }
 
         // The popover is fixed: viewport coordinates, kept inside the viewport
@@ -605,8 +711,18 @@ export function initializePopovers() {
         return element;
     }
 
+    // Only for Bitbucket's rendered HTML
+    function htmlElement(className, html) {
+        const element = document.createElement('div');
+        element.className = className;
+        element.innerHTML = html;
+        return element;
+    }
+
+    const linkSelector = '.jira-issue-link, .pull-request-link, .related-pull-request-link';
+
     document.addEventListener('mouseover', function(event) {
-        const link = event.target.closest('.jira-issue-link, .pull-request-link');
+        const link = event.target.closest(linkSelector);
 
         if (link) {
             clearTimeout(popoverTimeout);
@@ -621,7 +737,7 @@ export function initializePopovers() {
     });
 
     document.addEventListener('mouseout', function(event) {
-        const link = event.target.closest('.jira-issue-link, .pull-request-link');
+        const link = event.target.closest(linkSelector);
 
         if (link) {
             clearTimeout(popoverTimeout);
@@ -637,6 +753,17 @@ export function initializePopovers() {
     popover.addEventListener('mouseout', function() {
         clearTimeout(popoverTimeout);
         popoverTimeout = setTimeout(hidePopover, 300);
+    });
+
+    // The scroll button of a related preview: the row is looked up again, a refresh may
+    // have re-rendered the tree meanwhile; a row gone or filtered out since only closes it
+    popover.addEventListener('click', function(event) {
+        const button = event.target.closest('.scroll-to-pull-request');
+        if (!button) return;
+        const row = pullRequestRow(button.dataset.relatedKey);
+        clearTimeout(popoverTimeout);
+        hidePopover();
+        if (row && isShown(row)) reveal(row);
     });
 
     // A popover left open while the tree scrolls would float away from its link

@@ -145,7 +145,7 @@ test('the collapse of a repository survives a re-render by its name, the orphane
     assert.deepEqual(after.map(element => element.classList.contains('collapsed')), [false, true, true]);
 });
 
-import { isCollapsedAway } from '../public/tree-toggle.js';
+import { isCollapsedAway, unfoldToRow } from '../public/tree-toggle.js';
 import { node } from './fake-dom.mjs';
 
 test('isCollapsedAway: a row inside a collapsed repository, root branch or pull request is out of sight; the collapsed row itself is not (#118)', () => {
@@ -175,6 +175,42 @@ test('isCollapsedAway: a row inside a collapsed repository, root branch or pull 
     assert.equal(isCollapsedAway(orphan), false);
     orphanedIssues.classList.add('collapsed');
     assert.equal(isCollapsedAway(orphan), true);
+});
+
+test('unfoldToRow unfolds every block hiding a row, once as a user fold; nothing for a row in sight', async () => {
+    const target = node({ classes: ['pull-request'] });
+    const middle = node({ classes: ['pull-request'] }, node({ classes: ['pull-request-header'] }));
+    const inner = node({ classes: ['children'] }, target);
+    const top = node({ classes: ['pull-request'] }, node({ classes: ['pull-request-header'] }));
+    const outer = node({ classes: ['children'] }, middle, inner);
+    const sibling = node({ classes: ['pull-request'] });
+    const siblingChildren = node({ classes: ['children'] }, node({ classes: ['pull-request'] }));
+    const rootBranch = node({ classes: ['root-branch'] }, node({ classes: ['root-branch-header'] }),
+        node({ classes: ['root-branch-content'] }, top, outer, sibling, siblingChildren));
+    const repository = node({ classes: ['repository'] }, node({ classes: ['repository-content'] }, rootBranch));
+    node({}, repository);
+    setPullRequestCollapsed(top, true);
+    setPullRequestCollapsed(middle, true);
+    setPullRequestCollapsed(sibling, true);
+    setRootBranchCollapsed(rootBranch, true);
+    setRepositoryCollapsed(repository, true);
+    await Promise.resolve(); // the fold notice of the setup goes to whatever listener was set before
+    let calls = 0;
+    onFoldChange(() => calls++);
+    try {
+        unfoldToRow(target);
+        await Promise.resolve();
+        assert.equal(isCollapsedAway(target), false);
+        assert.deepEqual([repository, rootBranch, top, middle].map(element => element.classList.contains('collapsed')), [false, false, false, false]);
+        assert.deepEqual([outer.hidden, inner.hidden], [false, false]);
+        assert.equal(sibling.classList.contains('collapsed'), true);
+        assert.equal(calls, 1);
+        unfoldToRow(target);
+        await Promise.resolve();
+        assert.equal(calls, 1);
+    } finally {
+        onFoldChange(() => {});
+    }
 });
 
 // ------------------------------------------------- across a page reload (#142)

@@ -124,6 +124,9 @@ export function markSelectedRow(row, previous) {
 
 // The links and buttons of a row, in document order: a row holds no other row (stacked pull requests are its siblings)
 const rowControls = row => [...row.querySelectorAll('a, button')];
+const isRelatedLink = control => control.classList.contains('related-pull-request-link');
+// The controls of a row that only change with the row: not its "see" links, which other pull requests bring and take away
+const ownControls = row => rowControls(row).filter(control => !isRelatedLink(control));
 
 // The container of what a row folds: a pull request's stack, a header's branch
 function foldedContainerOf(row) {
@@ -287,20 +290,27 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
 
 /**
  * Where the focus is in the tree, for restoreFocusedRow: the key of the row
- * and which of its links and buttons holds the focus (-1: the row itself);
- * null when the focus is outside `pane` or on no row (a header toggle).
+ * and which of its links and buttons holds the focus, by its place among
+ * them (-1: the row itself), or, on a "see" link, the key of the pull
+ * request it names (`related`), since the other pull requests of an issue
+ * come and go while the row stays the same; null when the focus is outside
+ * `pane` or on no row (a header toggle).
  */
 export function captureFocusedRow(pane, activeElement) {
     if (!activeElement || !pane.contains(activeElement)) return null;
     const row = rowOf(activeElement);
-    return row ? { key: rowKey(row), control: rowControls(row).indexOf(activeElement) } : null;
+    if (!row) return null;
+    if (isRelatedLink(activeElement)) return { key: rowKey(row), related: activeElement.dataset.relatedKey };
+    return { key: rowKey(row), control: ownControls(row).indexOf(activeElement) };
 }
 
-/** Focuses again, without scrolling, the same row, or the same control of it, among the rows of the pass that followed a re-render, if it is in sight */
+/** Focuses again, without scrolling, the same row, or the same control of it (the row when its "see" link is gone), among the rows of the pass that followed a re-render, if it is in sight */
 export function restoreFocusedRow(focused, shownRows) {
     if (!focused) return;
     const row = shownRows.find(candidate => rowKey(candidate) === focused.key);
     if (!row || isCollapsedAway(row)) return;
-    const control = focused.control >= 0 ? rowControls(row)[focused.control] : null;
+    const control = focused.related
+        ? rowControls(row).find(candidate => isRelatedLink(candidate) && candidate.dataset.relatedKey === focused.related)
+        : ownControls(row)[focused.control];
     (control ?? row).focus({ preventScroll: true });
 }

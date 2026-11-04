@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'module';
-import { generateProjectData, generateSyncStatuses, repositoryVolumes } from '../fixtures/generate.mjs';
+import { generateProjectData, generateSyncStatuses, repositoryVolumes, shareIssueKeys } from '../fixtures/generate.mjs';
 import { parseFixtureOptions, fixtureConfig, createFixtureSource } from '../fixtures/index.mjs';
+import { extractJiraIssues } from '../project-assembly.mjs';
+import { pullRequestKey } from '../public/pull-request-key.mjs';
 
 const projects = createRequire(import.meta.url)('../projects.js');
 
@@ -290,4 +292,71 @@ test('some orphaned issues of the SECOLLAB fixture have Jira approvers, never th
     assert.ok(withApprovers.length >= 3 && withApprovers.length < data.orphanedIssues.length, `${withApprovers.length} with approvers`);
     assert.ok(withApprovers.some(issue => issue.fields.approvedBy.length === issue.fields.approvers.length), 'one approved by all');
     assert.ok(withApprovers.some(issue => issue.fields.assignee && issue.fields.approvedBy.length < issue.fields.approvers.length), 'one assigned and pending');
+});
+
+test('fixtures: some pull requests name their issue in the branch only (3.3.0)', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const branchOnly = data.pullRequests.filter(pr =>
+        extractJiraIssues(pr.title, projects.SECOLLAB.jiraRegex).length === 0 &&
+        data.jiraIssuesMap[pullRequestKey(pr)].length > 0);
+    assert.ok(branchOnly.length >= 3, `${branchOnly.length} pull requests linked through their branch`);
+});
+
+test('fixtures: an issue key shared within a stack and between two repositories (3.3.0)', () => {
+    const data = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const keysOf = (repository, id) => data.jiraIssuesMap[`${repository}/${id}`];
+    // Across repositories, the same number: #2400 of both
+    const shared = keysOf('products.secollab', 2400)[0];
+    assert.ok(keysOf('products.secollab.client', 2400).includes(shared));
+    // Within a stack: a pull request names a key of the pull request it is stacked on
+    const secollab = data.pullRequests.filter(pr => pr.destination.repository.name === 'products.secollab');
+    const stackedPairs = secollab.filter(child => {
+        const parent = secollab.find(pr => pr.source.branch.name === child.destination.branch.name);
+        return parent && keysOf('products.secollab', child.id).some(key => keysOf('products.secollab', parent.id).includes(key));
+    });
+    assert.ok(stackedPairs.length >= 1);
+    const oslc = generateProjectData('OSLC', projects.OSLC);
+    assert.ok(oslc.jiraIssuesMap['products.web.common/610'].includes(oslc.jiraIssuesMap['products.web.oslc/610'][0]));
+});
+
+test('fixtures: OSLC has its own branch-only and stacked shares, and products.web.oslc comes out the same in both projects (3.3.0)', () => {
+    const secollab = generateProjectData('SECOLLAB', projects.SECOLLAB);
+    const oslc = generateProjectData('OSLC', projects.OSLC);
+    assert.ok(oslc.pullRequests.some(pr => extractJiraIssues(pr.title, projects.OSLC.jiraRegex).length === 0 && oslc.jiraIssuesMap[pullRequestKey(pr)].length > 0));
+    assert.ok(oslc.pullRequests.some(child => {
+        const parent = oslc.pullRequests.find(pr => pr.destination.repository.name === child.destination.repository.name && pr.source.branch.name === child.destination.branch.name);
+        return parent && oslc.jiraIssuesMap[pullRequestKey(child)].some(key => oslc.jiraIssuesMap[pullRequestKey(parent)].includes(key));
+    }));
+    const webOslc = data => data.pullRequests.filter(pr => pr.destination.repository.name === 'products.web.oslc');
+    assert.deepEqual(webOslc(secollab).map(pr => pr.title), webOslc(oslc).map(pr => pr.title));
+    assert.deepEqual(webOslc(secollab).map(pr => secollab.jiraIssuesMap[pullRequestKey(pr)]), webOslc(oslc).map(pr => oslc.jiraIssuesMap[pullRequestKey(pr)]));
+});
+
+test('fixtures: every pull request\'s rendered title is its title, the keys shared or taken away included (3.3.0)', () => {
+    for (const [name, config] of Object.entries(projects)) {
+        for (const pullRequest of generateProjectData(name, config).pullRequests) {
+            assert.equal(pullRequest.rendered.title.raw, pullRequest.title, `${name} ${pullRequestKey(pullRequest)}`);
+        }
+    }
+});
+
+// What shareIssueKeys reads of a pull request: its title and the rendering of it, its branch, its destination
+function titledPullRequest(title, branch, destination = 'develop') {
+    return { title, rendered: { title: { type: 'rendered', raw: title, markup: 'markdown', html: `<p>${title}</p>` } }, source: { branch: { name: branch } }, destination: { branch: { name: destination } } };
+}
+
+test('fixtures: a stacked pull request takes its parent\'s key when its title names only a longer one (SECOLLAB-580 is not in SECOLLAB-5801)', () => {
+    const parent = titledPullRequest('SECOLLAB-580 Parent', 'feature/parent');
+    const child = titledPullRequest('SECOLLAB-5801 Child', 'feature/child', 'feature/parent');
+    shareIssueKeys('a-repository', [parent, child], {});
+    assert.equal(child.title, 'SECOLLAB-580 SECOLLAB-5801 Child');
+    assert.equal(parent.title, 'SECOLLAB-580 Parent');
+});
+
+test('fixtures: a title keeps its key when its branch names only a longer one (SECOLLAB-5801 is not SECOLLAB-580)', () => {
+    const longer = titledPullRequest('SECOLLAB-580 Fix', 'FRJ_260425_SECOLLAB-5801_Fix');
+    const same = titledPullRequest('SECOLLAB-7 Other', 'FRJ_260425_SECOLLAB-7_Other');
+    shareIssueKeys('a-repository', [longer, same], {});
+    assert.equal(longer.title, 'SECOLLAB-580 Fix');
+    assert.equal(same.title, 'Other');
 });

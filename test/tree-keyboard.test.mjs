@@ -4,10 +4,12 @@ import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey,
 import { setPullRequestCollapsed, setRootBranchCollapsed } from '../public/tree-toggle.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
-function pullRequest(id, { root = false, issue = true } = {}) {
+// `related`: the keys of its issue's "(see …)" links
+function pullRequest(id, { root = false, issue = true, related = [] } = {}) {
     return node({ classes: ['pull-request', ...(root ? ['pull-request-root'] : [])], dataset: { id } },
         node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] })),
-        ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }))] : []),
+        ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }),
+            ...related.map(relatedKey => node({ tag: 'a', classes: ['related-pull-request-link'], dataset: { relatedKey } })))] : []),
         node({ classes: ['participants'] },
             node({ tag: 'span', classes: ['branch-actions'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-switch'] }))));
 }
@@ -390,4 +392,35 @@ test('the row or the control of a row holding the focus is focused again, withou
     setPullRequestCollapsed(after.rows.one, true);
     restoreFocusedRow(linkFocus, after.shown);
     assert.deepEqual(after.document.events, []);
+});
+
+test('the "see" links other pull requests bring or take away leave the focus on the same control of an unchanged row', () => {
+    // A row, alone in its pane, whose issue lists the given related pull requests
+    const tree = related => {
+        const row = pullRequest('repo-one/2', { related });
+        const pane = node({ classes: ['pane'] }, row);
+        const document = fakeDocument(node({ tag: 'body' }, pane));
+        return { row, pane, document };
+    };
+    const before = tree(['repo-one/7']);
+    const onSwitch = captureFocusedRow(before.pane, before.row.querySelector('.copy-switch'));
+    const onSee = captureFocusedRow(before.pane, before.row.querySelector('.related-pull-request-link'));
+
+    // A new pull request of the issue, listed first
+    const after = tree(['repo-one/5', 'repo-one/7']);
+    restoreFocusedRow(onSwitch, [after.row]);
+    restoreFocusedRow(onSee, [after.row]);
+    // By identity: a deep comparison of two different elements walks the whole tree
+    const [switchAfter, seeAfter] = focused(after.document);
+    assert.ok(switchAfter === after.row.querySelector('.copy-switch'), `the focus went to ${switchAfter?.className}`);
+    assert.ok(seeAfter?.classList.contains('related-pull-request-link'));
+    assert.equal(seeAfter.dataset.relatedKey, 'repo-one/7');
+
+    // The pull request the focused link named merged: the row keeps the focus
+    const gone = tree([]);
+    restoreFocusedRow(onSee, [gone.row]);
+    restoreFocusedRow(onSwitch, [gone.row]);
+    const [seeGone, switchGone] = focused(gone.document);
+    assert.ok(seeGone === gone.row, `the focus went to ${seeGone?.className}`);
+    assert.ok(switchGone === gone.row.querySelector('.copy-switch'), `the focus went to ${switchGone?.className}`);
 });

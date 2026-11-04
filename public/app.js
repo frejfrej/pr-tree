@@ -3,7 +3,7 @@ import { renderRepositories, renderOrphanedIssues, initializePopovers } from './
 import { initializeSyncControls, resetSyncStatuses, syncStatusesLoaded, loadedSyncStatuses, syncPauseEnd, applySyncStatuses, updateSyncControls } from './app-sync.js';
 import { createMultiSelect, getMultiSelect } from './multi-select.js';
 import { handleCopyClick } from './copy-branch.js';
-import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates, onFoldChange } from './tree-toggle.js';
+import { handleTreeClick, captureToggleStates, restoreToggleStates, storedToggleStates, storeToggleStates, pruneStoredToggleStates, onFoldChange, unfoldToRow } from './tree-toggle.js';
 import { handleTreeKey, captureFocusedRow, restoreFocusedRow, paintSelectedRow, markSelectedRow, rowOf, rowKey } from './tree-keyboard.js';
 import { initializeAppShell, updateDocumentTitle, closeSidebarDrawer, updateActiveFilterBadge, setToolbarVisible, showPartialDataIndicator } from './app-shell.js';
 import { filtersFromUrl, projectFromUrl, urlWithFilters, filtersKeptOverGaps, selectedFromUrl, urlWithSelection } from './app-url.js';
@@ -132,6 +132,15 @@ function cancelSelectionWrite() {
 // The selected row after a project load or Back/Forward: in the middle of the view
 function scrollToSelectedRow() {
     selectedRow?.scrollIntoView({ block: 'center' });
+}
+
+// The scroll button of a related pull request's preview: unfolds what hides the row
+// (stored like the user's folds), selects it as a click would (the pane's focusin
+// listener selects a focused row) and brings it to the middle of the view
+function revealRow(row) {
+    unfoldToRow(row);
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: 'center' });
 }
 
 // Writes the project, the filters (the state unless others are given) and the wanted row to
@@ -685,7 +694,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeTextFilter();
     showEmptyState();
     loadProjects();
-    initializePopovers();
+    initializePopovers({ isShown: row => treeRows.includes(row), reveal: revealRow });
     const treePane = document.getElementById('pull-requests');
     // The pane's one click listener: a copy button copies, anything else may toggle a block
     treePane.addEventListener('click', event => handleCopyClick(event) || handleTreeClick(event));

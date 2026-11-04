@@ -18,6 +18,8 @@
 * Lists all projects from the configuration file in a dropdown selector
 * Upon selecting a project, lists all corresponding pull requests ordered by most recently updated
 * Displays a link to related issues with the corresponding status
+    * The issues are read from the title of the pull request, or, when the title names none, from its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches)
+    * After an issue, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number: each number opens the pull request in Bitbucket, and hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), with a crosshairs button while the filters show it, which unfolds what hides it, selects it and scrolls to it
 * Displays the status of the pull requests alongside the status of related issues
 * Lists the Jira issues in review that no pull request links, in a section below the tree
     * The section follows the sidebar filters like the tree (text, sprint, fix version, epic, story, participants and work; SYNC and Hide drafts do not apply) and is hidden when nothing in it matches
@@ -80,7 +82,7 @@
 * Copy config.js.default to config.js
 * Fill in the configuration values in config.js: the comments say which Atlassian tokens to create and where
 * Optionally, name the Jira custom fields of the approvers of an issue and of those who approved (`approversField` and `approvedByField` in the `jira` block, user pickers, for instance `customfield_11101` and `customfield_11785`): the issues in review without a pull request are then kept for their approvers. The ids are listed by `https://<siteName>.atlassian.net/rest/api/3/field`
-* Update projects.js to include your own projects if needed, and remove those you might not need
+* Update projects.js to include your own projects if needed, and remove those you might not need; keep the `i` flag of each `jiraRegex`, which reads the keys whatever their case
 * Open a terminal (Node.js 20.11 or later and `npm` are assumed to be installed; the server uses the `fetch` built into Node)
 * Run `npm ci`
 * Run `npm start`
@@ -99,6 +101,12 @@
 * `--fixture-scale=3` multiplies the volumes, `--fixture-chain-depth=8` shortens the deepest stack (environment variables `PR_TREE_FIXTURES`, `PR_TREE_FIXTURE_SCALE` and `PR_TREE_FIXTURE_CHAIN_DEPTH` work too)
 
 ## Changelog:
+* Version 3.3.0
+    * The Jira keys are read whatever their case, in titles and branches alike: `feature/secollab-123-fix` links SECOLLAB-123. The regexes of `projects.js` ignore the case (the `i` flag); a project of your own needs it too
+    * A pull request whose title names no Jira key takes the keys of its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches): it shows its issues, takes their band, sprint, epic, story and fix version, its assignee finds it with the participant filter, and the issue leaves the Jira issues in review without a pull request. A key in the title still wins
+    * After an issue of a card, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number. Each number opens the pull request in Bitbucket; hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), and, while the filters show that pull request, a crosshairs button that unfolds what hides it, selects it and scrolls to it
+    * The help no longer answers "Not Found" when the dashboard sits under a folder whose name starts with a dot (`~/.local/…`, a git worktree in `.claude/`)
+    * Fixture mode: some pull requests name their issue in their branch only, and a few issues are shared by several pull requests, within a stack and between two repositories (#2400 of products.secollab and of products.secollab.client)
 * Version 3.2.0
     * Two icons at the end of the reviewers line of each pull request, after its commit counts and open tasks, copy its source branch name and the command fetching and switching to it, `git fetch origin '<branch>'; git switch '<branch>'`, ready to paste in a terminal: bash, zsh, sh, fish, Git Bash or PowerShell (5.1 and 7). The branch opens even when it was pushed after your last fetch; your remote must be named `origin`. The tooltip shows what is copied; the icon turns into a check for a moment once copied, or into a cross with the reason in its tooltip when the browser refuses (the clipboard needs the page on localhost or https), and screen readers hear the result
     * `c` copies the command of the selected pull request, `b` its branch name

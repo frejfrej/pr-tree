@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { pullRequestKey } from '../public/pull-request-key.mjs';
 import { extractJiraIssues, createJiraIssuesMap, missingParentKeys, inheritFixVersions, calculateHash, assembleProjectData } from '../project-assembly.mjs';
 
-const jiraRegex = /(PROJ-\d+|OTHER-\d+)/g;
+const projects = createRequire(import.meta.url)('../projects.js');
+const jiraRegex = /(PROJ-\d+|OTHER-\d+)/gi;
 function pullRequest(id, title = `PROJ-${id} change ${id}`, repository = 'repo-a') {
     return { id, title, source: { branch: { name: `feat-${id}` }, commit: { hash: `s${id}` }, repository: { name: repository } }, destination: { branch: { name: 'master' }, commit: { hash: `d${id}` }, repository: { name: repository } } };
 }
@@ -14,8 +16,8 @@ function issue(key, { parent = null, fixVersions = [] } = {}) {
 }
 const version = name => ({ id: name, name });
 
-test('extractJiraIssues finds the keys of the project regex in a title, in order, repeats included', () => {
-    assert.deepEqual(extractJiraIssues('PROJ-12 and OTHER-3 but not FOO-4 or proj-5', jiraRegex), ['PROJ-12', 'OTHER-3']);
+test('extractJiraIssues finds the keys of the project regex in a title, in order, repeats included, in upper case as Jira writes them', () => {
+    assert.deepEqual(extractJiraIssues('PROJ-12 and OTHER-3 but not FOO-4, then proj-5 and Other-6', jiraRegex), ['PROJ-12', 'OTHER-3', 'PROJ-5', 'OTHER-6']);
     assert.deepEqual(extractJiraIssues('no key', jiraRegex), []);
     const map = createJiraIssuesMap([pullRequest(1, 'PROJ-1 PROJ-1 twice'), pullRequest(2, 'nothing')], jiraRegex);
     assert.deepEqual([...map], [['repo-a/1', ['PROJ-1', 'PROJ-1']], ['repo-a/2', []]]);
@@ -25,6 +27,38 @@ test('createJiraIssuesMap keys the pull requests by repository and id: two repos
     const pullRequests = [pullRequest(45, 'PROJ-1 in repo a'), pullRequest(45, 'PROJ-2 in repo b', 'repo-b')];
     assert.deepEqual(pullRequests.map(pullRequestKey), ['repo-a/45', 'repo-b/45']);
     assert.deepEqual([...createJiraIssuesMap(pullRequests, jiraRegex)], [['repo-a/45', ['PROJ-1']], ['repo-b/45', ['PROJ-2']]]);
+});
+
+test('createJiraIssuesMap reads the branch when the title names no key, the title only otherwise', () => {
+    const fromBranch = pullRequest(1, 'Fix login redirect');
+    fromBranch.source.branch.name = 'FRJ_261103_PROJ-123_Fix-login';
+    const both = pullRequest(2, 'PROJ-2 title wins');
+    both.source.branch.name = 'feature/PROJ-99-other';
+    const twoInBranch = pullRequest(3, 'no key');
+    twoInBranch.source.branch.name = 'PROJ-7-and-OTHER-8';
+    const lowercase = pullRequest(4, 'no key');
+    lowercase.source.branch.name = 'feature/proj-5-lowercase';
+    const none = pullRequest(5, 'no key');
+    assert.deepEqual([...createJiraIssuesMap([fromBranch, both, twoInBranch, lowercase, none], jiraRegex)], [
+        ['repo-a/1', ['PROJ-123']],
+        ['repo-a/2', ['PROJ-2']],
+        ['repo-a/3', ['PROJ-7', 'OTHER-8']],
+        ['repo-a/4', ['PROJ-5']],
+        ['repo-a/5', []]
+    ]);
+});
+
+test('every project of projects.js reads its keys whatever their case: branches often write them in lower case', () => {
+    for (const [name, project] of Object.entries(projects)) {
+        assert.ok(project.jiraRegex.flags.includes('i'), `${name}: ${project.jiraRegex}`);
+        assert.deepEqual(extractJiraIssues('feature/webcmn-5-fix and PRDOSLC-6', project.jiraRegex), ['WEBCMN-5', 'PRDOSLC-6'], name);
+    }
+});
+
+test('createJiraIssuesMap does without a source branch', () => {
+    const pr = pullRequest(6, 'no key');
+    delete pr.source.branch;
+    assert.deepEqual([...createJiraIssuesMap([pr], jiraRegex)], [['repo-a/6', []]]);
 });
 
 test('missingParentKeys lists the parents named but absent, once each, in first-seen order', () => {
