@@ -194,8 +194,8 @@ git commit -m "feat: issue links in the fixtures"
 - Produces (all exported):
   - `issueLinkStorageKey = 'prTree.issueLinkPhrases'`
   - `defaultIssueLinkPhrases = ['is blocked by', 'blocks']`
-  - `shownIssueLinks(issue, phrases: string[]): IssueLink[]` — ticked phrases only, status category not `done` (a `null` status is shown), sorted by type name (`localeCompare`), `inward` before `outward`, Jira's order otherwise (stable sort).
-  - `issueLinkOptions(issues): { value: string, label: string }[]` — value and label both the phrase; over the not-done links of all the issues given (an issue without `issueLinks` contributes nothing); one per distinct phrase, first occurrence in the same sort as `shownIssueLinks`.
+  - `shownIssueLinks(issue, phrases: string[]): IssueLink[]` — ticked phrases only, status category not `done` (a `null` status is shown), grouped by phrase: by type name (`localeCompare`), then the type's inward phrase before its outward one, Jira's order within a phrase (spec §5.2). A phrase ranks as inward when any of the links sorted carries it inward, so the one phrase of a symmetric type ("relates to", inward on one link, outward on another) keeps its links in Jira's order instead of putting the inward ones first.
+  - `issueLinkOptions(issues): { value: string, label: string }[]` — value and label both the phrase; over the not-done links of all the issues given (an issue without `issueLinks` contributes nothing); one per distinct phrase, in the order `shownIssueLinks` sorts by.
   - `readIssueLinkPhrases(text: string | null): string[]` — the parsed array when it is an array of strings (`[]` included), else `defaultIssueLinkPhrases` (a copy).
   - `mergeIssueLinkPhrases(ticked: string[], current: string[], offered: string[]): string[]` — `ticked`, then the phrases of `current` not in `offered` and not in `ticked`.
 
@@ -215,7 +215,7 @@ test('the storage key and the default', () => {
     assert.deepEqual(defaultIssueLinkPhrases, ['is blocked by', 'blocks']);
 });
 
-test('shownIssueLinks: the ticked phrases only, never a done issue, by type then inward before outward, Jira\'s order within', () => {
+test('shownIssueLinks: the ticked phrases only, never a done issue, by type then inward phrase first, Jira\'s order within a phrase', () => {
     const links = [
         link('Relates', 'outward', 'relates to', 'P-7'),
         link('Blocks', 'outward', 'blocks', 'P-130'),
@@ -224,7 +224,8 @@ test('shownIssueLinks: the ticked phrases only, never a done issue, by type then
         link('Blocks', 'inward', 'is blocked by', 'P-99'),
         { ...link('Relates', 'inward', 'relates to', 'P-8'), status: null }
     ];
-    assert.deepEqual(shownIssueLinks(issue(links), ['blocks', 'is blocked by', 'relates to']).map(l => l.key), ['P-98', 'P-99', 'P-130', 'P-8', 'P-7']);
+    // "relates to" is one phrase both ways: P-7 then P-8, as Jira lists them
+    assert.deepEqual(shownIssueLinks(issue(links), ['blocks', 'is blocked by', 'relates to']).map(l => l.key), ['P-98', 'P-99', 'P-130', 'P-7', 'P-8']);
     assert.deepEqual(shownIssueLinks(issue(links), ['blocks']).map(l => l.key), ['P-130']);
     assert.deepEqual(shownIssueLinks(issue(links), []), []);
     assert.deepEqual(shownIssueLinks({ key: 'P-2', fields: {} }, ['blocks']), []);
@@ -267,7 +268,7 @@ Expected: FAIL (module not found).
 
 - [ ] **Step 3: Implement `public/issue-links.js`**
 
-Pure, no DOM at import time, no import of app.js. One sort comparator shared by `shownIssueLinks` and `issueLinkOptions`, so the lines and the options cannot disagree.
+Pure, no DOM at import time, no import of app.js. One sort shared by `shownIssueLinks` and `issueLinkOptions` (type name, then the phrase's rank: 0 when some link sorted carries it inward, else 1; a stable sort keeps Jira's order within a phrase), so the lines and the options cannot disagree.
 
 - [ ] **Step 4: Run the suite**
 
@@ -292,7 +293,7 @@ git commit -m "feat: the rule of the issue links shown, their options and the st
 - Test: `test/app-render.test.mjs`, `test/tree-keyboard.test.mjs`
 
 **Interfaces:**
-- Consumes: `shownIssueLinks(issue, phrases)` (Task 3).
+- Consumes: `shownIssueLinks(issue, phrases)` and `issueLinkOptions` (Task 3); the fixture links (Task 2) in the fixture-wide render test.
 - Produces:
   - `export function treeRelatedPullRequests(pullRequests, jiraIssuesMap): Map<string, { key, id, repository, href }[]>` — the expression `renderRepositories` computes today (`relatedPullRequestsByIssue` over `pullRequestsInTree` of each repository), extracted; `renderRepositories` calls it.
   - `renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName, { linkPhrases = [] } = {})`.
@@ -367,7 +368,39 @@ test('a link line escapes the phrase, the key, the summary and the status', () =
 });
 ```
 
-In `test/tree-keyboard.test.mjs`, beside the "see" links test: a row whose issue carries an `.issue-links` list (a `ul` holding an `a.jira-issue-link` and an `a.related-pull-request-link`); the focus on the copy-switch button before, a render that adds or removes a link line after: `restoreFocusedRow` gives the focus back to `.copy-switch` (by identity, as the existing test checks).
+In the fixture-wide test `'renderRepositories renders every pull request of the fixture projects once, deep stack included'`, render with every phrase the fixture offers, so its icon check (#109) and its counts cover the link lines too (import `issueLinkOptions` from `../public/issue-links.js`):
+
+```js
+        const linkPhrases = issueLinkOptions([...data.jiraIssuesDetails, ...data.orphanedIssues]).map(option => option.value);
+        const html = renderRepositories(data.pullRequests, data.jiraIssuesMap, data.jiraIssuesDetails, data.jiraSiteName, { linkPhrases });
+        if (name === 'SECOLLAB') assert.ok(count(html, 'class="issue-link"') > 0);
+```
+
+In `test/tree-keyboard.test.mjs`, the `pullRequest` helper takes `links = 0`: that many lines in a `ul.issue-links` after the issue's link and its "see" links, each `li.issue-link` holding an `a.jira-issue-link` and an `a.related-pull-request-link` (`relatedKey` `repo-two/${40 + i}`). Then, beside the "see" links test:
+
+```js
+test('the issue-link lines a setting change or another issue brings or takes away leave the focus on the same control of the row', () => {
+    const tree = links => {
+        const row = pullRequest('repo-one/2', { links });
+        const pane = node({ classes: ['pane'] }, row);
+        return { row, pane, document: fakeDocument(node({ tag: 'body' }, pane)) };
+    };
+    const before = tree(0);
+    const onSwitch = captureFocusedRow(before.pane, before.row.querySelector('.copy-switch'));
+    const onIssue = captureFocusedRow(before.pane, before.row.querySelector('.jira-issue-link'));
+    const after = tree(2);
+    restoreFocusedRow(onSwitch, [after.row]);
+    restoreFocusedRow(onIssue, [after.row]);
+    const [switchAfter, issueAfter] = focused(after.document);
+    assert.ok(switchAfter === after.row.querySelector('.copy-switch'), `the focus went to ${switchAfter?.className}`);
+    assert.ok(issueAfter === after.row.querySelector('.jira-issue-link'), 'the card\'s own issue, the first Jira link of the row');
+    // The focus on a linked key whose line goes away: the row keeps it
+    const onLinkedKey = captureFocusedRow(after.pane, after.row.querySelector('.issue-links .jira-issue-link'));
+    const gone = tree(0);
+    restoreFocusedRow(onLinkedKey, [gone.row]);
+    assert.ok(focused(gone.document)[0] === gone.row);
+});
+```
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -419,7 +452,17 @@ test('an empty selection shows the text given, "Show all" by default', () => {
 });
 ```
 
-`test/server.test.mjs`, the multi-select block of the accessibility test: the page's multi-selects are the registry's plus `issueLinkSelect` (`[...multiSelectFilters.map(f => f.elementId), 'issueLinkSelect'].sort()`), and the label checks loop over that same list; add `assert.match(html, /<span id="issueLinkSelectLabel">Links<\/span>/)`.
+`test/server.test.mjs`, the multi-select block of the accessibility test: the page's multi-selects are the registry's plus `issueLinkSelect` (`[...multiSelectFilters.map(f => f.elementId), 'issueLinkSelect'].sort()`), and the label checks loop over that same list; add `assert.match(html, /<span id="issueLinkSelectLabel">Links<\/span>/)`. And the fixture server serves the links (spec §6):
+
+```js
+test('the fixture server serves the issue links of the SECOLLAB issues', async () => {
+    const body = await (await fetch(`${baseUrl}/api/pull-requests/SECOLLAB`)).json();
+    assert.ok(body.jiraIssuesDetails.some(issue => issue.fields.issueLinks?.length > 0));
+    assert.ok(body.orphanedIssues.every(issue => Array.isArray(issue.fields.issueLinks)));
+});
+```
+
+(Use the file's own server start-up and `baseUrl`, as the `/api/version` test does.)
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -448,6 +491,7 @@ Run `PORT=3100 node index.mjs --fixtures` (the user's own fixture server may be 
 - Tick "relates to" with the keyboard, the dropdown open: the lines appear, the dropdown stays open, the focus stays on that checkbox; the URL and the history do not change; the folds and the selected row stay.
 - "Clear all" in the dropdown: "None", no line anywhere; reload: still "None".
 - Clear filters: the Links choice stays; the filter badge does not count it.
+- Back and Forward after a change of the setting: the setting stays as chosen, and they move between the same filter entries as before the change (the change pushed nothing).
 - Switch to OSLC and back: the ticked phrases are back; after a refresh (wait for it, or switch tabs to trigger the check), `localStorage.getItem('prTree.issueLinkPhrases')` is unchanged.
 - The filter pass stays around a millisecond (CLAUDE.md, Tests: performance).
 
