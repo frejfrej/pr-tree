@@ -245,6 +245,20 @@ test('renderRepositories escapes what the related links carry', () => {
     assert.ok(!html.includes('<script>'));
 });
 
+test('the "see" lists name only the pull requests the tree shows: a branch loop has no row to point at', () => {
+    const root = pullRequest(1, { repo: 'repo-a', source: 'a1', destination: 'main' });
+    const stackedOnRoot = pullRequest(4, { repo: 'repo-a', source: 'a4', destination: 'a1' });
+    // x <- y <- x: no root branch reaches them
+    const loopOne = pullRequest(2, { repo: 'repo-a', source: 'x', destination: 'y' });
+    const loopTwo = pullRequest(3, { repo: 'repo-a', source: 'y', destination: 'x' });
+    const map = { 'repo-a/1': ['PROJ-1'], 'repo-a/2': ['PROJ-1'], 'repo-a/3': ['PROJ-1'], 'repo-a/4': ['PROJ-1'] };
+    const html = renderRepositories([root, stackedOnRoot, loopOne, loopTwo], map, oneIssue, 'site');
+    assert.equal(count(html, 'class="pull-request '), 2);
+    assert.ok(rowHtml(html, 'repo-a/1').includes('(see <a href="https://bitbucket.org/ws/repo-a/pull-requests/4"'));
+    assert.equal(count(rowHtml(html, 'repo-a/1'), 'related-pull-request-link'), 1);
+    assert.equal(count(rowHtml(html, 'repo-a/4'), 'related-pull-request-link'), 1);
+});
+
 test('renderRepositories marks a draft and counts its open tasks, nothing for a ready pull request without tasks (#119)', () => {
     const plain = renderSample();
     assert.equal(count(plain, 'class="draft-badge"'), 0);

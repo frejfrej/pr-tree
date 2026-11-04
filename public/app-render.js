@@ -124,6 +124,24 @@ export function relatedPullRequestsByIssue(pullRequests, jiraIssuesMap) {
     return byIssue;
 }
 
+/**
+ * The pull requests of one repository the tree shows: those on a root branch
+ * and those stacked on them, at any depth; none of a branch loop, which no
+ * root branch reaches. Each visited once. Pure.
+ */
+export function pullRequestsInTree(repoPullRequests) {
+    const byDestination = pullRequestsByDestination(repoPullRequests);
+    const pending = findRootBranches(repoPullRequests).flatMap(branch => byDestination.get(branch));
+    const shown = new Set();
+    while (pending.length > 0) {
+        const pullRequest = pending.pop();
+        if (shown.has(pullRequest)) continue;
+        shown.add(pullRequest);
+        pending.push(...(byDestination.get(pullRequest.source.branch.name) || []));
+    }
+    return [...shown];
+}
+
 // The "(see 12, 45)" after an issue of a card: the other pull requests of the
 // issue, each a link to Bitbucket carrying the key of its row, which its
 // preview reads (initializePopovers); nothing when the card is alone
@@ -149,8 +167,8 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
         acc[repoName].push(pr);
         return acc;
     }, {});
-    // The pull requests of each issue, across the repositories: the "see" list of each card
-    const related = relatedPullRequestsByIssue(pullRequests, jiraIssuesMap);
+    // The pull requests of each issue the tree shows, across the repositories: the "see" list of each card
+    const related = relatedPullRequestsByIssue(Object.values(pullRequestsByRepo).flatMap(pullRequestsInTree), jiraIssuesMap);
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
