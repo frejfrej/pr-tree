@@ -18,7 +18,9 @@ import { switchCommand } from '../public/copy-branch.js';
  * fast-forward only: a branch behind the origin's is fast-forwarded (pasted
  * again once open, too), one with a commit of its own is left alone under
  * pull.rebase=true, one without an upstream is left alone, and after a
- * switch that fails the branch checked out keeps its commit.
+ * switch that fails (the branch open in another worktree, uncommitted
+ * changes in the way) the branch checked out is at most fast-forwarded to
+ * its own upstream, never to the pull request's branch.
  * The copy-branch.test.mjs tests check the text; these check what the shells
  * make of it. `-c` and `-Command` run the shells non-interactively, without
  * their profiles: history expansion (`!`) is off, but a single-quoted `!` is
@@ -136,6 +138,23 @@ before(async () => {
     await git(origin, 'commit', '-q', '-a', '-m', 'ahead');
     await git(origin, 'branch', 'ahead');
     await git(origin, 'reset', '-q', '--hard', 'HEAD~1');
+    // elsewhere: a commit on main's adding a file, which each clone has as a local branch open in
+    // another worktree, so switching to it fails while a merge of it into main would fast-forward
+    writeFileSync(path.join(origin, 'elsewhere.txt'), 'elsewhere\n');
+    await git(origin, 'add', 'elsewhere.txt');
+    await git(origin, 'commit', '-q', '-m', 'elsewhere');
+    await git(origin, 'branch', 'elsewhere');
+    await git(origin, 'reset', '-q', '--hard', 'HEAD~1');
+    for (const shell of installed) {
+        const clone = clonePath(shell);
+        await git(clone, 'fetch', '-q', 'origin', 'elsewhere');
+        await git(clone, 'branch', '-q', '--track', 'elsewhere', 'origin/elsewhere');
+        await git(clone, 'worktree', 'add', '-q', `${clone}-elsewhere`, 'elsewhere');
+    }
+    // Then main moves on at the origin: every clone's main is one commit behind its upstream
+    writeFileSync(path.join(origin, 'main.txt'), 'main\n');
+    await git(origin, 'add', 'main.txt');
+    await git(origin, 'commit', '-q', '-m', 'main moves on');
 });
 
 // The branch of a shell's own clone that its paste moves on the origin
@@ -191,12 +210,20 @@ async function pasteEveryCommand(shell) {
     output = await paste(switchCommand('untracked'));
     assert.equal(await headRef(), 'refs/heads/untracked', output);
     assert.equal(await sha(clone, 'HEAD'), untracked, output);
-    // A failed switch: the branch the user was on keeps its commit, without the pull request's
+    // A failed switch: the branch the user was on is at most fast-forwarded to its own upstream,
+    // never to the pull request's branch. First a switch git refuses although merging the pull
+    // request's branch into main would fast-forward (the branch is open in another worktree), with
+    // main one commit behind its upstream; then one refused for uncommitted changes in the way
+    const isAncestor = async (commit, ref) => (await run('git', ['merge-base', '--is-ancestor', commit, ref], clone)).status === 0;
     await git(clone, 'switch', '-q', 'main');
-    const main = await sha(clone, 'HEAD');
+    output = await paste(switchCommand('elsewhere'));
+    assert.equal(await headRef(), 'refs/heads/main', output);
+    assert.equal(await sha(clone, 'HEAD'), await sha(origin, 'main'), output);
+    assert.ok(!(await isAncestor(await sha(origin, 'elsewhere'), 'HEAD')), `the pull request's commit landed in main\n${output}`);
     output = await paste(switchCommand('ahead'));
     assert.equal(await headRef(), 'refs/heads/main', output);
-    assert.equal(await sha(clone, 'HEAD'), main, output);
+    assert.equal(await sha(clone, 'HEAD'), await sha(origin, 'main'), output);
+    assert.ok(!(await isAncestor(await sha(origin, 'ahead'), 'HEAD')), `the pull request's commit landed in main\n${output}`);
     assert.equal(readFileSync(path.join(clone, 'docs', 'x'), 'utf8'), 'changed\n', output);
 }
 
