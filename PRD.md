@@ -143,7 +143,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 **Description:** Extract and display Jira issue information from PR titles and track workflow status
 
 **Requirements:**
-- F3.1: Extract Jira issue keys from PR titles, or from the source branch when the title names none, using configurable regex (case-sensitive, as configured)
+- F3.1: Extract Jira issue keys from PR titles, or from the source branch when the title names none, using configurable regex, whatever their case (the `i` flag), as Jira writes them (upper case)
 - F3.2: Fetch issue details from Jira API (summary, status, priority)
 - F3.3: Display issue status with color-coded badges
 - F3.4: Show issue priority icons
@@ -440,7 +440,7 @@ The application integrates with a Jira workflow where:
   projectName: {
     repositories: ['repo-slug-1', 'repo-slug-2'],
     jiraProjects: ['PROJ1', 'PROJ2'],
-    jiraRegex: /(PROJ1-\d+|PROJ2-\d+)/g
+    jiraRegex: /(PROJ1-\d+|PROJ2-\d+)/gi
   }
 }
 ```

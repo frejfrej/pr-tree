@@ -17,6 +17,12 @@ tried on the fixtures and removed at the user's request ("I don't think
 this hourglass feature is useful"): the highlight stays as in 3.2.0,
 its colour alone. §5.1 and its tests in §7 record what was built.
 
+**Changed on 2026-11-04, after the review of PR #151:** the keys are
+read whatever their case, in titles and branches (the user: "make regex
+case insensitive everywhere"). The regexes of projects.js take the `i`
+flag and `extractJiraIssues` returns the keys in upper case, as Jira
+writes them. What §5.2 says of lowercase keys no longer holds.
+
 ## 1. Intent
 
 - **Why a row is highlighted.** With participants selected, a row that

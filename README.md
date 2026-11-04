@@ -82,7 +82,7 @@
 * Copy config.js.default to config.js
 * Fill in the configuration values in config.js: the comments say which Atlassian tokens to create and where
 * Optionally, name the Jira custom fields of the approvers of an issue and of those who approved (`approversField` and `approvedByField` in the `jira` block, user pickers, for instance `customfield_11101` and `customfield_11785`): the issues in review without a pull request are then kept for their approvers. The ids are listed by `https://<siteName>.atlassian.net/rest/api/3/field`
-* Update projects.js to include your own projects if needed, and remove those you might not need
+* Update projects.js to include your own projects if needed, and remove those you might not need; keep the `i` flag of each `jiraRegex`, which reads the keys whatever their case
 * Open a terminal (Node.js 20.11 or later and `npm` are assumed to be installed; the server uses the `fetch` built into Node)
 * Run `npm ci`
 * Run `npm start`
@@ -102,7 +102,8 @@
 
 ## Changelog:
 * Version 3.3.0
-    * A pull request whose title names no Jira key takes the keys of its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches): it shows its issues, takes their band, sprint, epic, story and fix version, its assignee finds it with the participant filter, and the issue leaves the Jira issues in review without a pull request. A key in the title still wins; a lowercase key in a branch is not read
+    * The Jira keys are read whatever their case, in titles and branches alike: `feature/secollab-123-fix` links SECOLLAB-123. The regexes of `projects.js` ignore the case (the `i` flag); a project of your own needs it too
+    * A pull request whose title names no Jira key takes the keys of its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches): it shows its issues, takes their band, sprint, epic, story and fix version, its assignee finds it with the participant filter, and the issue leaves the Jira issues in review without a pull request. A key in the title still wins
     * After an issue of a card, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number. Each number opens the pull request in Bitbucket; hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), and, while the filters show that pull request, a crosshairs button that unfolds what hides it, selects it and scrolls to it
     * The help no longer answers "Not Found" when the dashboard sits under a folder whose name starts with a dot (`~/.local/…`, a git worktree in `.claude/`)
     * Fixture mode: some pull requests name their issue in their branch only, and a few issues are shared by several pull requests, within a stack and between two repositories (#2400 of products.secollab and of products.secollab.client)
