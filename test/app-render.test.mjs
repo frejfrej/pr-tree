@@ -603,10 +603,10 @@ test('renderRepositories gives every collapsible block a named toggle button tha
 test('renderRepositories gives each pull request a button copying its branch name and one copying the command fetching and switching to it, after the open tasks', () => {
     const html = renderSample();
     assert.ok(html.includes('<button type="button" class="copy-button copy-branch" data-copy="feat-a" title="Copy: feat-a" aria-label="Copy the branch name feat-a">'));
-    const command = escapeHtml("git fetch origin 'feat-a'; git switch 'feat-a'");
+    const command = escapeHtml("git fetch origin 'feat-a'; git switch 'feat-a'; git pull --ff-only --no-rebase");
     assert.ok(html.includes(`<button type="button" class="copy-button copy-switch" data-copy="${command}" title="Copy: ${command}" aria-label="Copy ${command}">`));
     for (const branch of ['feat-b', 'feat-c1', 'feat-c2']) {
-        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="${escapeHtml(`git fetch origin '${branch}'; git switch '${branch}'`)}"`), branch);
+        assert.ok(html.includes(`data-copy="${branch}"`) && html.includes(`data-copy="${escapeHtml(`git fetch origin '${branch}'; git switch '${branch}'; git pull --ff-only --no-rebase`)}"`), branch);
     }
     assert.equal(count(html, 'class="copy-button copy-branch"'), pullRequests.length);
     assert.equal(count(html, 'class="copy-button copy-switch"'), pullRequests.length);
@@ -654,7 +654,7 @@ test('a hostile branch name is escaped in every attribute of the copy buttons an
         assert.ok(html.includes(`data-copy="${escapeHtml(command)}" title="Copy: ${escapeHtml(command)}" aria-label="Copy ${escapeHtml(command)}"`), name);
         assert.ok(html.includes(`href="${escapeHtml(sourcetreeUrl(name, 'ws/repo-one'))}" title="Check out in Sourcetree" aria-label="Check out ${escapeHtml(name)} in Sourcetree"`), name);
     }
-    assert.equal(switchCommand('a;b`c&d<e>'), "git fetch origin 'a;b`c&d<e>'; git switch 'a;b`c&d<e>'");
+    assert.equal(switchCommand('a;b`c&d<e>'), "git fetch origin 'a;b`c&d<e>'; git switch 'a;b`c&d<e>'; git pull --ff-only --no-rebase");
 });
 
 // A name no quoting keeps the same in every shell gets no command

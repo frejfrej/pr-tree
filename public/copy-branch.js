@@ -1,6 +1,7 @@
 /**
  * The branch actions of a pull request: copy its source branch name, copy
- * the command fetching and switching to it, check it out in Sourcetree.
+ * the command fetching it, switching to it and bringing it up to date,
+ * check it out in Sourcetree.
  *
  * A branch name is untrusted text bound for a shell, which may be bash,
  * zsh, sh, fish, Git Bash, Windows PowerShell 5.1 or PowerShell 7: git
@@ -18,6 +19,19 @@
  * folder docs/ over the changes in it), and a name starting with `-`
  * (`refs/heads/--detach` can be pushed) follows `--end-of-options` instead
  * of reading as an option.
+ *
+ * The third step, `git pull --ff-only --no-rebase`, brings a branch the
+ * clone already had up to date: `git switch` goes back to the local branch
+ * as it was left, the fetch having moved `origin/<branch>` only.
+ * Fast-forward only: a branch with commits of its own, or without an
+ * upstream, is left as it is, with git's message. `--no-rebase` because
+ * `--ff-only` alone does not win over a `pull.rebase=true` setting (git
+ * 2.54): pull would rebase instead, refusing outright with uncommitted
+ * changes and rebasing a branch with commits of its own. It takes no
+ * branch because `;` runs it after a failed switch too: it can then only
+ * fast-forward the branch checked out from that branch's own upstream,
+ * never to the pull request's branch, which `git pull --ff-only origin
+ * '<branch>'` would do.
  *
  * The Sourcetree link is the one of Bitbucket's own "Check out in
  * SourceTree" (its branch page): `sourcetree://checkoutRef?` with `ref`,
@@ -49,11 +63,11 @@ const shownFeedback = new WeakMap();
 // What no quoting keeps the same in every shell: a quote, a typographic one, =/ (Git Bash)
 const unquotable = /['"\u2018-\u201e]|=\//;
 
-/** The command fetching `branch` from origin and switching to it, for POSIX shells and PowerShell alike; null for a name no quoting carries */
+/** The command fetching `branch` from origin, switching to it and fast-forwarding it, for POSIX shells and PowerShell alike; null for a name no quoting carries */
 export function switchCommand(branch) {
     if (unquotable.test(branch)) return null;
     const word = `${branch.startsWith('-') ? '--end-of-options ' : ''}'${branch}'`;
-    return `git fetch origin ${word}; git switch ${word}`;
+    return `git fetch origin ${word}; git switch ${word}; git pull --ff-only --no-rebase`;
 }
 
 /** The link checking `branch` out in Sourcetree, as Bitbucket writes it; null without the repository's full name ("workspace/repository") */

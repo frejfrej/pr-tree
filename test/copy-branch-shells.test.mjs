@@ -14,6 +14,11 @@ import { switchCommand } from '../public/copy-branch.js';
  * branches were pushed, so every command has to fetch its branch; the shells
  * run side by side. The names hold what each shell would read in an unquoted
  * word, and payloads making a file or a folder in the clone when they run.
+ * The command also brings a branch the clone already has up to date,
+ * fast-forward only: a branch behind the origin's is fast-forwarded (pasted
+ * again once open, too), one with a commit of its own is left alone under
+ * pull.rebase=true, one without an upstream is left alone, and after a
+ * switch that fails the branch checked out keeps its commit.
  * The copy-branch.test.mjs tests check the text; these check what the shells
  * make of it. `-c` and `-Command` run the shells non-interactively, without
  * their profiles: history expansion (`!`) is off, but a single-quoted `!` is
@@ -106,7 +111,35 @@ before(async () => {
         writeFileSync(path.join(clonePath(shell), 'docs', 'x'), 'changed\n');
     }
     for (const name of [...names, ...optionNames]) await git(origin, 'update-ref', `refs/heads/${name}`, 'HEAD');
+
+    // A branch the clone already has: each clone gets, at main's commit, its own stale-<shell>
+    // (moved again by its shell while the shells run side by side) and a diverged branch, both
+    // tracking the origin's, and an untracked branch without upstream; then the origin's move one
+    // commit on, and the clone's diverged gets a commit of its own, under pull.rebase=true
+    const installed = shells.filter(shell => shell.installed);
+    const updated = ['diverged', 'untracked', ...installed.map(staleBranch)];
+    const commitOn = (cwd, parent, message) => git(cwd, 'commit-tree', `${parent}^{tree}`, '-p', parent, '-m', message);
+    for (const name of updated) await git(origin, 'update-ref', `refs/heads/${name}`, 'HEAD');
+    for (const shell of installed) {
+        const clone = clonePath(shell);
+        await git(clone, 'fetch', '-q', 'origin', staleBranch(shell), 'diverged');
+        await git(clone, 'branch', '-q', '--track', staleBranch(shell), `origin/${staleBranch(shell)}`);
+        await git(clone, 'branch', '-q', '--track', 'diverged', 'origin/diverged');
+        await git(clone, 'update-ref', 'refs/heads/diverged', await commitOn(clone, 'diverged', 'local'));
+        await git(clone, 'branch', '-q', 'untracked', 'main');
+        await git(clone, 'config', 'pull.rebase', 'true');
+    }
+    for (const name of updated) await git(origin, 'update-ref', `refs/heads/${name}`, await commitOn(origin, name, 'remote'));
+    // ahead, never fetched: a commit on main's changing docs/x, which every clone has changed too,
+    // so switching to it fails; main itself stays where it was
+    writeFileSync(path.join(origin, 'docs', 'x'), 'ahead\n');
+    await git(origin, 'commit', '-q', '-a', '-m', 'ahead');
+    await git(origin, 'branch', 'ahead');
+    await git(origin, 'reset', '-q', '--hard', 'HEAD~1');
 });
+
+// The branch of a shell's own clone that its paste moves on the origin
+const staleBranch = shell => `stale-${shell.name.replaceAll(' ', '-')}`;
 
 after(() => {
     if (directory) rmSync(directory, { recursive: true, force: true });
@@ -134,8 +167,39 @@ async function pasteEveryCommand(shell) {
         const output = await paste(switchCommand(name));
         assert.equal(await head(), branch, output);
     }
+
+    // An existing local branch (spec, Design): behind, then pasted again once open
+    const sha = (cwd, ref) => git(cwd, 'rev-parse', ref);
+    const headRef = () => git(clone, 'rev-parse', '--symbolic-full-name', 'HEAD');
+    const origin = path.join(directory, 'origin');
+    const stale = staleBranch(shell);
+    let output = await paste(switchCommand(stale));
+    assert.equal(await headRef(), `refs/heads/${stale}`, output);
+    assert.equal(await sha(clone, 'HEAD'), await sha(origin, stale), output);
+    assert.equal(readFileSync(path.join(clone, 'docs', 'x'), 'utf8'), 'changed\n', output); // uncommitted, untouched by the commits
+    await git(origin, 'update-ref', `refs/heads/${stale}`, await git(origin, 'commit-tree', `${stale}^{tree}`, '-p', stale, '-m', 'again'));
+    output = await paste(switchCommand(stale));
+    assert.equal(await sha(clone, 'HEAD'), await sha(origin, stale), output);
+    // Commits of its own: left alone, nothing started, pull.rebase=true notwithstanding
+    const own = await sha(clone, 'diverged');
+    output = await paste(switchCommand('diverged'));
+    assert.equal(await headRef(), 'refs/heads/diverged', output);
+    assert.equal(await sha(clone, 'HEAD'), own, output);
+    for (const state of ['rebase-merge', 'rebase-apply', 'MERGE_HEAD']) assert.ok(!existsSync(path.join(clone, '.git', state)), `${state}\n${output}`);
+    // No upstream: left alone
+    const untracked = await sha(clone, 'untracked');
+    output = await paste(switchCommand('untracked'));
+    assert.equal(await headRef(), 'refs/heads/untracked', output);
+    assert.equal(await sha(clone, 'HEAD'), untracked, output);
+    // A failed switch: the branch the user was on keeps its commit, without the pull request's
+    await git(clone, 'switch', '-q', 'main');
+    const main = await sha(clone, 'HEAD');
+    output = await paste(switchCommand('ahead'));
+    assert.equal(await headRef(), 'refs/heads/main', output);
+    assert.equal(await sha(clone, 'HEAD'), main, output);
+    assert.equal(readFileSync(path.join(clone, 'docs', 'x'), 'utf8'), 'changed\n', output);
 }
 
-test('the copied command, pasted in each shell, fetches the branch and switches to it, and runs nothing else', { concurrency: true }, async t => {
+test('the copied command, pasted in each shell, fetches the branch, switches to it and fast-forwards it, and runs nothing else', { concurrency: true }, async t => {
     await Promise.all(shells.map(shell => t.test(shell.name, { skip: !shell.installed && `${shell.name} is not installed` }, () => pasteEveryCommand(shell))));
 });

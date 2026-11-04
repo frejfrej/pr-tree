@@ -47,7 +47,7 @@ public/filter-registry.js      The five multi-select filters (key, element, URL 
 public/issue-links.js        The Jira issue links shown under an issue: the rule (ticked phrases, done never), the options of the Links setting, its stored selection and default
 public/pull-request-status.js  Status band, reviewers and SYNC key of a pull request, for render and index alike
 public/pull-request-key.mjs    Keys naming the repository: pull request "repository/id", root branch "repository:branch" (.mjs: the server imports it)
-public/copy-branch.js  The branch actions of a pull request: copy the branch name, copy `git fetch` + `git switch`, quoted for POSIX shells and PowerShell alike (feedback, status region), the Sourcetree link
+public/copy-branch.js  The branch actions of a pull request: copy the branch name, copy `git fetch` + `git switch` + `git pull --ff-only --no-rebase`, quoted for POSIX shells and PowerShell alike (feedback, status region), the Sourcetree link
 public/tree-toggle.js  Collapse/expand, the tree pane's one click handler, toggle states across re-renders and, per project in localStorage, across reloads
 public/local-storage.js        localStorage read and written without throwing (theme, sidebar, collapse state)
 public/tree-keyboard.js        The tree keys (arrows, j, k, o, i, c, b, Enter, Space, x) over the rows of the last filter pass (branch headers included), the selected row, focus kept across re-renders

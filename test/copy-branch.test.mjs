@@ -45,30 +45,30 @@ const runTimers = timers => {
 // The command is pasted in bash, zsh, sh, fish, Git Bash, Windows PowerShell
 // 5.1 or PowerShell 7: `;` is the one separator they share (PowerShell 5.1
 // has no &&), and a single-quoted word is literal in all of them
-test('switchCommand fetches the branch from origin, then switches to it, the name in single quotes', () => {
-    assert.equal(switchCommand('feature/ABC-123-export'), "git fetch origin 'feature/ABC-123-export'; git switch 'feature/ABC-123-export'");
-    assert.equal(switchCommand('é'), "git fetch origin 'é'; git switch 'é'");
+test('switchCommand fetches the branch from origin, switches to it, then fast-forwards it from its upstream, the name in single quotes', () => {
+    assert.equal(switchCommand('feature/ABC-123-export'), "git fetch origin 'feature/ABC-123-export'; git switch 'feature/ABC-123-export'; git pull --ff-only --no-rebase");
+    assert.equal(switchCommand('é'), "git fetch origin 'é'; git switch 'é'; git pull --ff-only --no-rebase");
 });
 
 test('switchCommand quotes what a POSIX shell would read: $, ;, |, &, a backtick, parentheses, !, #, braces', () => {
-    assert.equal(switchCommand('x;curl${IFS}evil|sh'), "git fetch origin 'x;curl${IFS}evil|sh'; git switch 'x;curl${IFS}evil|sh'");
-    assert.equal(switchCommand('a&b`id`$(id)!c#d{e}'), "git fetch origin 'a&b`id`$(id)!c#d{e}'; git switch 'a&b`id`$(id)!c#d{e}'");
+    assert.equal(switchCommand('x;curl${IFS}evil|sh'), "git fetch origin 'x;curl${IFS}evil|sh'; git switch 'x;curl${IFS}evil|sh'; git pull --ff-only --no-rebase");
+    assert.equal(switchCommand('a&b`id`$(id)!c#d{e}'), "git fetch origin 'a&b`id`$(id)!c#d{e}'; git switch 'a&b`id`$(id)!c#d{e}'; git pull --ff-only --no-rebase");
 });
 
 // PowerShell reads $ anywhere, @ and # at the start of a word, --% (stop
 // parsing), and a number-like word as a number (about_Parsing)
 test('switchCommand quotes what PowerShell would read in a bare word: $, a leading @ or #, --%, a number', () => {
     for (const name of ['$HOME', '@args', '#x', '1.10', '0x10', 'a,b']) {
-        assert.equal(switchCommand(name), `git fetch origin '${name}'; git switch '${name}'`, name);
+        assert.equal(switchCommand(name), `git fetch origin '${name}'; git switch '${name}'; git pull --ff-only --no-rebase`, name);
     }
-    assert.equal(switchCommand('--%'), "git fetch origin --end-of-options '--%'; git switch --end-of-options '--%'");
+    assert.equal(switchCommand('--%'), "git fetch origin --end-of-options '--%'; git switch --end-of-options '--%'; git pull --ff-only --no-rebase");
 });
 
 // refs/heads/--detach can be pushed with plain git: `git switch --detach`
 // would leave the branch for a detached HEAD
 test('switchCommand ends the options before a name starting with -, which git would read as an option', () => {
-    assert.equal(switchCommand('-f'), "git fetch origin --end-of-options '-f'; git switch --end-of-options '-f'");
-    assert.equal(switchCommand('--detach'), "git fetch origin --end-of-options '--detach'; git switch --end-of-options '--detach'");
+    assert.equal(switchCommand('-f'), "git fetch origin --end-of-options '-f'; git switch --end-of-options '-f'; git pull --ff-only --no-rebase");
+    assert.equal(switchCommand('--detach'), "git fetch origin --end-of-options '--detach'; git switch --end-of-options '--detach'; git pull --ff-only --no-rebase");
 });
 
 // A single quote is written '\'' in a POSIX shell and '' in PowerShell, which

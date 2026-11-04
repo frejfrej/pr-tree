@@ -11,6 +11,18 @@ Reviewed with the user on 2026-11-04: fast-forward only (the user: "stop
 and leave it alone, fast-forward only"), approach A (`git pull
 --ff-only`). What is marked *My call* was not discussed.
 
+**Changed during implementation, 2026-11-04:** the shell test disproved
+the belief approach A rested on (that `--ff-only` given on the command
+line wins over `pull.rebase=true`). With git 2.54 and `pull.rebase=true`,
+`git pull --ff-only` takes the rebase path: it refuses outright with
+uncommitted changes ("cannot pull with rebase: You have unstaged
+changes") and would rebase a branch with commits of its own, against the
+anti-goals below. The third step is `git pull --ff-only --no-rebase`
+(*My call*, the smallest change keeping the user's `git pull`):
+`--no-rebase` on the command line overrides the setting, so `--ff-only`
+means fast-forward only. Where this document says `git pull --ff-only`
+as the command, read `git pull --ff-only --no-rebase`.
+
 ## Intent
 
 The switch button (3.2.0) copies `git fetch origin '<branch>'; git switch
