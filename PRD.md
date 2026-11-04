@@ -194,7 +194,6 @@ The application integrates with a Jira workflow where:
 - F4.15: Back and Forward restore the filters and the project the URL describes; one history entry per user action
 - F4.16: "Hide drafts" hides the draft pull requests, with or without participants selected
 - F4.17: The participant and work filters keep an orphaned issue as they keep a pull request, its Jira approvers being its reviewers (whoever approved included) and its assignee its assignee; it waits for its approvers who have not approved, and for its assignee once nobody is pending
-- F4.18: A row waiting for a selected participant (F4.5, F4.13, F4.17) shows an hourglass after its title (after the Draft badge; after the summary of an orphaned issue), in the colour of the highlighted title, whose tooltip and accessible name say who it waits for and why, in the order the participants were selected: "Waiting for Jane: review · Bob: 2 open tasks"; on a pull request `review` (a pending reviewer), `issue in progress` (an assignee, a linked issue In Progress), `N open tasks` (an assignee, open tasks); on an orphaned issue `approval` (a pending approver), `nobody left to approve` (its assignee); the filter pass writes it from the rule of the highlight, on highlighted rows only
 
 **Acceptance Criteria:**
 - Each filter shows "Show all" option plus all available values

@@ -196,18 +196,6 @@ test('renderRepositories renders the issues, participants, commit badges and ale
     assert.ok(html.includes('Pull request has no other participants'));
 });
 
-const reasonIcon = '<span class="attention-reason" role="img" aria-label="Waiting for a selected participant" title="Waiting for a selected participant"><i class="fas fa-hourglass-half" aria-hidden="true"></i></span>';
-
-test('every pull request and orphaned issue carries the reason icon, after the title and the Draft badge, after the summary', () => {
-    assert.equal(count(renderSample(), reasonIcon), pullRequests.length);
-    assert.match(renderSample(), /class="pull-request-link"[\s\S]*?<\/a>\s*<span class="attention-reason"/);
-    const draftHtml = renderRepositories([{ ...stacked, draft: true }], jiraIssuesMap, jiraIssuesDetails, 'site');
-    assert.ok(draftHtml.indexOf('class="draft-badge"') < draftHtml.indexOf('class="attention-reason"'));
-    const orphanHtml = renderOrphanedIssues([{ key: 'PROJ-5', fields: { summary: 'Five', status: { name: 'In Review' }, priority: null, assignee: null, updated: '' } }], 'site');
-    assert.equal(count(orphanHtml, reasonIcon), 1);
-    assert.ok(orphanHtml.indexOf('orphaned-issue-summary') < orphanHtml.indexOf('attention-reason'));
-});
-
 test('relatedPullRequestsByIssue: every pull request of an issue once, by number then repository', () => {
     const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
     const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
@@ -531,9 +519,9 @@ test('renderRepositories gives each pull request a button copying its branch nam
     assert.equal(count(html, 'class="copy-button copy-branch"'), pullRequests.length);
     assert.equal(count(html, 'class="copy-button copy-switch"'), pullRequests.length);
     // Last on the participants line, after the open tasks when there are some; nothing in the header
-    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<span class="attention-reason"[\s\S]*?<\/span>\s*<\/div>\s*<\/div>\s*<div class="pull-request-issues">[\s\S]*?<div class="participants">[\s\S]*?<span class="branch-actions">\s*<button type="button" class="copy-button copy-branch"[\s\S]*?<\/span>\s*<\/div>/);
+    assert.match(html, /data-id="repo-one\/1"[^>]*>[\s\S]*?<\/a>\s*<\/div>\s*<\/div>\s*<div class="pull-request-issues">[\s\S]*?<div class="participants">[\s\S]*?<span class="branch-actions">\s*<button type="button" class="copy-button copy-branch"[\s\S]*?<\/span>\s*<\/div>/);
     const withTasks = renderRepositories([{ ...stacked, draft: true, task_count: 2 }], {}, [], 'site');
-    assert.match(withTasks, /<span class="draft-badge"[^>]*>Draft<\/span>\s*<span class="attention-reason"[\s\S]*?<\/span>\s*<\/div>/);
+    assert.match(withTasks, /<span class="draft-badge"[^>]*>Draft<\/span>\s*<\/div>/);
     assert.match(withTasks, /aria-label="open tasks"><\/i>2\s*<\/span>\s*<span class="branch-actions">/);
     // Each draws its icon, the copied and the failed icons, the class of the button choosing the one shown
     assert.equal(count(html, '<i class="fas fa-copy copy-icon" aria-hidden="true"></i>'), pullRequests.length);

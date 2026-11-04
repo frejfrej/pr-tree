@@ -40,7 +40,6 @@
     * Lists the assignees of the linked Jira issues and of the orphaned issues, the reviewers of the pull requests and the Jira approvers of the orphaned issues
     * Keeps the pull requests of the selected participants: those they review and those with a linked issue assigned to them
     * Highlights in red the pull requests waiting for them: In Review pull requests they have not approved (a draft waits for no reviewer), In Progress pull requests and In Review pull requests with open tasks, with a linked issue assigned to them
-    * An hourglass after a highlighted title says who it waits for and why, in its tooltip and for screen readers: "Waiting for Jane: review · Bob: 2 open tasks" (`review`, `issue in progress`, `N open tasks`; for a Jira issue without a pull request, `approval` or `nobody left to approve`)
 * Provides a work filter next to it: "All work" (every pull request of the participants, the default), "All reviews" (the pull requests they review), "All issues" (the pull requests with a linked issue assigned to them), "Ready for participants" (only those waiting for them, either kind), "Ready for reviewers" or "Ready for assignees"
 * "Hide drafts" hides the draft pull requests
 * Provides a fix version filter
@@ -103,7 +102,6 @@
 
 ## Changelog:
 * Version 3.3.0
-    * With participants selected, a highlighted pull request or issue says who it waits for and why: an hourglass after its title, whose tooltip reads, for example, "Waiting for Jane: review · Bob: 2 open tasks" (`review`, `issue in progress` or `N open tasks` on a pull request; `approval` or `nobody left to approve` on a Jira issue without a pull request), and screen readers read the same. Before, only the colour of the title said it
     * A pull request whose title names no Jira key takes the keys of its source branch (the `INITIALS_YYMMDD_KEY_Slug` branches): it shows its issues, takes their band, sprint, epic, story and fix version, its assignee finds it with the participant filter, and the issue leaves the Jira issues in review without a pull request. A key in the title still wins; a lowercase key in a branch is not read
     * After an issue of a card, "(see 12, 45)" lists the other pull requests of the same issue, in any repository, by number. Each number opens the pull request in Bitbucket; hovering it shows its preview under its repository and number (the same number in two repositories is two pull requests), and, while the filters show that pull request, a crosshairs button that unfolds what hides it, selects it and scrolls to it
     * The help no longer answers "Not Found" when the dashboard sits under a folder whose name starts with a dot (`~/.local/…`, a git worktree in `.claude/`)

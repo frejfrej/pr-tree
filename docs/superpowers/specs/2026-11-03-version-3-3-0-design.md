@@ -12,6 +12,11 @@ shown), plain numbers (mockup A), the reason in an icon's tooltip
 names no key, and approach A for both features with a choice (§4).
 What is marked *My call* was not discussed.
 
+**Dropped on 2026-11-04, before release:** the reason (§5.1). Built,
+tried on the fixtures and removed at the user's request ("I don't think
+this hourglass feature is useful"): the highlight stays as in 3.2.0,
+its colour alone. §5.1 and its tests in §7 record what was built.
+
 ## 1. Intent
 
 - **Why a row is highlighted.** With participants selected, a row that
@@ -111,7 +116,7 @@ share. On the page, the server would never fetch those issues from Jira.
 
 ## 5. Design
 
-### 5.1 Why a row is highlighted
+### 5.1 Why a row is highlighted (dropped, see the header)
 
 - **Where.** An hourglass icon (`fa-hourglass-half`) after the title
   link of a pull request, after its Draft badge when it has one; on an
