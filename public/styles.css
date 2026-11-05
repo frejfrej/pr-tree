@@ -968,8 +968,13 @@ select:disabled {
     margin-right: 20px;
 }
 
+/* The issues and their link lines: 45% of the card, so a link line rarely
+   wraps; never narrower than the 290px it had before the links, nor so wide
+   on a large screen that the title loses its room */
 .pull-request-issues {
-    flex: 0 0 290px;
+    flex: 0 0 45%;
+    min-width: 290px;
+    max-width: 560px;
 }
 
 .pull-request-details {

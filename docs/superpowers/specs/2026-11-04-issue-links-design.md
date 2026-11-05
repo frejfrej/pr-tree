@@ -16,6 +16,16 @@ the proposals of the playback, all agreed (§5); approaches 1 and 1
 a default independent of the project's data, and the order of the
 lines.
 
+**Changed on 2026-11-05, after PR #153:** the user, seeing the lines
+wrap in the 290px issue column ("I would rather see the links below the
+PR"), compared six layouts in mockups (issues below the title; links
+under the title; links in a bottom strip; a full-width band; issue
+chips on the title line; a wider column), each with a card of three
+issues, and chose the wider column (F): `.pull-request-issues` takes 45%
+of the card, at least the 290px it had and at most 560px (*My call*:
+the bounds; narrow windows are as before, a large screen keeps the
+title's room). The lines stay under their issue, beside the title.
+
 ## 1. Intent
 
 A pull request is often waiting on more than its reviewers: its issue
