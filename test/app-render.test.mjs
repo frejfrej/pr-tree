@@ -5,7 +5,7 @@ import { generateProjectData } from '../fixtures/generate.mjs';
 import { buildFilterIndex } from '../public/app-filter.js';
 import { sourcetreeUrl, switchCommand } from '../public/copy-branch.js';
 import { issueLinkOptions } from '../public/issue-links.js';
-import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue, initializePopovers } from '../public/app-render.js';
+import { renderRepositories, pullRequestsByDestination, renderOrphanedIssues, findRootBranches, calculateTotalPullRequests, calculateDescendants, renderParticipant, escapeHtml, relatedPullRequestsByIssue, treeRelatedPullRequests, initializePopovers } from '../public/app-render.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
 const projects = createRequire(import.meta.url)('../projects.js');
@@ -227,6 +227,15 @@ test('renderRepositories lists the other pull requests of each issue after its l
     assert.ok(rowHtml(html, 'repo-b/45').includes('data-related-key="repo-a/45"'));
     assert.equal(count(rowHtml(html, 'repo-b/45'), 'class="related-pull-request-link"'), 1);
     assert.ok(!rowHtml(html, 'repo-a/12').includes('related-pull-requests'));
+});
+
+test('renderRepositories draws the "see" lists from the related map it is given: app.js builds it once for the tree and the orphaned issues', () => {
+    const a45 = pullRequest(45, { repo: 'repo-a', source: 'a45', destination: 'main' });
+    const b45 = pullRequest(45, { repo: 'repo-b', source: 'b45', destination: 'main' });
+    const map = { 'repo-a/45': ['PROJ-1'], 'repo-b/45': ['PROJ-1'] };
+    const related = treeRelatedPullRequests([a45, b45], map);
+    assert.equal(renderRepositories([a45, b45], map, oneIssue, 'site', { related }), renderRepositories([a45, b45], map, oneIssue, 'site'));
+    assert.ok(!renderRepositories([a45, b45], map, oneIssue, 'site', { related: new Map() }).includes('related-pull-requests'));
 });
 
 test('an issue line keeps its priority icon and its link together, the related list after them: the line wraps only before the list', () => {

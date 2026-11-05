@@ -205,11 +205,12 @@ export function treeRelatedPullRequests(pullRequests, jiraIssuesMap) {
  * the pull requests nested under their parents, most recently updated first.
  * Ends with the hidden no-match message the filter pass shows when needed.
  * `linkPhrases`: the phrases of the issue links drawn under each issue (the
- * Links setting), none by default.
+ * Links setting), none by default; `related`: treeRelatedPullRequests of
+ * these pull requests, which app.js builds once for the tree and the
+ * orphaned issues, built here when not given.
  */
-export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName, { linkPhrases = [] } = {}) {
+export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName, { linkPhrases = [], related = treeRelatedPullRequests(pullRequests, jiraIssuesMap) } = {}) {
     const pullRequestsByRepo = pullRequestsByRepository(pullRequests);
-    const related = treeRelatedPullRequests(pullRequests, jiraIssuesMap);
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {

@@ -90,13 +90,20 @@ function resetFilterControls() {
 }
 
 // Empties the option lists of the multi-selects, and their selections
-// (setOptions keeps them), as before the first load
+// (setOptions keeps them), as before the first load; the Links setting's
+// too, which then reads "None" while its stored phrases stay (no change
+// notified, nothing written)
 function clearFilterOptions() {
     for (const { elementId } of multiSelectFilters) {
         const multiSelect = getMultiSelect(elementId);
         if (!multiSelect) continue;
         multiSelect.setOptions([]);
         multiSelect.clearAll(false);
+    }
+    const issueLinkSelect = getMultiSelect('issueLinkSelect');
+    if (issueLinkSelect) {
+        issueLinkSelect.setOptions([]);
+        issueLinkSelect.setSelectedValues(issueLinkPhrases);
     }
 }
 
@@ -516,18 +523,20 @@ function renderEverything(apiResult, { preferTypedText = true } = {}) {
     currentApiResult = apiResult;
     const filterIndex = initializeFilter(currentApiResult);
 
+    // The pull requests of each issue the tree shows: the "see" lists of the cards and the "#"
+    // links of the link lines, the orphaned issues' included
+    const related = treeRelatedPullRequests(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap);
+
     // Create main content, with the issue links of the phrases the Links setting ticked
     const mainContent = renderRepositories(
         currentApiResult.pullRequests,
         currentApiResult.jiraIssuesMap,
         currentApiResult.jiraIssuesDetails,
         currentApiResult.jiraSiteName,
-        { linkPhrases: issueLinkPhrases }
+        { linkPhrases: issueLinkPhrases, related }
     );
 
-    // Add orphaned issues section (a repository block, filtered with the tree); the "#" links
-    // of its link lines name the pull requests of the tree
-    const related = treeRelatedPullRequests(currentApiResult.pullRequests, currentApiResult.jiraIssuesMap);
+    // Add orphaned issues section (a repository block, filtered with the tree)
     const orphanedIssuesHtml = renderOrphanedIssues(currentApiResult.orphanedIssues, currentApiResult.jiraSiteName, { linkPhrases: issueLinkPhrases, related });
 
     // Combine content
