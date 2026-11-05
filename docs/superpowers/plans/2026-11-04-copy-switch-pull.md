@@ -125,6 +125,7 @@ Updated 2026-11-05. PR #153 (`claude/issue-links`), with `2026-11-04-issue-links
 **Done**
 - Task 1: 43281cf (the command with `--no-rebase`, see the note at the top), 77068db (the `elsewhere` failed-switch case, shown to fail against `git pull --ff-only origin '<branch>'`). Shell test passing in sh, bash, zsh and dash on macOS.
 - Review of 2026-11-05: the note at the top of this plan on `--no-rebase`.
+- Merged into master through PR #153 on 2026-11-05.
 
 **Remains before tagging 3.4.0**
 - `test/copy-branch-shells.test.mjs` on Windows: Windows PowerShell 5.1 and Git Bash (fish and PowerShell 7 were not installed on the Mac either).
