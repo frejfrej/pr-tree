@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProjectData } from '../project-data.mjs';
+import { createProjectData, normalizeIssueLinks } from '../project-data.mjs';
 import { RateLimitError } from '../atlassian-fetch.mjs';
 
 /**
@@ -160,7 +160,7 @@ test('the Jira issues are fetched in batches of 50, then the parents that were n
     assert.equal(searches[3], 'key IN (PROJ-500,PROJ-501)'); // each missing parent once, linked parents not asked again
     const fields = url => new URL(url).searchParams.get('fields');
     const searchUrls = urlsMatching(requests, /search\/jql/).filter(url => !jqlOf(url).includes('In Review'));
-    assert.equal(fields(searchUrls[0]), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype');
+    assert.equal(fields(searchUrls[0]), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,issuelinks');
     assert.equal(fields(searchUrls[3]), 'key,summary,issuetype,fixVersions,parent');
     assert.equal(requests.find(r => r.url.includes('issueKey%20in')).options.headers.Authorization, `Basic ${jiraAuth}`);
     assert.deepEqual(data.jiraIssuesDetails.slice(-2).map(i => [i.key, i.fields.issuetype.name]), [['PROJ-500', 'Epic'], ['PROJ-501', 'Story']]);
@@ -191,12 +191,12 @@ test('the orphaned issues are the ones in review without a pull request, every p
     }));
     const data = await buildProjectData('P', project);
     // Both pages, in order, the linked one dropped; no approver without the approval fields configured
-    assert.deepEqual(data.orphanedIssues, orphans.map(orphan => ({ ...orphan, fields: { ...orphan.fields, approvers: [], approvedBy: [] } })));
+    assert.deepEqual(data.orphanedIssues, orphans.map(orphan => ({ ...orphan, fields: { ...orphan.fields, approvers: [], approvedBy: [], issueLinks: [] } })));
     const urls = urlsMatching(requests, /In%20Review/);
     assert.deepEqual(urls.map(url => new URL(url).searchParams.get('nextPageToken')), [null, 'page-100']);
     for (const url of urls) {
         assert.equal(jqlOf(url), 'project in (PROJ,OTHER) AND status = "In Review" ORDER BY priority DESC, updated DESC');
-        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated');
+        assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated,issuelinks');
         assert.equal(new URL(url).searchParams.get('maxResults'), '100');
     }
     assert.ok(logs.access.includes('Found 119 orphaned issues in review status'));
@@ -214,10 +214,10 @@ test('the approvers of the orphaned issues are requested through the configured 
     }), { approvalFields: { approvers: 'customfield_1', approvedBy: 'customfield_2' } });
     const data = await buildProjectData('P', project);
     const [url] = urlsMatching(requests, /In%20Review/);
-    assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated,customfield_1,customfield_2');
+    assert.equal(new URL(url).searchParams.get('fields'), 'key,summary,status,priority,fixVersions,assignee,parent,issuetype,updated,issuelinks,customfield_1,customfield_2');
     assert.deepEqual(data.orphanedIssues.map(orphan => orphan.fields), [
-        { ...issue('OTHER-2').fields, approvers: [ann, bob], approvedBy: [bob] },
-        { ...issue('OTHER-3').fields, approvers: [], approvedBy: [] }
+        { ...issue('OTHER-2').fields, approvers: [ann, bob], approvedBy: [bob], issueLinks: [] },
+        { ...issue('OTHER-3').fields, approvers: [], approvedBy: [], issueLinks: [] }
     ]); // the site's field ids are gone
     // An approval changes the hash: the page repaints
     reviewed.fields.customfield_2 = [ann, bob];
@@ -239,6 +239,50 @@ test('a configured field that is not a list of users still gives arrays of users
         [[ann], [ann]],
         [[], [{ value: 'Yes' }]]
     ]);
+});
+
+test('normalizeIssueLinks: one entry per link, the phrase of its direction, Jira\'s order, the status trimmed', () => {
+    const blocks = { id: '1', name: 'Blocks', inward: 'is blocked by', outward: 'blocks' };
+    const relates = { id: '2', name: 'Relates', inward: 'relates to', outward: 'relates to' };
+    const status = (name, key) => ({ self: 'x', iconUrl: 'y', name, id: '3', statusCategory: { id: 4, key, colorName: 'yellow' } });
+    const linked = (key, summary, s) => ({ id: '9', key, self: 'z', fields: { summary, status: s, priority: { name: 'High' }, issuetype: { name: 'Bug' } } });
+    assert.deepEqual(normalizeIssueLinks([
+        { id: 'a', type: blocks, inwardIssue: linked('PROJ-98', 'Renderer', status('In Progress', 'indeterminate')) },
+        { id: 'b', type: blocks, outwardIssue: linked('PROJ-130', 'Mail', status('Done', 'done')) },
+        { id: 'c', type: relates, outwardIssue: linked('OTHER-4', 'Fonts', undefined) }
+    ]), [
+        { type: 'Blocks', direction: 'inward', phrase: 'is blocked by', key: 'PROJ-98', summary: 'Renderer', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } },
+        { type: 'Blocks', direction: 'outward', phrase: 'blocks', key: 'PROJ-130', summary: 'Mail', status: { name: 'Done', statusCategory: { key: 'done' } } },
+        { type: 'Relates', direction: 'outward', phrase: 'relates to', key: 'OTHER-4', summary: 'Fonts', status: null }
+    ]);
+});
+
+test('normalizeIssueLinks skips a link without a type name, a phrase or an issue key, and gives [] for anything but a list', () => {
+    const blocks = { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' };
+    assert.deepEqual(normalizeIssueLinks([
+        { type: { inward: 'x', outward: 'y' }, inwardIssue: { key: 'PROJ-1', fields: {} } },
+        { type: { name: 'Odd', outward: 'odd' }, inwardIssue: { key: 'PROJ-2', fields: {} } },
+        { type: blocks, inwardIssue: { fields: {} } },
+        { type: blocks },
+        null
+    ]), []);
+    for (const value of [undefined, null, 'text', {}]) assert.deepEqual(normalizeIssueLinks(value), []);
+});
+
+test('the links of the linked and the orphaned issues are normalized into issueLinks, and a new link changes the hash', async () => {
+    const blocks = { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' };
+    const linkedIssue = issue('PROJ-1'), orphan = issue('OTHER-2');
+    linkedIssue.fields.issuelinks = [{ type: blocks, inwardIssue: { key: 'PROJ-98', fields: { summary: 'Renderer', status: { name: 'To Do', statusCategory: { key: 'new' } } } } }];
+    // orphan has no issuelinks field at all: a site with issue linking off
+    const atlassian = fakeAtlassian({ pullRequests: { 'repo-a': [[pullRequest(1)]] }, issues: [linkedIssue], inReview: [orphan] });
+    const { buildProjectData } = setUp(atlassian);
+    const data = await buildProjectData('P', project);
+    const details = data.jiraIssuesDetails.find(i => i.key === 'PROJ-1');
+    assert.equal('issuelinks' in details.fields, false);
+    assert.deepEqual(details.fields.issueLinks, [{ type: 'Blocks', direction: 'inward', phrase: 'is blocked by', key: 'PROJ-98', summary: 'Renderer', status: { name: 'To Do', statusCategory: { key: 'new' } } }]);
+    assert.deepEqual(data.orphanedIssues[0].fields.issueLinks, []);
+    linkedIssue.fields.issuelinks.push({ type: blocks, outwardIssue: { key: 'PROJ-130', fields: { summary: 'Mail' } } });
+    assert.notEqual((await buildProjectData('P', project)).dataHash, data.dataHash);
 });
 
 test('the parents of the orphaned issues are fetched with the parents of the linked issues, once, and their fix versions inherited', async () => {

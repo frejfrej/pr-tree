@@ -125,8 +125,9 @@ export function markSelectedRow(row, previous) {
 // The links and buttons of a row, in document order: a row holds no other row (stacked pull requests are its siblings)
 const rowControls = row => [...row.querySelectorAll('a, button')];
 const isRelatedLink = control => control.classList.contains('related-pull-request-link');
-// The controls of a row that only change with the row: not its "see" links, which other pull requests bring and take away
-const ownControls = row => rowControls(row).filter(control => !isRelatedLink(control));
+// The controls of a row that only change with the row: not its "see" links, which other pull requests bring
+// and take away, nor the controls of its issue-link lines, which the Links setting and other issues do
+const ownControls = row => rowControls(row).filter(control => !isRelatedLink(control) && !control.closest('.issue-links'));
 
 // The container of what a row folds: a pull request's stack, a header's branch
 function foldedContainerOf(row) {
@@ -293,8 +294,9 @@ export function handleTreeKey(event, { shownRows, selectedRow = null, select = (
  * and which of its links and buttons holds the focus, by its place among
  * them (-1: the row itself), or, on a "see" link, the key of the pull
  * request it names (`related`), since the other pull requests of an issue
- * come and go while the row stays the same; null when the focus is outside
- * `pane` or on no row (a header toggle).
+ * come and go while the row stays the same; a linked key of an issue-link
+ * line is not among them either (-1: the row gets the focus back); null when
+ * the focus is outside `pane` or on no row (a header toggle).
  */
 export function captureFocusedRow(pane, activeElement) {
     if (!activeElement || !pane.contains(activeElement)) return null;

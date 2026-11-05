@@ -188,11 +188,13 @@ test('every select and multi-select of the app has an accessible name (#62)', as
     }
 
     // A multi-select trigger is a button named by the visible label of its filter, then by its
-    // selection; the page holds one per filter of the registry, and no other
+    // selection; the page holds one per filter of the registry and the Links setting, and no other
     const classes = div => (attribute(div, 'class') ?? '').split(/\s+/);
     const multiSelects = openingTags(html, 'div').filter(div => classes(div).includes('multi-select'));
-    assert.deepEqual(multiSelects.map(div => attribute(div, 'id')).sort(), multiSelectFilters.map(filter => filter.elementId).sort());
-    for (const { elementId: id } of multiSelectFilters) {
+    const multiSelectIds = [...multiSelectFilters.map(filter => filter.elementId), 'issueLinkSelect'];
+    assert.deepEqual(multiSelects.map(div => attribute(div, 'id')).sort(), [...multiSelectIds].sort());
+    assert.match(html, /<span id="issueLinkSelectLabel">Links<\/span>/);
+    for (const id of multiSelectIds) {
         assert.ok(hasTextById(html, `${id}Label`), `the visible label ${id}Label`);
         const markup = multiSelectMarkup(id);
         const [trigger] = openingTags(markup, 'div').filter(div => attribute(div, 'class') === 'multi-select-trigger');
@@ -335,6 +337,12 @@ test('the pull requests of a project have the documented shape, and the same dat
     // Cached for two minutes: the second call is the same data
     const again = await (await fetch(`${baseUrl}/api/pull-requests/${encodeURIComponent(project)}`)).json();
     assert.equal(again.dataHash, data.dataHash);
+});
+
+test('the fixture server serves the issue links of the SECOLLAB issues', async () => {
+    const body = await (await fetch(`${baseUrl}/api/pull-requests/SECOLLAB`)).json();
+    assert.ok(body.jiraIssuesDetails.some(issue => issue.fields.issueLinks?.length > 0));
+    assert.ok(body.orphanedIssues.every(issue => Array.isArray(issue.fields.issueLinks)));
 });
 
 test('an unknown project: 404 from both routes (#105)', async () => {

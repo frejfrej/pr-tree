@@ -18,6 +18,12 @@
  * attributes live together. The "(see 12, 45)" links after an issue carry
  * only the key of the related pull request's row, whose title link the
  * preview reads.
+ * Under an issue, of a card or of an orphaned row, one line per Jira link of
+ * the phrases the Links setting ticked, to an issue not done (the rule is
+ * issue-links.js): Jira's phrase, the linked key, a `jira-issue-link` like
+ * the issue's own, so the same popover shows its summary and the issue's own
+ * stays the first of its row (the `i` key), its status, and its pull
+ * requests as "#41" links, `related-pull-request-link`s like the "see" ones.
  * The orphaned issues section is rendered as a repository block so the
  * toggles of tree-toggle.js apply to it; its rows are `.orphaned-issue`,
  * never `.pull-request`, so the tree pass does not see them.
@@ -39,6 +45,7 @@ import { isDraft, issueApprovals, openTaskCount, otherReviewers, statusClass, sy
 import { pullRequestKey, rootBranchKey } from './pull-request-key.mjs';
 import { escapeHtml } from './escape-html.js';
 import { sourcetreeUrl, switchCommand } from './copy-branch.js';
+import { shownIssueLinks } from './issue-links.js';
 
 // The one escape of the page, shared with the filter options (escape-html.js)
 export { escapeHtml };
@@ -142,33 +149,68 @@ export function pullRequestsInTree(repoPullRequests) {
     return [...shown];
 }
 
+// A link to a related pull request in Bitbucket, carrying the key of its row,
+// which its preview reads (initializePopovers), named with its repository:
+// two repositories share numbers
+function relatedPullRequestLink(other, text) {
+    return `<a href="${escapeHtml(other.href)}" target="_blank" class="related-pull-request-link" data-related-key="${escapeHtml(other.key)}" aria-label="Pull request ${escapeHtml(other.id)} of ${escapeHtml(other.repository)}">${escapeHtml(text)}</a>`;
+}
+
 // The "(see 12, 45)" after an issue of a card: the other pull requests of the
-// issue, each a link to Bitbucket carrying the key of its row, which its
-// preview reads (initializePopovers); nothing when the card is alone
+// issue; nothing when the card is alone
 function relatedLinks(pullRequests = [], ownKey) {
     const others = pullRequests.filter(other => other.key !== ownKey);
     if (others.length === 0) return '';
-    const links = others.map(other => `<a href="${escapeHtml(other.href)}" target="_blank" class="related-pull-request-link" data-related-key="${escapeHtml(other.key)}" aria-label="Pull request ${escapeHtml(other.id)} of ${escapeHtml(other.repository)}">${escapeHtml(other.id)}</a>`);
-    return `<span class="related-pull-requests">(see ${links.join(', ')})</span>`;
+    return `<span class="related-pull-requests">(see ${others.map(other => relatedPullRequestLink(other, other.id)).join(', ')})</span>`;
+}
+
+// The link lines under an issue of a card or an orphaned row, those of the
+// ticked phrases to issues not done (shownIssueLinks): Jira's phrase, the
+// linked key carrying what the issue popover shows, its status, then the
+// pull requests of the linked issue the tree shows ("· #41, #57"), never
+// the card's own (`ownKey`); nothing when no link is shown
+function issueLinkLines(issue, linkPhrases, related, jiraSiteName, ownKey) {
+    const links = shownIssueLinks(issue, linkPhrases);
+    if (links.length === 0) return '';
+    const lines = links.map(link => {
+        const others = (related.get(link.key) ?? []).filter(other => other.key !== ownKey);
+        const pullRequests = others.length > 0
+            ? `<span class="issue-link-pull-requests"> · ${others.map(other => relatedPullRequestLink(other, `#${other.id}`)).join(', ')}</span>`
+            : '';
+        return `<li class="issue-link"><i class="fas fa-link" aria-hidden="true"></i> <span class="issue-link-phrase">${escapeHtml(link.phrase)}</span> <a href="${issueUrl(jiraSiteName, link.key)}" target="_blank" class="jira-issue-link" data-issue-key="${escapeHtml(link.key)}" data-issue-summary="${escapeHtml(link.summary)}">${escapeHtml(link.key)}</a> <span class="issue-link-status">(${escapeHtml(link.status?.name ?? 'no status')})</span>${pullRequests}</li>`;
+    });
+    return `<ul class="issue-links">${lines.join('')}</ul>`;
+}
+
+// The pull requests of each repository, by the name of their source repository, in their order
+function pullRequestsByRepository(pullRequests) {
+    const byRepository = {};
+    for (const pullRequest of pullRequests) {
+        (byRepository[pullRequest.source.repository.name] ??= []).push(pullRequest);
+    }
+    return byRepository;
+}
+
+/**
+ * The pull requests of each issue the tree shows, across the repositories:
+ * the "see" list of each card and the "#" links of the link lines; app.js
+ * passes it to renderOrphanedIssues, rendered apart from the tree
+ */
+export function treeRelatedPullRequests(pullRequests, jiraIssuesMap) {
+    return relatedPullRequestsByIssue(Object.values(pullRequestsByRepository(pullRequests)).flatMap(pullRequestsInTree), jiraIssuesMap);
 }
 
 /**
  * The tree as an HTML string: one block per repository, its root branches and
  * the pull requests nested under their parents, most recently updated first.
  * Ends with the hidden no-match message the filter pass shows when needed.
+ * `linkPhrases`: the phrases of the issue links drawn under each issue (the
+ * Links setting), none by default; `related`: treeRelatedPullRequests of
+ * these pull requests, which app.js builds once for the tree and the
+ * orphaned issues, built here when not given.
  */
-export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName) {
-    // Group pull requests by repository
-    const pullRequestsByRepo = pullRequests.reduce((acc, pr) => {
-        const repoName = pr.source.repository.name;
-        if (!acc[repoName]) {
-            acc[repoName] = [];
-        }
-        acc[repoName].push(pr);
-        return acc;
-    }, {});
-    // The pull requests of each issue the tree shows, across the repositories: the "see" list of each card
-    const related = relatedPullRequestsByIssue(Object.values(pullRequestsByRepo).flatMap(pullRequestsInTree), jiraIssuesMap);
+export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetails, jiraSiteName, { linkPhrases = [], related = treeRelatedPullRequests(pullRequests, jiraIssuesMap) } = {}) {
+    const pullRequestsByRepo = pullRequestsByRepository(pullRequests);
 
     let html = '';
     for (const [repoName, repoPullRequests] of Object.entries(pullRequestsByRepo)) {
@@ -184,7 +226,7 @@ export function renderRepositories(pullRequests, jiraIssuesMap, jiraIssuesDetail
                     </div>
                 </div>
                 <div class="repository-content">
-                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related)}
+                    ${renderPullRequests(repoPullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, linkPhrases)}
                 </div>
             </div>
         `;
@@ -228,7 +270,7 @@ function getBranchUrl(branchName, pullRequest) {
 }
 
 // Function to recursively render the pull-requests
-function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level = 0) {
+function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, linkPhrases, level = 0) {
     let html = '';
     if (level === 0) {
         const rootBranches = findRootBranches(pullRequests);
@@ -259,7 +301,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
                     <div class="root-branch-content">
             `;
             rootPullRequests.forEach(rootPullRequest => {
-                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, 1);
+                html += renderPullRequest(rootPullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, linkPhrases, 1);
             });
             html += `
                     </div>
@@ -270,7 +312,7 @@ function renderPullRequests(pullRequests, jiraIssuesMap, jiraIssuesDetails, byDe
         // Sort by updated_on date in descending order (most recent first)
         pullRequests.sort((a, b) => new Date(b.updated_on) - new Date(a.updated_on));
         pullRequests.forEach(pullRequest => {
-            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level+1);
+            html += renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, linkPhrases, level+1);
         });
     }
     return html;
@@ -291,7 +333,7 @@ export function calculateDescendants(pullRequest, byDestination) {
 }
 
 // Function to recursively render a pull-request
-function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level = 0) {
+function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, linkPhrases, level = 0) {
     let approvedDetails = "";
     let requestedChangesDetails = "";
     let notYetDecidedDetails = "";
@@ -336,7 +378,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
                        data-issue-summary="${escapeHtml(issueDetails.fields.summary)}"
                        class="jira-issue-link">
                        ${escapeHtml(issueDetails.key)} (${escapeHtml(issueDetails.fields.status?.name ?? 'no status')})
-                    </a></span>${relatedLinks(related.get(issueDetails.key), key)}</li>`;
+                    </a></span>${relatedLinks(related.get(issueDetails.key), key)}${issueLinkLines(issueDetails, linkPhrases, related, jiraSiteName, key)}</li>`;
         }).join('');
 
         if (sameStatusIcon || noOtherParticipantsAlert) {
@@ -423,7 +465,7 @@ function renderPullRequest(pullRequest, jiraIssuesMap, jiraIssuesDetails, byDest
         </div>
     `;
     if (hasChildren) {
-        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, level + 1)}</div>`;
+        html += `<div class="children">${renderPullRequests(byDestination.get(sourceBranch), jiraIssuesMap, jiraIssuesDetails, byDestination, jiraSiteName, related, linkPhrases, level + 1)}</div>`;
     }
     return html;
 }
@@ -503,9 +545,11 @@ const dayMs = 24 * 60 * 60 * 1000;
  * issue popover), summary, assignee, last update, its Jira approvers with
  * their review status, and a warning when the issue has not been updated for
  * 14 days. Pure; an empty string without issues. `now` (epoch ms) is what the
- * staleness is measured from.
+ * staleness is measured from; `linkPhrases` the phrases of the issue links
+ * drawn under each issue (none by default), `related` the pull requests of
+ * each issue the tree shows (treeRelatedPullRequests), for their "#" links.
  */
-export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } = {}) {
+export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now(), linkPhrases = [], related = new Map() } = {}) {
     if (!issues || issues.length === 0) {
         return '';
     }
@@ -520,15 +564,15 @@ export function renderOrphanedIssues(issues, jiraSiteName, { now = Date.now() } 
                 </div>
             </div>
             <div class="repository-content">
-                ${issues.map(issue => renderOrphanedIssue(issue, jiraSiteName, now)).join('')}
+                ${issues.map(issue => renderOrphanedIssue(issue, jiraSiteName, now, linkPhrases, related)).join('')}
             </div>
         </div>
     `;
 }
 
 // One row of the section, shaped like a pull request: the header (priority,
-// key, summary), then the details (assignee, last update, approvers, the stale warning)
-function renderOrphanedIssue(issue, jiraSiteName, now) {
+// key, summary), its link lines, then the details (assignee, last update, approvers, the stale warning)
+function renderOrphanedIssue(issue, jiraSiteName, now, linkPhrases, related) {
     const key = escapeHtml(issue.key);
     const summary = escapeHtml(issue.fields.summary);
     const updated = issue.fields.updated || '';
@@ -556,6 +600,7 @@ function renderOrphanedIssue(issue, jiraSiteName, now) {
                     </a>
                     <span class="orphaned-issue-summary">${summary}</span>
                 </div>
+                ${issueLinkLines(issue, linkPhrases, related, jiraSiteName, null)}
                 <div class="pull-request-details">
                     <div class="participants">
                         ${renderAssignee(issue.fields.assignee)}

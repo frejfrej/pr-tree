@@ -204,3 +204,15 @@ test('Escape with the focus on the page body closes an open dropdown (Safari doe
     fakeDocument.keydown('Escape', fakeDocument.body); // closed: nothing to do
     assert.ok(!root.classList.contains('open'));
 });
+
+test('an empty selection shows the text given from the start, before any option, "Show all" by default', () => {
+    fakeDocument.roots.links = multiSelectRoot();
+    const links = createMultiSelect('links', { emptyText: 'None' });
+    // Before a project loads (the "Select a project" page, a failed first load): no option set yet
+    assert.equal(fakeDocument.roots.links.parts['.multi-select-display'].textContent, 'None');
+    links.setOptions([{ value: 'blocks', label: 'blocks' }]);
+    assert.equal(fakeDocument.roots.links.parts['.multi-select-display'].textContent, 'None');
+    fakeDocument.roots.sprints = multiSelectRoot();
+    createMultiSelect('sprints');
+    assert.equal(fakeDocument.roots.sprints.parts['.multi-select-display'].textContent, 'Show all');
+});

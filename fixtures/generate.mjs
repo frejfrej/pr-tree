@@ -412,6 +412,74 @@ function orphanedIssueApprovals(random, assignee) {
     return { approvers, approvedBy: approvers.filter(() => random() < 0.35) };
 }
 
+// Jira's default link types, their phrases and how often each is drawn; the
+// statuses of an issue outside the dashboard (a done one is never shown)
+const linkTypes = [
+    [{ name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }, 5],
+    [{ name: 'Relates', inward: 'relates to', outward: 'relates to' }, 3],
+    [{ name: 'Duplicate', inward: 'is duplicated by', outward: 'duplicates' }, 1],
+    [{ name: 'Cloners', inward: 'is cloned by', outward: 'clones' }, 1]
+];
+const outsideStatuses = [
+    [{ name: 'To Do', statusCategory: { key: 'new' } }, 3],
+    [{ name: 'In Progress', statusCategory: { key: 'indeterminate' } }, 3],
+    [{ name: 'Done', statusCategory: { key: 'done' } }, 2]
+];
+const opposite = { inward: 'outward', outward: 'inward' };
+
+// A link as the server normalizes it (normalizeIssueLinks, project-data.mjs)
+function issueLink(type, direction, target) {
+    const { name, statusCategory } = target.fields.status;
+    return { type: type.name, direction, phrase: type[direction], key: target.key, summary: target.fields.summary, status: { name, statusCategory: { key: statusCategory.key } } };
+}
+
+/**
+ * The Jira links of the pull-request issues and the orphaned issues, on a
+ * random stream of their own so the rest of the data stays what it was:
+ * every issue gets `issueLinks`, about one in four one or two links, to
+ * another issue of the dashboard (the reverse link put on that issue too,
+ * as Jira shows it on both) or to an issue outside it, some of those done.
+ * The first issue of a pull request is blocked by the first issue of a pull
+ * request in another repository, so the `#` links show in fixture mode.
+ * The issues outside take their numbers from block 7, which no other
+ * generation uses.
+ */
+function addIssueLinks(random, pullRequestIssues, orphanedIssues, jiraIssuesMap) {
+    const issues = [...pullRequestIssues, ...orphanedIssues];
+    for (const issue of issues) issue.fields.issueLinks = [];
+    const link = (issue, type, direction, target) => {
+        if (target === issue || issue.fields.issueLinks.some(existing => existing.key === target.key)) return;
+        issue.fields.issueLinks.push(issueLink(type, direction, target));
+        if (issues.includes(target)) target.fields.issueLinks.push(issueLink(type, opposite[direction], issue));
+    };
+    const repositoriesOf = new Map();
+    for (const [pullRequestKey, keys] of jiraIssuesMap) {
+        for (const key of keys) {
+            if (!repositoriesOf.has(key)) repositoriesOf.set(key, new Set());
+            repositoriesOf.get(key).add(pullRequestKey.split('/')[0]);
+        }
+    }
+    const [first, ...others] = pullRequestIssues;
+    const blocker = first && others.find(other => [...(repositoriesOf.get(other.key) ?? [])].some(repository => !repositoriesOf.get(first.key)?.has(repository)));
+    if (blocker) link(first, linkTypes[0][0], 'inward', blocker);
+
+    const nextOutsideNumber = createIssueNumbering(7);
+    for (const issue of issues) {
+        if (random() >= 0.25) continue;
+        const count = integer(random, 1, 2);
+        for (let i = 0; i < count; i++) {
+            const type = pickWeighted(random, linkTypes);
+            const direction = random() < 0.5 ? 'inward' : 'outward';
+            const project = issue.key.split('-')[0];
+            const target = random() < 0.5 ? pick(random, issues) : {
+                key: `${project}-${nextOutsideNumber(project)}`,
+                fields: { summary: issueSummary(random, project), status: pickWeighted(random, outsideStatuses) }
+            };
+            link(issue, type, direction, target);
+        }
+    }
+}
+
 // ------------------------------------------------------------ pull requests
 
 function renderedDescription(random, title, issueKeys) {
@@ -765,6 +833,8 @@ export function generateProjectData(projectName, projectConfig, { scale = 1, cha
             }
         });
     }
+
+    addIssueLinks(createRandom(`links-${projectName}-${scale}`), jiraIssuesDetails, orphanedIssues, jiraIssuesMap);
 
     // The parents the server fetches for the linked and orphaned issues (summary,
     // type, fix versions, parent), taken from the issues known here

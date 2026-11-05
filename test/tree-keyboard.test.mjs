@@ -4,12 +4,15 @@ import { nextRow, firstShownChild, isPageTarget, parentRowOf, rootRowOf, rowKey,
 import { setPullRequestCollapsed, setRootBranchCollapsed } from '../public/tree-toggle.js';
 import { node, fakeDocument } from './fake-dom.mjs';
 
-// `related`: the keys of its issue's "(see …)" links
-function pullRequest(id, { root = false, issue = true, related = [] } = {}) {
+// `related`: the keys of its issue's "(see …)" links; `links`: the number of
+// its issue's link lines, each a linked key and one "#" link
+function pullRequest(id, { root = false, issue = true, related = [], links = 0 } = {}) {
+    const linkLines = links > 0 ? [node({ tag: 'ul', classes: ['issue-links'] }, ...Array.from({ length: links }, (_, i) => node({ tag: 'li', classes: ['issue-link'] },
+        node({ tag: 'a', classes: ['jira-issue-link'] }), node({ tag: 'a', classes: ['related-pull-request-link'], dataset: { relatedKey: `repo-two/${40 + i}` } }))))] : [];
     return node({ classes: ['pull-request', ...(root ? ['pull-request-root'] : [])], dataset: { id } },
         node({ classes: ['pull-request-header'] }, node({ tag: 'button', classes: ['toggle-button'] }), node({ tag: 'a', classes: ['pull-request-link'] })),
         ...(issue ? [node({ classes: ['pull-request-issues'] }, node({ tag: 'a', classes: ['jira-issue-link'] }),
-            ...related.map(relatedKey => node({ tag: 'a', classes: ['related-pull-request-link'], dataset: { relatedKey } })))] : []),
+            ...related.map(relatedKey => node({ tag: 'a', classes: ['related-pull-request-link'], dataset: { relatedKey } })), ...linkLines)] : []),
         node({ classes: ['participants'] },
             node({ tag: 'span', classes: ['branch-actions'] }, node({ tag: 'button', classes: ['copy-button', 'copy-branch'] }), node({ tag: 'button', classes: ['copy-button', 'copy-switch'] }))));
 }
@@ -423,4 +426,26 @@ test('the "see" links other pull requests bring or take away leave the focus on 
     const [seeGone, switchGone] = focused(gone.document);
     assert.ok(seeGone === gone.row, `the focus went to ${seeGone?.className}`);
     assert.ok(switchGone === gone.row.querySelector('.copy-switch'), `the focus went to ${switchGone?.className}`);
+});
+
+test('the issue-link lines a setting change or another issue brings or takes away leave the focus on the same control of the row', () => {
+    const tree = links => {
+        const row = pullRequest('repo-one/2', { links });
+        const pane = node({ classes: ['pane'] }, row);
+        return { row, pane, document: fakeDocument(node({ tag: 'body' }, pane)) };
+    };
+    const before = tree(0);
+    const onSwitch = captureFocusedRow(before.pane, before.row.querySelector('.copy-switch'));
+    const onIssue = captureFocusedRow(before.pane, before.row.querySelector('.jira-issue-link'));
+    const after = tree(2);
+    restoreFocusedRow(onSwitch, [after.row]);
+    restoreFocusedRow(onIssue, [after.row]);
+    const [switchAfter, issueAfter] = focused(after.document);
+    assert.ok(switchAfter === after.row.querySelector('.copy-switch'), `the focus went to ${switchAfter?.className}`);
+    assert.ok(issueAfter === after.row.querySelector('.jira-issue-link'), 'the card\'s own issue, the first Jira link of the row');
+    // The focus on a linked key whose line goes away: the row keeps it
+    const onLinkedKey = captureFocusedRow(after.pane, after.row.querySelector('.issue-links .jira-issue-link'));
+    const gone = tree(0);
+    restoreFocusedRow(onLinkedKey, [gone.row]);
+    assert.ok(focused(gone.document)[0] === gone.row);
 });
