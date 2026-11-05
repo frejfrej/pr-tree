@@ -42,7 +42,7 @@
   `IssueLink = { type: string, direction: 'inward' | 'outward', phrase: string, key: string, summary: string, status: { name: string, statusCategory: { key: string } } | null }`.
   Every issue of `jiraIssuesDetails` from `fetchJiraIssuesDetails` and every orphaned issue has `fields.issueLinks: IssueLink[]` and no `fields.issuelinks`. The parents (`fetchParentIssues`) have neither.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `test/project-data.test.mjs`, import `normalizeIssueLinks` and add:
 
@@ -101,21 +101,21 @@ test('the links of the linked and the orphaned issues are normalized into issueL
 });
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `node --test test/project-data.test.mjs`
 Expected: FAIL (`normalizeIssueLinks` is not exported; the fields strings differ).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In project-data.mjs: `normalizeIssueLinks` at module level (exported, pure; the direction is `inward` when the link has `inwardIssue`, else `outward` when it has `outwardIssue`; the phrase is `type[direction]`; the status trimmed to `{ name, statusCategory: { key } }`, `null` without a status object; `summary` `''` when missing). A `withIssueLinks(issue)` inside `createProjectData` replaces `fields.issuelinks` with `fields.issueLinks`. `fetchJiraIssuesDetails` appends `issuelinks` to its `fields` and pushes `data.issues.map(withIssueLinks)`; `orphanedIssueFields` gets `'issuelinks'` after `'updated'` (before the approval fields) and the orphans go through `withIssueLinks` after `withApprovals`. `fetchParentIssues` is unchanged. Comment the shape where `withApprovals` is commented (the page and the fixtures see one shape).
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `npm test`
 Expected: PASS (fix any other test that deep-compares the details or orphans of a build: they gain `issueLinks: []`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add project-data.mjs test/project-data.test.mjs
@@ -134,7 +134,7 @@ git commit -m "feat: fetch the Jira issue links of the linked and orphaned issue
 - Consumes: the `IssueLink` shape of Task 1.
 - Produces: in fixture mode, every entry of `jiraIssuesDetails` (the pull-request issues, not the parents) and of `orphanedIssues` has `fields.issueLinks` (possibly `[]`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 test('fixtures: issue links of every kind, consistent on both sides, some to done issues and to issues with a pull request (3.4.0)', () => {
@@ -170,21 +170,21 @@ test('the fixture server serves the issue links of the SECOLLAB issues', async (
 });
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `node --test test/fixtures.test.mjs test/server.test.mjs`
 Expected: FAIL (no `issueLinks`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `generateProjectData`, after the orphaned issues are built: an `addIssueLinks` step on its own random stream, `createRandom(\`links-${projectName}-${scale}\`)`, so the rest of the data stays as it was (as the approvals do). Every pull-request issue and orphaned issue starts with `issueLinks: []`; about one in four gets one or two links; types Blocks, Relates, Duplicate, Cloners with Jira's default phrases (table in the test); targets: another dashboard issue (then the reverse link goes on that issue too, the other direction), or an issue outside the dashboard with a key no generated issue uses and a summary from `issueSummary`, its status `To Do` (`new`), `In Progress` (`indeterminate`) or `Done` (`done`). Make at least one "is blocked by" link point at an issue with a pull request in another repository of the project, deterministically, so the `#` links show in fixture mode.
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `npm test`
 Expected: PASS (the volume and determinism tests still pass; the dataHash value changes, which no test pins).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add fixtures/generate.mjs test/fixtures.test.mjs test/server.test.mjs
@@ -209,7 +209,7 @@ git commit -m "feat: issue links in the fixtures"
   - `readIssueLinkPhrases(text: string | null): string[]` — the parsed array when it is an array of strings (`[]` included), else `defaultIssueLinkPhrases` (a copy).
   - `mergeIssueLinkPhrases(ticked: string[], current: string[], offered: string[]): string[]` — `ticked`, then the phrases of `current` not in `offered` and not in `ticked`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 import { test } from 'node:test';
@@ -283,21 +283,21 @@ test('mergeIssueLinkPhrases keeps the phrases the project does not offer, from t
 });
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `node --test test/issue-links.test.mjs`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement `public/issue-links.js`**
+- [x] **Step 3: Implement `public/issue-links.js`**
 
 Pure, no DOM at import time, no import of app.js. One ordering shared by `shownIssueLinks` and `issueLinkOptions`, so the lines and the options cannot disagree: a stable sort by type name, then the phrase's rank (0 when some link sorted carries it inward, else 1), then the grouping by phrase in order of first appearance; Jira's order is kept within a phrase.
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add public/issue-links.js test/issue-links.test.mjs
@@ -322,7 +322,7 @@ git commit -m "feat: the rule of the issue links shown, their options and the st
   - `renderOrphanedIssues(issues, jiraSiteName, { now = Date.now(), linkPhrases = [], related = new Map() } = {})`.
   - Markup, per shown link, inside the issue's `<li>` of a card (after the "(see …)" span) and after the `.pull-request-header` of an orphaned row: `<ul class="issue-links">` holding one `<li class="issue-link">` with `<i class="fas fa-link" aria-hidden="true"></i>`, `<span class="issue-link-phrase">PHRASE</span>`, the linked key as `<a href="ISSUE_URL" target="_blank" class="jira-issue-link" data-issue-key="KEY" data-issue-summary="SUMMARY">KEY</a>`, `<span class="issue-link-status">(STATUS)</span>` (`no status` without one, as the issue line says), then, when the linked issue has pull requests in `related` other than the card's own, ` · ` and the links `#41, #57`, each `<a href=… target="_blank" class="related-pull-request-link" data-related-key="REPO/ID" aria-label="Pull request ID of REPO">#ID</a>` (factor the anchor out of `relatedLinks` so both use one). No `<ul>` when nothing is shown.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `test/app-render.test.mjs` (reusing its `pullRequest`, `rowHtml`, `count` helpers; `blocksLinks` is local to these tests):
 
@@ -424,12 +424,12 @@ test('the issue-link lines a setting change or another issue brings or takes awa
 });
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `node --test test/app-render.test.mjs test/tree-keyboard.test.mjs`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 app-render.js: thread `linkPhrases` (and `related`, already threaded) down to `renderPullRequest`; draw each issue's lines from `shownIssueLinks(issueDetails, linkPhrases)`; `renderOrphanedIssue` the same with the `related` it is given (no own key to exclude). tree-keyboard.js: `ownControls` also leaves out a control inside `.issue-links` (`control.closest('.issue-links')`), with the comment saying why (the lines change with the setting and with other issues). styles.css:
   - `.jira-issues li` becomes `.jira-issues > li`: as a descendant rule it would make each nested `li.issue-link` a flex row, where the spaces between the icon, the phrase, the key, the status, " · " and ", " collapse ("is blocked bySECOLLAB-98(In Progress)·#41,#57"); the issue lines are unchanged.
@@ -438,12 +438,12 @@ app-render.js: thread `linkPhrases` (and `related`, already threaded) down to `r
 
 Header comments: app-render.js (the link lines and what their links carry), tree-keyboard.js (`ownControls` and `captureFocusedRow` say the link-line controls are left out, and why).
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `npm test`
 Expected: PASS, styles.test.mjs included.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add public/app-render.js public/tree-keyboard.js public/styles.css test/app-render.test.mjs test/tree-keyboard.test.mjs
@@ -464,7 +464,7 @@ git commit -m "feat: one line per Jira issue link under its issue"
 - Consumes: Task 3 (`issueLinkStorageKey`, `readIssueLinkPhrases`, `mergeIssueLinkPhrases`, `issueLinkOptions`), Task 4 (`renderRepositories(…, { linkPhrases })`, `renderOrphanedIssues(…, { linkPhrases, related })`, `treeRelatedPullRequests`), `readStorage`/`writeStorage` (`public/local-storage.js`).
 - Produces: `createMultiSelect(elementId, { onChange, emptyText = 'Show all' })`: the display text of an empty selection.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `test/multi-select.test.mjs`:
 
@@ -486,12 +486,12 @@ test('an empty selection shows the text given from the start, before any option,
 
 `test/server.test.mjs`, the multi-select block of the accessibility test: the page's multi-selects are the registry's plus `issueLinkSelect` (`[...multiSelectFilters.map(f => f.elementId), 'issueLinkSelect'].sort()`), and the label checks loop over that same list; add `assert.match(html, /<span id="issueLinkSelectLabel">Links<\/span>/)`.
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `node --test test/multi-select.test.mjs test/server.test.mjs`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 - multi-select.js: the constructor keeps `options.emptyText ?? 'Show all'` and calls `this.updateDisplay()` once its parts are found, so the text is right before the first `setOptions`; `updateDisplay` shows it; the header comment names the option. Keep CRLF (the check of the Global Constraints).
 - index.html, after the SYNC `.filter-item`: `<hr class="sidebar-divider">`, then a `.filter-item` with `<span class="filter-label"><span id="issueLinkSelectLabel">Links</span> <i class="fas fa-info-circle info-icon" title="Jira issue links shown under each issue, with the status of the linked issue; links to done issues are never shown. A setting kept by this browser, not a filter"></i></span>` and `<div class="multi-select" id="issueLinkSelect"></div>`.
@@ -501,12 +501,12 @@ Expected: FAIL.
   - `renderEverything`: computes `related = treeRelatedPullRequests(pullRequests, jiraIssuesMap)`, passes `{ linkPhrases: issueLinkPhrases }` to `renderRepositories` and `{ linkPhrases: issueLinkPhrases, related }` to `renderOrphanedIssues`; then sets the control: `setOptions(issueLinkOptions([...jiraIssuesDetails, ...orphanedIssues]))` and `setSelectedValues(issueLinkPhrases)`.
   - `handleIssueLinkChange(ticked)`: `issueLinkPhrases = mergeIssueLinkPhrases(ticked, issueLinkPhrases, offered)` (offered: the values of the control's current options), `writeStorage(issueLinkStorageKey, JSON.stringify(issueLinkPhrases))`, then, when a project is shown (`currentProject && currentApiResult`), `renderEverything(currentApiResult)`: the refresh path, which keeps the folds, the selection, the focus, the filters and the SYNC badges and touches neither the URL nor the history (§5.4). No other place writes the key.
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Check in the browser (fixture mode)**
+- [x] **Step 5: Check in the browser (fixture mode)**
 
 Run `PORT=3100 node index.mjs --fixtures` (the user's own fixture server may be on 3000) and open http://localhost:3100, SECOLLAB, both themes:
 - localStorage cleared: "Links" shows "2 selected" (or the one Blocks phrase SECOLLAB offers), the cards show the Blocks lines, no done issue among them; a `#` link previews its pull request and its crosshairs scrolls to it.
@@ -520,7 +520,7 @@ Run `PORT=3100 node index.mjs --fixtures` (the user's own fixture server may be 
 - Switch to OSLC and back: the ticked phrases are back; after a refresh (wait for it, or switch tabs to trigger the check), `localStorage.getItem('prTree.issueLinkPhrases')` is unchanged.
 - The filter pass stays around a millisecond (CLAUDE.md, Tests: performance).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add public/multi-select.js public/index.html public/app.js test/multi-select.test.mjs test/server.test.mjs
@@ -534,21 +534,46 @@ git commit -m "feat: a Links setting in the sidebar choosing the issue links sho
 **Files:**
 - Modify: `README.md`, `PRD.md`, `CLAUDE.md`, `package.json`, `package-lock.json` (CRLF)
 
-- [ ] **Step 1: Write**
+- [x] **Step 1: Write**
 
 - README.md, Features, under "Displays a link to related issues…": a bullet for the link lines (phrase, key, status, `#` pull requests with the preview, done issues never shown) and the Links setting (sidebar, "is blocked by" and "blocks" by default, kept by the browser, not in the address, not reset by Clear filters). Changelog: a "Version 3.4.0" entry at the top saying the same for a user, and that fixture mode has links of every kind.
 - PRD.md: header `**Version:** 3.4.0`, `**Last Updated:** 2026-11-04`; `F3.10: Fetch the issue links of the linked and orphaned issues and show, under each issue, the links of the phrases chosen in the Links setting (default "is blocked by" and "blocks"), the links to done issues (status category) never; the setting is kept by the browser, not a filter`; in section 8, next to the sidebar lines: the Links setting below the filters.
 - CLAUDE.md, "Where things are": `public/issue-links.js     The Jira issue links shown under an issue: the rule (ticked phrases, done never), the options of the Links setting, its stored selection and default`.
 - package.json: `"version": "3.4.0"`, `"releaseDate": "2026-11-04"`; package-lock.json: the two root `"version": "3.3.0"` lines to `3.4.0`, CRLF kept (`perl -pi -e 's/"version": "3\.3\.0"/"version": "3.4.0"/ if $. <= 10' package-lock.json`, then the check of the Global Constraints: `git diff --stat package-lock.json` shows 2 lines changed).
 
-- [ ] **Step 2: Run the suite**
+- [x] **Step 2: Run the suite**
 
 Run: `npm test`
 Expected: PASS (the version route test reads package.json).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md PRD.md CLAUDE.md package.json package-lock.json
 git commit -m "docs: issue links in the README, the PRD and CLAUDE.md; version 3.4.0"
 ```
+
+---
+
+## Status
+
+Updated 2026-11-05. PR #153 (`claude/issue-links`), with `2026-11-04-copy-switch-pull.md`.
+
+**Done**
+- Tasks 1-6: b12673b (server), 0b16efa (fixtures), 4c3d1ce (issue-links.js), 962f005 (link lines), 6b8b35c (Links setting), ec6ee47 (docs, 3.4.0). Manual checks of Task 5 in Chrome, both fixture projects, both themes.
+- After the PR was opened: af93c57, the issue column at 45% of the card (290px to 560px), the user's choice among six mockups (spec, "Changed on 2026-11-05").
+- Review of 2026-11-05: 4fcfd48, `renderRepositories` takes the related map app.js builds (one per render), and without a project the Links control offers nothing and reads "None" (checked in Chrome: nothing written, the ticks back on SECOLLAB); the README says that clearing the list keeps the phrases the project shown does not offer.
+
+**Remains before tagging 3.4.0**
+- `test/copy-branch-shells.test.mjs` on Windows (Windows PowerShell 5.1, Git Bash): see the copy-switch plan.
+- `releaseDate` in package.json (2026-11-04) moved to the day of the tag if later.
+- Merge, then the tag and the GitHub release (release convention, asked separately).
+
+**Open minors (not planned)**
+- `public/local-storage.js` and its CLAUDE.md line do not name the Links setting among what is stored.
+- The focus on a `#41` link of a link line can come back on the card's "(see 41)" after a re-render, when the same pull request is in both (`restoreFocusedRow` takes the first related link with that key).
+- Two link types sharing a phrase: `ordered()` groups each issue's links on their own, so an issue lacking one of the types can list its lines in another order than the options (spec §5.2 says the option order).
+- `normalizeIssueLinks` writes `statusCategory: { key: undefined }` when Jira gives a status without a category (harmless: not done).
+
+**By design (spec §5.3, now in the README)**
+- Clear all on a project without "is blocked by" links keeps "is blocked by" for the other projects.

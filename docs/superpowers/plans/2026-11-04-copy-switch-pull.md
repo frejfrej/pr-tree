@@ -8,6 +8,8 @@
 
 **Tech Stack:** vanilla ES modules, `node:test`, git, the shells of `test/copy-branch-shells.test.mjs`.
 
+**Changed during implementation, 2026-11-04:** the third step is `git pull --ff-only --no-rebase`, not `git pull --ff-only`: under `pull.rebase=true` (git 2.54) `--ff-only` alone takes the rebase path, which the shell test caught (the spec's own note says why). Where this plan writes `git pull --ff-only` as the command, read `git pull --ff-only --no-rebase`; the shell test also gained a failed-switch case (`elsewhere`, a branch open in another worktree) that a pull naming the branch would fail.
+
 **Spec:** `docs/superpowers/specs/2026-11-04-copy-switch-pull-design.md` (approved 2026-11-04). Ships in 3.4.0 with `docs/superpowers/plans/2026-11-04-issue-links.md`, run after it (its Task 6 opens the 3.4.0 changelog entry and bumps the version).
 
 ## Global Constraints
@@ -37,12 +39,12 @@
 **Interfaces:**
 - Produces: `switchCommand(branch: string): string | null` returning `` `git fetch origin ${word}; git switch ${word}; git pull --ff-only` ``.
 
-- [ ] **Step 1: Update the text tests**
+- [x] **Step 1: Update the text tests**
 
 - `test/copy-branch.test.mjs`: every expected command of the `switchCommand` tests (lines 48-82) gains `; git pull --ff-only` at the end, e.g. `"git fetch origin 'feature/ABC-123-export'; git switch 'feature/ABC-123-export'; git pull --ff-only"` and `"git fetch origin --end-of-options '-f'; git switch --end-of-options '-f'; git pull --ff-only"`; the first test is renamed `'switchCommand fetches the branch from origin, switches to it, then fast-forwards it from its upstream, the name in single quotes'`. The `null` cases are unchanged.
 - `test/app-render.test.mjs`: the three literal commands (in `'renderRepositories gives each pull request a button copying its branch name and one copying the command…'` and `'a hostile branch name is escaped…'`) gain `; git pull --ff-only`.
 
-- [ ] **Step 2: Add the update cases to the shell test**
+- [x] **Step 2: Add the update cases to the shell test**
 
 In `test/copy-branch-shells.test.mjs`, `before()` prepares, in the origin and in every clone (after the clones and the existing branches, so nothing else changes; the plumbing is the builder's, `git commit-tree`/`update-ref` as the file already uses `update-ref`; no commit but `ahead`'s touches `docs/x`):
 - `stale-<shell>` (one per installed shell, `<shell>` its name with spaces as `-`, as `clonePath` writes it: the test moves it again while the shells run side by side, so no two shells share it): that shell's clone has a local `stale-<shell>` tracking `origin/stale-<shell>` at main's commit; the origin's `stale-<shell>` then gets a commit on top.
@@ -87,29 +89,45 @@ Then, at the end of `pasteEveryCommand`, after the option names (the module's `r
 
 `diverged`, `untracked` and `ahead` are only read on the origin, so the shells share them. Update the file's header comment: the command also fast-forwards an existing branch, and the cases it pins.
 
-- [ ] **Step 3: Run the tests to see them fail**
+- [x] **Step 3: Run the tests to see them fail**
 
 Run: `node --test test/copy-branch.test.mjs test/app-render.test.mjs test/copy-branch-shells.test.mjs`
 Expected: FAIL: the text tests on the missing `; git pull --ff-only`, the shell test on `stale-<shell>` (the clone's HEAD stays on main's commit) in each installed shell; the other new cases already pass, which is what they pin.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `switchCommand` returns the command of the Global Constraints. Its header comment in copy-branch.js: the third step brings an existing local branch up to date, fast-forward only (a branch with commits of its own, or without an upstream, is left as it is, with git's message); it takes no argument because `;` runs it after a failed switch too, where it can only fast-forward the branch checked out from that branch's own upstream, never to the pull request's branch.
 
-- [ ] **Step 5: Run the suite**
+- [x] **Step 5: Run the suite**
 
 Run: `npm test`
 Expected: PASS; the shell test reports the shells not installed as skipped (on this Mac: Windows PowerShell and Git Bash, and any of sh, bash, zsh, dash, fish, pwsh missing).
 
-- [ ] **Step 6: Documentation**
+- [x] **Step 6: Documentation**
 
 - README.md, the Features line of the two copy buttons (line 56): the command `git fetch origin '<branch>'; git switch '<branch>'; git pull --ff-only`, and that a branch you already have is brought up to date with Bitbucket's, fast-forward only: one with commits of its own is left as it is, git says why. The 3.4.0 changelog entry (opened by the issue-links plan; open it at the top of "Changelog" if it is not there yet): a bullet saying the same for a user, and that before, `git switch` went back to your old copy of the branch. The 3.2.0 entry is history: unchanged.
 - PRD.md F2.11: the command with `; git pull --ff-only`.
 - CLAUDE.md, the `public/copy-branch.js` line of "Where things are": "copy `git fetch` + `git switch` + `git pull --ff-only`".
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add public/copy-branch.js test/copy-branch.test.mjs test/app-render.test.mjs test/copy-branch-shells.test.mjs README.md PRD.md CLAUDE.md
 git commit -m "fix: the copied switch command fast-forwards a branch already there"
 ```
+
+---
+
+## Status
+
+Updated 2026-11-05. PR #153 (`claude/issue-links`), with `2026-11-04-issue-links.md`.
+
+**Done**
+- Task 1: 43281cf (the command with `--no-rebase`, see the note at the top), 77068db (the `elsewhere` failed-switch case, shown to fail against `git pull --ff-only origin '<branch>'`). Shell test passing in sh, bash, zsh and dash on macOS.
+- Review of 2026-11-05: the note at the top of this plan on `--no-rebase`.
+
+**Remains before tagging 3.4.0**
+- `test/copy-branch-shells.test.mjs` on Windows: Windows PowerShell 5.1 and Git Bash (fish and PowerShell 7 were not installed on the Mac either).
+
+**Open minors (not planned)**
+- The shell test's incoming commits change no file (`commit-tree` of the parent's tree), so "uncommitted changes survive the fast-forward" is weaker than it looks: a fast-forward changing another file than `docs/x` would make it a real check.
