@@ -152,7 +152,7 @@ Development teams using Bitbucket and Jira face several workflow inefficiencies:
 - F3.7: Support Jira workflow integration with "In Review" and "In Progress" statuses
 - F3.8: Fetch the parent of linked issues, and the summary, type and parent of parent issues, so that sub-tasks reach their story and epic
 - F3.9: Fetch the Jira approvers of the orphaned issues and who approved (two custom fields named in config.js, `approversField` and `approvedByField`), show them like the reviewers of a pull request, and keep an orphaned issue for its approvers: reviews without a pull request (documentation, Xray tests)
-- F3.10: Fetch the issue links of the linked and orphaned issues and show, under each issue, one line per link of the wordings chosen in the Links setting (default "is blocked by" and "blocks"): the wording, the linked issue and its status, and its pull requests in the tree; links to done issues (Jira status category) never. The setting is kept by the browser and is not a filter (not in the URL, the history or Clear filters)
+- F3.10: Fetch the issue links of the linked and orphaned issues and show, under each issue, one line per link of the wordings chosen in the Links setting (default "is blocked by"): the wording, the linked issue and its status, and its pull requests in the tree; links to done issues (Jira status category) never. The setting is kept by the browser and is not a filter (not in the URL, the history or Clear filters)
 
 **Workflow Context:**
 The application integrates with a Jira workflow where:

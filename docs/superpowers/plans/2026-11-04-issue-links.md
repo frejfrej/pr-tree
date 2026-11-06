@@ -557,13 +557,14 @@ git commit -m "docs: issue links in the README, the PRD and CLAUDE.md; version 3
 
 ## Status
 
-Updated 2026-11-05. PR #153 (`claude/issue-links`), with `2026-11-04-copy-switch-pull.md`.
+Updated 2026-11-06. PR #153 (`claude/issue-links`), with `2026-11-04-copy-switch-pull.md`.
 
 **Done**
 - Tasks 1-6: b12673b (server), 0b16efa (fixtures), 4c3d1ce (issue-links.js), 962f005 (link lines), 6b8b35c (Links setting), ec6ee47 (docs, 3.4.0). Manual checks of Task 5 in Chrome, both fixture projects, both themes.
 - After the PR was opened: af93c57, the issue column at 45% of the card (290px to 560px), the user's choice among six mockups (spec, "Changed on 2026-11-05").
 - Review of 2026-11-05: 4fcfd48, `renderRepositories` takes the related map app.js builds (one per render), and without a project the Links control offers nothing and reads "None" (checked in Chrome: nothing written, the ticks back on SECOLLAB); the README says that clearing the list keeps the phrases the project shown does not offer.
 - Merged into master through PR #153 on 2026-11-05 (a merge commit; the branch kept).
+- 2026-11-06, `claude/links-default`: the default of the Links setting keeps "is blocked by" only, at the user's request (spec, "Changed on 2026-11-06"); README, PRD F3.10 and the 3.4.0 changelog entry with it, no version bump (3.4.0 is not tagged).
 
 **Remains before tagging 3.4.0**
 - `test/copy-branch-shells.test.mjs` on Windows (Windows PowerShell 5.1, Git Bash): see the copy-switch plan.
