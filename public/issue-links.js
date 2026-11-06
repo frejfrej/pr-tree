@@ -5,7 +5,8 @@
  * of a link type) and the issue it points to is not done (Jira's status
  * category, not a status name); the lines and the options are ordered the
  * same way. Also the stored selection of the setting: its localStorage key,
- * its default (the wording of Jira's default Blocks type) and the merge that
+ * its default ("is blocked by", the inward wording of Jira's default Blocks
+ * type: what holds an issue up) and the merge that
  * keeps the phrases a project does not offer. The links come from the
  * server as normalizeIssueLinks (project-data.mjs) shapes them, under
  * `fields.issueLinks`. Pure: no DOM, no storage access (app.js reads and
@@ -15,7 +16,7 @@
 
 export const issueLinkStorageKey = 'prTree.issueLinkPhrases';
 
-export const defaultIssueLinkPhrases = Object.freeze(['is blocked by', 'blocks']);
+export const defaultIssueLinkPhrases = Object.freeze(['is blocked by']);
 
 const isDone = link => link.status?.statusCategory?.key === 'done';
 

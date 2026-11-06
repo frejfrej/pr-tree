@@ -26,6 +26,14 @@ of the card, at least the 290px it had and at most 560px (*My call*:
 the bounds; narrow windows are as before, a large screen keeps the
 title's room). The lines stay under their issue, beside the title.
 
+**Changed on 2026-11-06, before the 3.4.0 tag:** the default keeps
+"is blocked by" only (the user: "change the default selected links to
+only keep 'is blocked by'"): `defaultIssueLinkPhrases` is
+`['is blocked by']`, and "blocks" is an option like any other. A
+browser that already stored a selection keeps it; only a browser with
+nothing stored gets the new default. What §2 and §5.2 say of "blocks"
+ticked by default no longer holds.
+
 ## 1. Intent
 
 A pull request is often waiting on more than its reviewers: its issue

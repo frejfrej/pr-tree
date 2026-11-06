@@ -8,7 +8,7 @@ const issue = issueLinks => ({ key: 'P-1', fields: { issueLinks } });
 
 test('the storage key and the default', () => {
     assert.equal(issueLinkStorageKey, 'prTree.issueLinkPhrases');
-    assert.deepEqual(defaultIssueLinkPhrases, ['is blocked by', 'blocks']);
+    assert.deepEqual(defaultIssueLinkPhrases, ['is blocked by']);
 });
 
 test('shownIssueLinks: the ticked phrases only, never a done issue, by type then inward phrase first, Jira\'s order within a phrase', () => {
@@ -56,10 +56,10 @@ test('readIssueLinkPhrases: a stored list, empty included; the default for nothi
     assert.deepEqual(readIssueLinkPhrases('["relates to"]'), ['relates to']);
     assert.deepEqual(readIssueLinkPhrases('[]'), []);
     for (const text of [null, '', 'not json', '{"a":1}', '"blocks"', '[1,2]', '["blocks",null]']) {
-        assert.deepEqual(readIssueLinkPhrases(text), ['is blocked by', 'blocks'], text);
+        assert.deepEqual(readIssueLinkPhrases(text), ['is blocked by'], text);
     }
     readIssueLinkPhrases(null).push('x');
-    assert.deepEqual(defaultIssueLinkPhrases, ['is blocked by', 'blocks'], 'the default is not shared');
+    assert.deepEqual(defaultIssueLinkPhrases, ['is blocked by'], 'the default is not shared');
 });
 
 test('mergeIssueLinkPhrases keeps the phrases the project does not offer, from the stored selection or, on a first change, the default', () => {
