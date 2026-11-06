@@ -2,7 +2,7 @@
 ## Bitbucket Pull-Requests Tree
 
 **Version:** 3.4.0
-**Last Updated:** 2026-11-04
+**Last Updated:** 2026-11-06
 **Author:** François-Régis Jaunatre
 **Status:** Active Development
 

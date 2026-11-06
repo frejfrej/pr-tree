@@ -120,15 +120,16 @@ git commit -m "fix: the copied switch command fast-forwards a branch already the
 
 ## Status
 
-Updated 2026-11-05. PR #153 (`claude/issue-links`), with `2026-11-04-issue-links.md`.
+Updated 2026-11-06. PR #153 (`claude/issue-links`), with `2026-11-04-issue-links.md`.
 
 **Done**
 - Task 1: 43281cf (the command with `--no-rebase`, see the note at the top), 77068db (the `elsewhere` failed-switch case, shown to fail against `git pull --ff-only origin '<branch>'`). Shell test passing in sh, bash, zsh and dash on macOS.
 - Review of 2026-11-05: the note at the top of this plan on `--no-rebase`.
 - Merged into master through PR #153 on 2026-11-05.
+- Released in 3.4.0 on 2026-11-06 (tag `3.4.0`).
 
-**Remains before tagging 3.4.0**
-- `test/copy-branch-shells.test.mjs` on Windows: Windows PowerShell 5.1 and Git Bash (fish and PowerShell 7 were not installed on the Mac either).
+**Remains**
+- `test/copy-branch-shells.test.mjs` on Windows: Windows PowerShell 5.1 and Git Bash (fish and PowerShell 7 were not installed on the Mac either). 3.4.0 was tagged without it, the user's call; a failure there is a fix for 3.4.1.
 
 **Open minors (not planned)**
 - The shell test's incoming commits change no file (`commit-tree` of the parent's tree), so "uncommitted changes survive the fast-forward" is weaker than it looks: a fast-forward changing another file than `docs/x` would make it a real check.

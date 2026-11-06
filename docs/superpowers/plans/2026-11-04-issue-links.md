@@ -566,10 +566,10 @@ Updated 2026-11-06. PR #153 (`claude/issue-links`), with `2026-11-04-copy-switch
 - Merged into master through PR #153 on 2026-11-05 (a merge commit; the branch kept).
 - 2026-11-06, `claude/links-default`: the default of the Links setting keeps "is blocked by" only, at the user's request (spec, "Changed on 2026-11-06"); README, PRD F3.10 and the 3.4.0 changelog entry with it, no version bump (3.4.0 is not tagged).
 
-**Remains before tagging 3.4.0**
-- `test/copy-branch-shells.test.mjs` on Windows (Windows PowerShell 5.1, Git Bash): see the copy-switch plan.
-- `releaseDate` in package.json (2026-11-04) moved to the day of the tag if later.
-- The tag and the GitHub release (release convention, asked separately).
+- Released as 3.4.0 on 2026-11-06, at the user's request: `releaseDate` and the PRD header moved to 2026-11-06 by the commit "docs: version 3.4.0, released 2026-11-06", annotated tag `3.4.0` on it, GitHub release marked Latest (notes: the 3.4.0 changelog bullets).
+
+**Remains**
+- `test/copy-branch-shells.test.mjs` on Windows (Windows PowerShell 5.1, Git Bash): 3.4.0 was tagged without it, the user's call; see the copy-switch plan. A failure there is a fix for 3.4.1.
 
 **Open minors (not planned)**
 - `public/local-storage.js` and its CLAUDE.md line do not name the Links setting among what is stored.
