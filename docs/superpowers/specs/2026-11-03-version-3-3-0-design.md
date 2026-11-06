@@ -3,6 +3,9 @@
 **Date:** 2026-11-03
 **Issue:** none (features 1, 2 and 5 of the suggestions of 2026-11-03, asked by the user)
 **Target version:** 3.3.0
+**Status:** delivered in 3.3.0 without §5.1 (PR #151, merged 2026-11-04,
+d2f6fd5; tag `3.3.0`). What is done and what remains: the Status section
+of the plan.
 
 Reviewed with the user on 2026-11-03: the three features, the related
 pull requests as the user drew them ("(see 1, 2, ..., X)" next to the
@@ -22,6 +25,29 @@ read whatever their case, in titles and branches (the user: "make regex
 case insensitive everywhere"). The regexes of projects.js take the `i`
 flag and `extractJiraIssues` returns the keys in upper case, as Jira
 writes them. What §5.2 says of lowercase keys no longer holds.
+
+**Changed on 2026-11-04, by the fixes of the review of PR #151 (§5.3):**
+- The lists name only the pull requests the tree draws (those a root
+  branch reaches, `pullRequestsInTree`), not every pull request of the
+  project: a branch loop's pull requests have no row, so a number
+  pointing at one led nowhere (a50e8d5).
+- The scroll button reads "Scroll to pull request 12 of
+  products.secollab.web": the number alone is ambiguous across
+  repositories (d20bb32).
+- Hovering a number whose pull request has no row closes the preview
+  open before it, instead of leaving it on screen (d20bb32).
+- The focus kept across a re-render finds a "see" link again by the
+  pull request it names, any other control by its place among the rest:
+  a list that grew or shrank moved the focus onto the copy buttons
+  (915e27c).
+- The issue line wraps in the 290px column, so "(see …)" can drop below
+  a long issue; the priority icon stays beside its link (e07e1b3).
+- §7: the popovers got tests after all, on `test/fake-dom.mjs`.
+
+**Since, in 3.4.0 (PR #153):** the issue → pull requests index is built
+once per render by app.js (`treeRelatedPullRequests`), not in
+`renderRepositories`, and also feeds the pull requests of the
+issue-link lines ("· #41"), which preview and scroll as "see" numbers do.
 
 ## 1. Intent
 
@@ -169,7 +195,7 @@ share. On the page, the server would never fetch those issues from Jira.
   `setDisplay`). A row that loses its highlight keeps its stale text,
   hidden with the icon.
 
-### 5.2 Issue keys from branches
+### 5.2 Issue keys from branches (case changed, see the header)
 
 - `createJiraIssuesMap`: the keys of the title, as today; when the
   title has none, the keys the same project regex finds in
@@ -184,7 +210,7 @@ share. On the page, the server would never fetch those issues from Jira.
   issue map is hashed); commit counts are not fetched again (they
   depend on the commits only).
 
-### 5.3 Related pull requests
+### 5.3 Related pull requests (changed by the review, see the header)
 
 - **On the card.** After each linked issue's link in the card's issue
   list (`KEY (Status)`), when other pull requests of the project link
